@@ -210,3 +210,31 @@ def test_tier_switch_affects_perception(tmp_path):
     assert w.npc("桃音")._tier == "idle"
     assert w.perceive("桃音", now=2.0) == [], "idle 不感知"
     w.close()
+
+
+# ---------------------------------------------------------------- 阶段 4: 世界事件
+def test_world_event_radius_isolation(tmp_path):
+    """世界事件只影响半径内 NPC, 范围外不受影响。"""
+    w = _world(tmp_path)
+    w.add_npc("桃音", {"social": 0.8, "goal_oriented": 0.3},
+              llm=_StubLLM(), data_dir=str(tmp_path), location="治疗堂")     # (1,0)
+    w.add_npc("雷电将军", {"social": 0.1, "goal_oriented": 0.9},
+              llm=_StubLLM(), data_dir=str(tmp_path), location="神樱庭")     # (0,3)
+    result = w.world_event("治疗堂着火了", now=5.0, at="治疗堂", radius=1.0)
+    assert "桃音" in result, "桃音在火灾半径内应感知"
+    assert "雷电将军" not in result, "将军在火灾半径外不应感知"
+    assert w.npc("桃音").memory_count() >= 1, "桃音应记录火灾 (世界观察)"
+    assert w.npc("雷电将军").memory_count() == 0, "将军不应记录范围外事件"
+    w.close()
+
+
+def test_world_event_global(tmp_path):
+    """at=None 全图事件, 影响所有 NPC。"""
+    w = _world(tmp_path)
+    w.add_npc("桃音", {"social": 0.8, "goal_oriented": 0.3},
+              llm=_StubLLM(), data_dir=str(tmp_path), location="治疗堂")
+    w.add_npc("刚郎", {"social": 0.3, "goal_oriented": 0.8},
+              llm=_StubLLM(), data_dir=str(tmp_path), location="锻造坊")
+    result = w.world_event("眼狩令全城生效, 持神之眼者将被搜捕", now=5.0)
+    assert set(result) == {"桃音", "刚郎"}, "全图事件应影响所有 NPC"
+    w.close()

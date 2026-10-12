@@ -52,6 +52,12 @@ def distance(a: Entity, b: Entity) -> float:
             (a.location.y - b.location.y) ** 2) ** 0.5
 
 
+def location_distance(loc: Location, ent: Entity) -> float:
+    """某区域到某实体的欧氏距离。世界事件 (阶段 4) 以事件地点为中心算影响半径。"""
+    return ((loc.x - ent.location.x) ** 2 +
+            (loc.y - ent.location.y) ** 2) ** 0.5
+
+
 # --------------------------------------------------------------------- 世界
 class World:
     """游戏世界: 持有区域、实体注册表、游戏时钟。
@@ -167,6 +173,30 @@ class World:
             tier = self.tier_of(name)
             self._npcs[name].set_tier(tier)
             result[name] = tier
+        self.advance(now)
+        return result
+
+    # ------------------------------------------------------------- 世界事件
+    def world_event(self, desc: str, now: float,
+                    at: str | None = None,
+                    radius: float | None = None) -> dict[str, list[int]]:
+        """世界事件: 共享事件, 范围内 NPC 作为世界观察 (不带 player_id) 感知。
+
+        at: 事件发生的区域名; None = 全图事件 (影响所有 NPC)。
+        radius: 影响半径 (缺省用视距)。返回 {npc: [观察id]}。
+        感知走 npc.observe() (世界观察不带 player_id), 重要性累积仍受档位门控
+        (idle 记录但不反思), 后续走降权遗忘。事件观察是环境性的, 不归属任何玩家。
+        """
+        if at is None:
+            targets = list(self._npcs.keys())
+        else:
+            center = self.locations[at]
+            r = self.perception_radius if radius is None else radius
+            targets = [n for n in self._npcs
+                       if location_distance(center, self.entities[n]) <= r]
+        result: dict[str, list[int]] = {}
+        for name in targets:
+            result[name] = [self._npcs[name].observe(desc, now)]
         self.advance(now)
         return result
 
