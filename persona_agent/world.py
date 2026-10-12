@@ -45,7 +45,9 @@ class Entity:
     defense: int = 0           # 防御
     goal: str = ""             # 目标 (LLM 决策的驱动力)
     dead: bool = False         # 死亡标记 (移出世界)
+    role: str = ""             # 角色 (vision_holder/blacksmith/scholar/enforcer/shogun...)
     history: list[str] = field(default_factory=list)   # 自身近期事件 (非全知视图)
+    reasons: list[str] = field(default_factory=list)   # 积累的理由/证据 (说服用, 见 world_auto_sim)
 
     def move(self, location: Location) -> None:
         self.location = location
@@ -67,6 +69,13 @@ class Entity:
         """记入自身近期事件 (决策用的非全知视图), 上限 20 条。"""
         self.history.append(event)
         self.history = self.history[-20:]
+
+    def add_reason(self, reason: str, cap: int) -> bool:
+        """积累一条理由/证据 (说服用)。达上限或重复则不加。返回是否新增。"""
+        if reason in self.reasons or len(self.reasons) >= cap:
+            return False
+        self.reasons.append(reason)
+        return True
 
 
 class Player(Entity):
@@ -111,6 +120,9 @@ class World:
         self._npc_data_dirs: dict[str, str] = {}   # NPC → 其独立 db 的 data_dir (持久化注册表)
         self._agent_llms: dict[str, object] = {}   # agent → 其 LLM (决策用, 自治循环)
         self._agent_personas: dict[str, dict] = {}   # agent → 人格特质 (决策用)
+        self.reason_cap = 3          # 一个 agent 最多积累几条理由 (说服用, world_auto_sim)
+        self.weapon_gain = 4         # 与铁匠对话一次, 攻 +N (锻武器)
+        self.weapon_cap = 24         # 攻的上限
         self.clock: float = 0.0            # 游戏内时间 (小时, 单调递增)
         self.perception_radius = perception_radius   # 视距: 玩家距 NPC 超过则感知不到
         self.full_radius = full_radius             # 同区域半径: 玩家距 NPC <= 此值 = full
@@ -224,8 +236,11 @@ class World:
 
     def agent_state(self, agent: Entity) -> str:
         locs = "/".join(self.locations.keys())
-        return (f"血{agent.health}, 攻{agent.attack}, 防{agent.defense}, "
-                f"在{agent.location.name} (可选区域: {locs})")
+        s = (f"血{agent.health}, 攻{agent.attack}, 防{agent.defense}, "
+             f"在{agent.location.name} (可选区域: {locs})")
+        if agent.reasons:   # 已积累的理由 (让 agent 知道已做什么、别重复)
+            s += " | 已积累的理由: " + " / ".join(agent.reasons)
+        return s
 
     def decide_agent(self, agent: Entity, memory_context: str = "") -> dict:
         """agent 决策下一步: LLM 战略判断 (非全知, 只看自己感知+记忆+目标)。"""
@@ -254,14 +269,42 @@ class World:
             line = action.get("utterance", "")
             agent.record(f"对 {target.name} 说: {line}")
             target.record(f"{agent.name} 对TA说: {line}")
-            return f"{agent.name} 对 {target.name} 说: {line}"
+            out = f"{agent.name} 对 {target.name} 说: {line}"
+            # 理由 (仅玩家积累): 学者取证 / 医者证言 / 铁匠经济之弊
+            if agent.kind == "player":
+                if "scholar" in target.role:
+                    r = "从小梅的孤本典籍中取证: 眼狩令令持眼者流离失所"
+                elif "healer" in target.role:
+                    r = "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦"
+                elif "blacksmith" in target.role:
+                    r = "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+                else:
+                    r = None
+                if r and agent.add_reason(r, self.reason_cap):
+                    out += f" [旅行者积累理由, 现{len(agent.reasons)}条]"
+            # 铁匠: 对话 = 锻一把武器, 攻提升 (与理由独立, 玩家找铁匠既取证又锻刀)
+            if "blacksmith" in target.role and agent.attack < self.weapon_cap:
+                agent.attack = min(self.weapon_cap, agent.attack + self.weapon_gain)
+                out += f" [刚郎锻好武器, {agent.name}攻升至{agent.attack}]"
+            return out
         if a == "attack" and target and target.is_alive():
             dmg = max(0, agent.attack - target.defense + random.randint(-2, 2))
             target.take_damage(dmg)
             agent.record(f"攻击 {target.name}, 造成 {dmg} 伤害")
             target.record(f"{agent.name} 攻击了TA, 受到 {dmg} 伤害")
             extra = f" → {target.name} 阵亡!" if target.dead else ""
-            return f"{agent.name} 攻击 {target.name}, 造成 {dmg} 伤害{extra}"
+            out = f"{agent.name} 攻击 {target.name}, 造成 {dmg} 伤害{extra}"
+            # 执行官收缴持眼者 → 同地点的目击玩家积累一条理由 (亲眼所见)
+            if "enforcer" in agent.role and "vision_holder" in target.role:
+                for witness in self.entities.values():
+                    if (witness.kind == "player" and witness is not agent
+                            and witness is not target and witness.is_alive()
+                            and witness.location is target.location):
+                        if witness.add_reason(
+                                f"目睹执行官当众收缴 {target.name} 的神之眼, 其家破人亡",
+                                self.reason_cap):
+                            out += f" [旅行者目击搜捕, 积累理由现{len(witness.reasons)}条]"
+            return out
         if a == "flee":
             # 逃到离最近威胁最远的区域
             threats = [o for o in self.entities.values()
@@ -280,7 +323,13 @@ class World:
         if a in ("help", "hide") and target and target.is_alive():
             agent.record(f"{'帮助' if a == 'help' else '替'} {target.name}")
             target.record(f"{agent.name} {'帮了TA' if a == 'help' else '替TA藏匿'}")
-            return f"{agent.name} {'帮助' if a == 'help' else '替'} {target.name}"
+            out = f"{agent.name} {'帮助' if a == 'help' else '替'} {target.name}"
+            # 帮持眼者护住神之眼 = 一条反眼狩令的理由 (仅玩家积累)
+            if a == "help" and agent.kind == "player" and "vision_holder" in target.role:
+                if agent.add_reason(f"助 {target.name} 藏好神之眼, 令其免遭收缴",
+                                    self.reason_cap):
+                    out += f" [旅行者积累理由, 现{len(agent.reasons)}条]"
+            return out
         agent.record("观望")
         return f"{agent.name} 观望"
 

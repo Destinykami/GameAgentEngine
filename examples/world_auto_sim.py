@@ -29,9 +29,11 @@ from persona_agent import (RealLLM, World, Location, make_embedder)
 
 DATA = os.path.join(os.path.dirname(__file__), "..", "data", "auto_sim")
 REFLECT_THRESHOLD = 25.0     # 调低, 让稀疏步的事件量也能触发反思
-PERSUADE_N = 5               # 旅行者当面劝说雷电将军多少次 → 被说服 (眼狩令废止)
-ONE_PERSUADE_PER_DAY = True  # 将军听完"需要时间考虑", 当天再劝无效 → 至少 5 天才可能成功
-DAYS = 7                     # 模拟天数
+PERSUADE_N = 5               # 双关都过之后, 还需当面劝说多少次 → 被说服 (眼狩令废止)
+ONE_PERSUADE_PER_DAY = True  # 将军听完"需要时间考虑", 当天再劝无效
+REASON_NEEDED = 3            # 双关①: 旅行者需积累多少条反眼狩令的理由 (帮持眼者/取证)
+ATTACK_NEEDED = 20           # 双关②: 旅行者攻击力需达到多少, 将军才肯正眼看
+DAYS = 10                    # 模拟天数 (准备 2-3 天 + 劝说 5 天, 留够空间)
 STEPS_PER_DAY = 3            # 每天关键时刻数 (稀疏步)
 MOMENTS = [9.0, 14.0, 19.0]  # 每天的时刻 (09:00/14:00/19:00)
 
@@ -44,23 +46,28 @@ LOCATIONS = [
     Location("城外官道", 5, 5),
 ]
 
-# (名字, 人格, 位置, 血量, 攻, 防, 目标)
+# (名字, 人格, 位置, 血量, 攻, 防, 角色, 目标)
 NPCS = [
     ("桃音",   {"social": 0.8, "goal_oriented": 0.3}, "治疗堂", 80, 8, 2,
-     "护住雷神之眼, 在眼狩令下活下来, 救助伤者"),
+     "vision_holder,healer", "护住雷神之眼, 在眼狩令下活下来, 救助伤者 (见过许多持眼者的苦)"),
     ("刚郎",   {"social": 0.3, "goal_oriented": 0.8}, "锻造坊", 100, 12, 4,
-     "打造武器谋生, 把货卖给可信的买家"),
+     "blacksmith", "打造武器谋生, 把货卖给可信的买家; 对可信者锻造更利的武器"),
     ("小梅",   {"social": 0.6, "goal_oriented": 0.5}, "稻妻主城", 70, 6, 1,
-     "护住风神之眼, 保存孤本典籍, 与可信之人互通情报"),
+     "scholar,vision_holder", "护住风神之眼, 保存孤本典籍, 与可信之人互通情报 (典籍载有眼狩令之弊)"),
     ("执行官", {"social": 0.2, "goal_oriented": 0.7}, "眼狩署", 120, 18, 8,
-     "执行眼狩令, 搜捕并制服持有神之眼的人"),
-    ("雷电将军", {"social": 0.1, "goal_oriented": 0.9}, "神樱庭", 250, 16, 12,
-     "坐镇神樱庭维护眼狩令与稻妻秩序, 击退来犯者; 你是统治者, 留在神樱庭不要离开"),
+     "enforcer", "执行眼狩令, 搜捕并制服持有神之眼的人, 见到持眼者就攻击"),
+    ("雷电将军", {"social": 0.1, "goal_oriented": 0.9, "stubborn": 0.9}, "神樱庭", 300, 20, 15,
+     "shogun", "坐镇神樱庭, 你是稻妻统治者, 极固执重秩序。空口劝说休想动你 —— "
+     "来者须拿出实证 (眼狩令之弊) 且有实力 (攻不低于20), 你才肯听; 否则击退。"
+     "即便听完也要'容我考虑', 非多次打动不可。留在神樱庭, 击退来犯者"),
 ]
-TRAVELER_GOAL = ("去神樱庭质问并劝说雷电将军结束眼狩令。将军极其固执, 不是一两次"
-                 "能说服的 —— 她会听完说'容我考虑', 当天你再劝也无效, 要隔天才再劝。"
-                 "你的攻击破不了她的防御, 别 attack, 要日日夜夜反复 talk 劝她回心转意, "
-                 "耐心多日争取。到神樱庭后留驻, 不要离开; 若执行官来扰, 应付但别走开。")
+TRAVELER_GOAL = ("劝雷电将军废止眼狩令, 但将军极固执 —— 空口白话她根本不听, 你得先做足功课:\n"
+                 "① 积累理由 (至少3条, 将军要实证): 帮桃音藏好雷神之眼 (help桃音)、找桃音 "
+                 "谈眼狩令之弊取证言 (talk桃音)、在城里留意并目击执行官收缴神之眼的暴行 "
+                 "(与她同处一地即可)。够到3条再算齐。\n"
+                 "② 提升实力 (攻到20): 找刚郎反复 talk 锻武器, 每次攻+4, 锻到够强将军才正眼看你。\n"
+                 "两关都过后再去神樱庭当面劝说, 她听完仍要'容我考虑'、当天再劝无效, 需多日反复 "
+                 "打动。前期先积累理由+锻武器, 别急着去劝; 到神樱庭后留驻别走, 若执行官来扰应付但别离开。")
 
 
 def banner(text: str) -> None:
@@ -68,11 +75,14 @@ def banner(text: str) -> None:
 
 
 def status_line(w: World) -> str:
-    """每个存活 agent 的血/位置 (供打印)。"""
+    """每个存活 agent 的血/位置; 旅行者额外显示理由数/攻 (双关进度)。"""
     parts = []
     for name, e in w.entities.items():
         if e.is_alive():
-            parts.append(f"{name}血{e.health}@{e.location.name}")
+            base = f"{name}血{e.health}@{e.location.name}"
+            if e.kind == "player":
+                base += f"(理由{len(e.reasons)}/{REASON_NEEDED},攻{e.attack}/{ATTACK_NEEDED})"
+            parts.append(base)
         else:
             parts.append(f"{name}✝")
     return " | ".join(parts)
@@ -85,11 +95,11 @@ def main() -> int:
     llm = RealLLM()
     emb = make_embedder()
 
-    for name, traits, loc, hp, atk, dfn, goal in NPCS:
+    for name, traits, loc, hp, atk, dfn, role, goal in NPCS:
         npc = w.add_npc(name, traits, llm=llm, embedder=emb, data_dir=DATA,
                         location=loc, reflection_threshold=REFLECT_THRESHOLD)
         e = w.get(name)
-        e.health, e.attack, e.defense, e.goal = hp, atk, dfn, goal
+        e.health, e.attack, e.defense, e.goal, e.role = hp, atk, dfn, goal, role
         w._agent_llms[name] = llm
         w._agent_personas[name] = traits
     w.add_agent_player("旅行者", "稻妻主城", TRAVELER_GOAL, llm=llm,
@@ -121,12 +131,21 @@ def main() -> int:
                 break
             t_act = decisions.get("旅行者", {})
             if t_act.get("action") == "talk" and t_act.get("target") == "雷电将军":
-                if ONE_PERSUADE_PER_DAY and day == last_persuade_day:
-                    print("   (雷电将军: '本将军已听过了, 容我再想想。' 当天再劝无效)")
+                trav = w.get("旅行者")
+                # 双关: 理由不够 或 实力不够 → 将军驳回 (空口白话无效)
+                if len(trav.reasons) < REASON_NEEDED:
+                    print(f"   (雷电将军: '你既无实证, 一派胡言。先去把眼狩令之弊查清楚。' "
+                          f"[理由{len(trav.reasons)}/{REASON_NEEDED} 不足, 驳回])")
+                elif trav.attack < ATTACK_NEEDED:
+                    print(f"   (雷电将军: '就凭你这副身板也敢诘问本将军? 去磨磨你的刀。' "
+                          f"[攻{trav.attack}/{ATTACK_NEEDED} 不足, 驳回])")
+                elif ONE_PERSUADE_PER_DAY and day == last_persuade_day:
+                    print("   (雷电将军: '本将军今日已听过了, 容我再想想。' 当天再劝无效)")
                 else:
                     persuade_count += 1
                     last_persuade_day = day
-                    print(f"   (旅行者当面劝说雷电将军, 将军沉吟'容我考虑' — {persuade_count}/{PERSUADE_N})")
+                    print(f"   (双关已过, 旅行者当面劝说雷电将军, 将军沉吟'容我考虑' "
+                          f"— {persuade_count}/{PERSUADE_N})")
             if persuade_count >= PERSUADE_N and not shogun.dead:
                 w.world_event("雷电将军被旅行者说服, 废止眼狩令: 持眼者可保留神之眼",
                               now=now)
