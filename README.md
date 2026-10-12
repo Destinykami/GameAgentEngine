@@ -24,15 +24,15 @@ NPC 对玩家 p 的面 (每玩家独立成流, 动态)
 | Memory Stream + Retrieval | `memory.py` | 每条记忆带 `player_id`; 检索三维评分 (recency/importance/relevance) 之外, 对当前玩家记忆加权 |
 | Reflection | `reflection.py` | 分**自我反思**与**关系反思**两条轨; 带证据引用 + 冲突失效/衰减 |
 | Planning | `planning.py` | 层次化 (日→小时→分钟); plan 作为记忆参与检索; 反应后从当前时刻重规划 |
-| Reacting | `reacting.py` | 效用函数 `U=w_s·V_s+w_g·V_g−C_int`, 人格权重 + 关系信任度调制 |
+| Reacting | `reacting.py` | 效用函数 `U=w_s·V_s+w_g·V_g−C_int`, 事件价值由 LLM 判断 (带缓存), 人格权重 + 关系信任度调制 |
 | Dialogue | `dialogue.py` | 非全知: 只用自己记忆流, 检索时把"对话者是谁"并入查询 |
 | 成本闸门 (blog 问题一) | `npc.py` | 分级认知 (full/compressed/idle) + 语义缓存 |
 
 ## LLM / 向量层
 
-- `llm.LLMClient`: 抽象接口, 六个方法 `complete / score_importance /
-  reflection_questions / reflection_insights / generate_plan / decompose_activity`。
-  实现者只应使用传入的记忆内容 (非全知原则)。
+- `llm.LLMClient`: 抽象接口, 七个方法 `complete / score_importance /
+  reflection_questions / reflection_insights / generate_plan / decompose_activity /
+  score_event`。实现者只应使用传入的记忆内容 (非全知原则)。
 - `llm_real.RealLLM`: 唯一实现, 通过 OpenAI 兼容接口 (`/v1/chat/completions`)
   接入 SGLang 部署的 `Qwen3.8-27B-Coder/BF16`。要换别的 OpenAI 兼容端点,
   改 `base_url` / `model` 即可。
@@ -172,11 +172,25 @@ age   = now − max(timestamp, last_accessed)   # 被回忆过 → 衰减更慢
 检索 top_k 不被重复记忆占满。限定同玩家流: 跨玩家的相似文本是不同关系,
 不合并。
 
+## 反应决策 (LLM 判断事件价值)
+
+反应决策不再查关键词死表。`ReactionDecider` 把事件价值判断交给 LLM
+(`LLMClient.score_event` → `RealLLM` 严格 JSON, 关思考): 给定事件 + 人格 +
+当前计划, 判出 `(社交价值, 目标价值, 打断代价)` 各 0-10。
+
+- **能反应任意事件**: 没枚举过的 (失火求援/商业提案/看护病猫) 也能被正确权衡,
+  不再一律落 `DEFAULT_VALUE`。且会参考当前计划 —— 派对邀请对正在备派对的人
+  目标价值高。
+- **成本闸门**: 事件价值按 `(事件, 计划)` 缓存, 同一情境不重复调 LLM; 加上
+  `npc.react` 的语义决策缓存, 反应路径的 LLM 开销可控。
+- **信任仍独立调制**: 事件价值是"事"的分量, 信任度(记忆派生)单独调制
+  `w_social`, 二者相乘 —— 同一派对, 对信任者接受、对背叛者拒绝。
+
 ## 当前局限 (与 blog 一致, 待办)
 
-- 反思去重、观察去重、冲突失效、遗忘/衰减均已落地。
-- 反应决策是关键词价值表 (`EVENT_VALUES`), 未命中即落 `DEFAULT_VALUE`,
-  非学习型决策函数 —— 没枚举过的事件类型 (失火求援/商业提案) 不会被正确权衡。
+- 反思去重、观察去重、冲突失效、遗忘/衰减、LLM 反应决策均已落地。
+- **信任度仍是关键词词表计数** (TRUST/DISTRUST 词), 非 LLM 判断 —— 措辞花样多
+  时判不准, 且不会"学乖"。
 - 成本闸门是"档位+缓存"的粗粒度方案, `set_tier` 靠调用方手动设,
   未做"距离/注意力 → 档位"的自动调度。
 - 遗忘是"整条失效", 未做部分衰减 (如把低强度记忆的 importance 逐步调低而非直接删除)。

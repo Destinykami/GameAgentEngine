@@ -1,12 +1,13 @@
 """LLM 层: LLMClient 抽象接口 + LLMContext 上下文。
 
-框架让 LLM 承担六类推理, 全部抽象成接口方法:
+框架让 LLM 承担七类推理, 全部抽象成接口方法:
 - complete(ctx)                       对话/反应回复
 - score_importance(text, player_id)   记忆重要性打分 (1-10)
 - reflection_questions(recent)        生成反思用的 3 个高层问题
 - reflection_insights(evidence, n)    从证据生成带引用的 Insight
 - generate_plan(...)                  生成日计划
 - decompose_activity(...)             把活动分解为子任务
+- score_event(...)                    判断事件价值 (社交/目标/打断代价)
 
 实现: persona_agent.llm_real.RealLLM (OpenAI 兼容, SGLang 部署)。
 实现者只应使用传入的记忆内容 —— 这是"非全知"原则的体现。
@@ -59,3 +60,13 @@ class LLMClient(ABC):
     def decompose_activity(self, activity: str, start: int, end: int) -> \
             list[tuple[int, int, str]]:
         """把时间块分解为更细的 (start_hour, end_hour, subtask)。"""
+
+    @abstractmethod
+    def score_event(self, event: str, persona_traits: dict[str, float],
+                    current_plan: str = "") -> tuple[float, float, float]:
+        """判断事件价值, 返回 (社交价值, 目标价值, 打断代价), 各 0-10。
+
+        取代关键词价值表: 让 LLM 对**任意**事件 (含没枚举过的) 做价值判断,
+        而非查死表。社交价值 = 对这个人物的社交吸引力; 目标价值 = 与当前
+        目标/计划的契合度; 打断代价 = 放下手头事去响应的损失。
+        """

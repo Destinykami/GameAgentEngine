@@ -34,6 +34,10 @@ class _StubLLM(LLMClient):
     def decompose_activity(self, activity, start, end):
         return [(start, end, "stub-subtask")]
 
+    def score_event(self, event, persona_traits, current_plan=""):
+        # 固定价值: 社交事件偏高, 供反应决策测试 (不联网)
+        return (8.0, 1.0, 3.0)
+
 
 TRAITS = {"social": 0.7, "goal_oriented": 0.5}
 

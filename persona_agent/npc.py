@@ -41,7 +41,7 @@ class NPC:
         self.store = store or MemoryStore(self.embedder)
         self.reflection = ReflectionEngine(self.llm, self.embedder)
         self.planner = PlanningEngine(self.llm)
-        self.decider = ReactionDecider(self.store)
+        self.decider = ReactionDecider(self.store, self.llm)
         self.dialogue = DialogueManager(self.llm, self.store, persona_traits,
                                         name=name)
 

@@ -216,3 +216,28 @@ class RealLLM(LLMClient):
                     e = int(item.get("end", start + 1))
                     out.append((s, e, str(item["subtask"])))
         return out
+
+    # ------------------------------------------------------------ 事件价值判断
+    def score_event(self, event: str, persona_traits: dict[str, float],
+                    current_plan: str = "") -> tuple[float, float, float]:
+        """让 LLM 判断事件价值 (社交/目标/打断代价), 各 0-10。取代关键词死表。"""
+        plan_line = ("当前正忙: " + current_plan) if current_plan else "当前没有特别重要的计划。"
+        user = ("为一个 NPC 判断下面这个事件的价值。人格特质: "
+                + str(persona_traits) + "。\n" + plan_line + "\n\n"
+                + "事件: " + event + "\n\n"
+                + "判断三个维度, 各打 0 到 10 的整数:\n"
+                + "- v_social 社交价值: 这件事对这个人物有多大的社交吸引力/参与价值\n"
+                + "- v_goal 目标价值: 这件事与他当前目标/计划的契合度\n"
+                + "- c_interrupt 打断代价: 放下手头事去响应这件事的损失\n\n"
+                + '输出 JSON, 例如 {"v_social": 8, "v_goal": 1, "c_interrupt": 3}。')
+        data = self._chat_json("你是一个事件价值评估器, 只输出 JSON。", user,
+                               think=False, temperature=0.0, max_tokens=128)
+        if not isinstance(data, dict):
+            return (3.0, 3.0, 2.0)
+        def _clip(key: str, default: float) -> float:
+            try:
+                return max(0.0, min(10.0, float(data.get(key, default))))
+            except (TypeError, ValueError):
+                return default
+        return (_clip("v_social", 3.0), _clip("v_goal", 3.0),
+                _clip("c_interrupt", 2.0))
