@@ -16,9 +16,15 @@ from .embeddings_real import (
     DEFAULT_BASE_URL as EMBEDDING_BASE_URL,
     DEFAULT_MODEL as EMBEDDING_MODEL,
 )
+from .world import World, Location, Entity, Player, distance
 
 __all__ = [
     "NPC",
+    "World",
+    "Location",
+    "Entity",
+    "Player",
+    "distance",
     "MemoryRecord",
     "MemoryStore",
     "LLMClient",
