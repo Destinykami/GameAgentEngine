@@ -148,6 +148,20 @@ class World:
             ids.append(npc.observe(content, now, player_id=ent.name))
         return ids
 
+    def player_action(self, player_name: str, action: str, target_npc: str,
+                      now: float) -> int:
+        """玩家对目标 NPC 做一个动作, 目标 NPC 自己观察并生成观察。
+
+        action 是原始动作 (动词+对象, 如"帮藏眼"/"委托打造武器")。目标 NPC
+        结合自己的记忆用 LLM 把动作观察成第三人称描述 (自生成), 再记录。
+        脚本只管"玩家做了什么动作", 不管"NPC 怎么描述这件事"。返回观察 id。
+        """
+        npc = self._npcs.get(target_npc)
+        if npc is None:
+            raise KeyError(f"NPC '{target_npc}' 未注册入世界")
+        self.advance(now)
+        return npc.perceive_action(player_name, action, now)
+
     # ------------------------------------------------------------- 距离调度
     def tier_of(self, npc_name: str) -> str:
         """距离调度: 按 NPC 到最近玩家的距离推导认知档位 (替代手动 set_tier)。

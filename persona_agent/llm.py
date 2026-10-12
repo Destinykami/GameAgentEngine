@@ -1,6 +1,6 @@
 """LLM 层: LLMClient 抽象接口 + LLMContext 上下文。
 
-框架让 LLM 承担九类推理, 全部抽象成接口方法:
+框架让 LLM 承担十类推理, 全部抽象成接口方法:
 - complete(ctx)                       对话/反应回复
 - score_importance(text, player_id)   记忆重要性打分 (1-10)
 - reflection_questions(recent)        生成反思用的 3 个高层问题
@@ -10,6 +10,7 @@
 - score_event(...)                    判断事件价值 (社交/目标/打断代价)
 - judge_trust(...)                    基于关系记忆判断对玩家的信任度 (-1..1)
 - judge_conflict(reflection, obs)     判断更晚观察与反思的矛盾强度 (0-10)
+- perceive_action(npc, player, action)  NPC 把玩家的动作观察成自己的描述
 
 实现: persona_agent.llm_real.RealLLM (OpenAI 兼容, SGLang 部署)。
 实现者只应使用传入的记忆内容 —— 这是"非全知"原则的体现。
@@ -89,4 +90,14 @@ class LLMClient(ABC):
 
         取代词表方向匹配 (信任词 vs 背叛词): LLM 判语义矛盾。
         0 = 一致/无关, 5 = 部分矛盾(削弱), 10 = 强烈矛盾(直接推翻)。
+        """
+
+    @abstractmethod
+    def perceive_action(self, npc_name: str, player_name: str, action: str,
+                        context: str = "") -> str:
+        """NPC 把玩家对它做的动作观察成自己的描述 (第三人称, 一句话)。
+
+        脚本只提供原始动作 (动词+对象, 如"帮藏眼"/"委托打造武器"), NPC 结合
+        自己的处境/记忆, 用第三人称客观描述"发生了什么" —— 观察内容由 NPC
+        自己生成, 不是脚本写死的。context 是 NPC 该玩家近期记忆 (让描述连贯)。
         """

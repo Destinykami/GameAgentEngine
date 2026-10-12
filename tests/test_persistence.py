@@ -53,6 +53,11 @@ class _StubLLM(LLMClient):
         total = pos + neg
         return (pos - neg) / total if total else 0.0
 
+    def perceive_action(self, npc_name, player_name, action, context=""):
+        # 离线确定性: 直接把动作拼成观察 (模拟 NPC 自己观察生成), 含"帮/骗"等
+        # 词供 trust 词表断言。真实 LLM 的观察生成质量由集成验证覆盖。
+        return f"{player_name} {action}"
+
 
 TRAITS = {"social": 0.7, "goal_oriented": 0.5}
 

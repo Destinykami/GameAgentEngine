@@ -110,6 +110,22 @@ class NPC:
             self._importance_accum += importance
         return mem_id
 
+    def perceive_action(self, player_name: str, action: str,
+                        now: float) -> int:
+        """NPC 观察玩家对它做的动作, 自己生成观察描述并记录。
+
+        与 observe() (脚本写死观察内容) 不同: 这里脚本只提供原始动作
+        (动词+对象, 如"帮藏眼"), NPC 结合自己的近期记忆用 LLM 把动作观察成
+        第三人称描述 (LLM 生成), 再走 observe 记录 (打分/去重/累积)。
+        观察内容由 NPC 自己产生, 不是脚本写死的。
+        """
+        self._advance(now)
+        recent = [m.content for m in self.store.all_valid(
+            player_id=player_name, types=["observation"])[-3:]]
+        context = " | ".join(recent) if recent else ""
+        content = self.llm.perceive_action(self.name, player_name, action, context)
+        return self.observe(content, now, player_id=player_name)
+
     # ---------------------------------------------------------------- 反思
     def maybe_reflect_self(self, now: float) -> list[int]:
         """重要性累积超阈值时触发自我反思 (阈值可配置, 默认 150 同论文)。"""

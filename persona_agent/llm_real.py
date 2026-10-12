@@ -269,6 +269,19 @@ class RealLLM(LLMClient):
                          user, think=False, temperature=0.0, max_tokens=8).strip()
         return self._extract_int(raw, 0, 10, default=0)
 
+    # ------------------------------------------------------------ 动作观察
+    def perceive_action(self, npc_name: str, player_name: str, action: str,
+                        context: str = "") -> str:
+        """NPC 把玩家的动作观察成自己的描述 (第三人称)。观察内容由 NPC 生成。"""
+        ctx_line = ("你目前关于" + player_name + "的记忆: " + context + "\n") if context else ""
+        user = ("你是游戏 NPC「" + npc_name + "」。玩家「" + player_name
+                + "」刚刚对你做了这样一件事: " + action + "。\n" + ctx_line
+                + "\n用第三人称客观描述你观察到的这件事 (一句话): 称自己为你的名字"
+                + "「" + npc_name + "」, 称玩家为「" + player_name
+                + "」, 只描述动作事实, 不加评价、不揣测动机。直接输出这句话。")
+        return self._chat("你是游戏 NPC 的观察者, 客观描述你看到的事, 只输出一句话。",
+                          user, think=False, temperature=0.4, max_tokens=64).strip()
+
     @staticmethod
     def _extract_int(raw: str, lo: int, hi: int, default: int = 0) -> int:
         """提取第一个整数并夹到 [lo, hi]; 支持负号; 提不出给 default。"""
