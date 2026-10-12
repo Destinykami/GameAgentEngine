@@ -29,7 +29,8 @@ from persona_agent import (RealLLM, World, Location, make_embedder)
 
 DATA = os.path.join(os.path.dirname(__file__), "..", "data", "auto_sim")
 REFLECT_THRESHOLD = 25.0     # 调低, 让稀疏步的事件量也能触发反思
-PERSUADE_N = 2               # 旅行者当面劝说雷电将军多少次 → 被说服 (眼狩令废止)
+PERSUADE_N = 5               # 旅行者当面劝说雷电将军多少次 → 被说服 (眼狩令废止)
+ONE_PERSUADE_PER_DAY = True  # 将军听完"需要时间考虑", 当天再劝无效 → 至少 5 天才可能成功
 DAYS = 7                     # 模拟天数
 STEPS_PER_DAY = 3            # 每天关键时刻数 (稀疏步)
 MOMENTS = [9.0, 14.0, 19.0]  # 每天的时刻 (09:00/14:00/19:00)
@@ -56,9 +57,10 @@ NPCS = [
     ("雷电将军", {"social": 0.1, "goal_oriented": 0.9}, "神樱庭", 250, 16, 12,
      "坐镇神樱庭维护眼狩令与稻妻秩序, 击退来犯者; 你是统治者, 留在神樱庭不要离开"),
 ]
-TRAVELER_GOAL = ("最紧迫: 立即 move 到神樱庭。到后一直用对话 (talk) 质问并劝说雷电将军"
-                 "结束眼狩令 —— 你的攻击破不了她的防御, 别浪费时间 attack, 要反复 talk "
-                 "劝她回心转意。留在神樱庭直到劝说成功, 不要离开; 若执行官来扰, 应付一下但别走开。")
+TRAVELER_GOAL = ("去神樱庭质问并劝说雷电将军结束眼狩令。将军极其固执, 不是一两次"
+                 "能说服的 —— 她会听完说'容我考虑', 当天你再劝也无效, 要隔天才再劝。"
+                 "你的攻击破不了她的防御, 别 attack, 要日日夜夜反复 talk 劝她回心转意, "
+                 "耐心多日争取。到神樱庭后留驻, 不要离开; 若执行官来扰, 应付但别走开。")
 
 
 def banner(text: str) -> None:
@@ -92,7 +94,7 @@ def main() -> int:
         w._agent_personas[name] = traits
     w.add_agent_player("旅行者", "稻妻主城", TRAVELER_GOAL, llm=llm,
                        persona_traits={"social": 0.5, "goal_oriented": 0.9},
-                       health=200, attack=12, defense=5)
+                       health=300, attack=12, defense=5)
 
     # 开场世界事件: 眼狩令生效
     w.world_event("雷电将军颁布眼狩令: 全城神之眼一律收缴", now=7.0)
@@ -102,6 +104,7 @@ def main() -> int:
     shogun = w.get("雷电将军")
     persuade_count = 0
     decree_ended = False
+    last_persuade_day = -1   # 上次有效劝说的天 (将军"容我考虑", 当天再劝无效)
 
     for day in range(1, DAYS + 1):
         for moment in MOMENTS:
@@ -118,8 +121,12 @@ def main() -> int:
                 break
             t_act = decisions.get("旅行者", {})
             if t_act.get("action") == "talk" and t_act.get("target") == "雷电将军":
-                persuade_count += 1
-                print(f"   (旅行者当面劝说雷电将军, {persuade_count}/{PERSUADE_N})")
+                if ONE_PERSUADE_PER_DAY and day == last_persuade_day:
+                    print("   (雷电将军: '本将军已听过了, 容我再想想。' 当天再劝无效)")
+                else:
+                    persuade_count += 1
+                    last_persuade_day = day
+                    print(f"   (旅行者当面劝说雷电将军, 将军沉吟'容我考虑' — {persuade_count}/{PERSUADE_N})")
             if persuade_count >= PERSUADE_N and not shogun.dead:
                 w.world_event("雷电将军被旅行者说服, 废止眼狩令: 持眼者可保留神之眼",
                               now=now)
