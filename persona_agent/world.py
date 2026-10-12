@@ -74,6 +74,7 @@ class World:
         self.locations: dict[str, Location] = {loc.name: loc for loc in locations}
         self.entities: dict[str, Entity] = {}
         self._npcs: dict[str, "NPC"] = {}   # NPC 认知对象 (实体注册表的子集)
+        self._npc_data_dirs: dict[str, str] = {}   # NPC → 其独立 db 的 data_dir (持久化注册表)
         self.clock: float = 0.0            # 游戏内时间 (小时, 单调递增)
         self.perception_radius = perception_radius   # 视距: 玩家距 NPC 超过则感知不到
         self.full_radius = full_radius             # 同区域半径: 玩家距 NPC <= 此值 = full
@@ -102,6 +103,7 @@ class World:
         npc = NPC.create(name, persona_traits, llm=llm, embedder=embedder,
                          data_dir=data_dir)
         self._npcs[name] = npc
+        self._npc_data_dirs[name] = data_dir   # 记录其独立 db 位置, 供世界持久化恢复
         loc = self.locations[location] if location else next(iter(self.locations.values()))
         self.add_entity(Entity("npc", name, loc))
         return npc
@@ -200,6 +202,31 @@ class World:
         self.advance(now)
         return result
 
+    # ------------------------------------------------------------- 模拟驱动
+    def step(self, now: float) -> dict:
+        """推进一个模拟步: 时钟→距离调度→空间感知→按档自我反思→遗忘→持久化。
+
+        - 距离调度: 按最近玩家距离给每个 NPC 自动设档 (近处全认知/远处省认知)。
+        - 空间感知: 每个 NPC 感知视距内玩家, 生成观察 (idle 不感知)。
+        - 按档反思: full/compressed 的 NPC 在重要性累积超阈值时自我反思;
+          idle 只记录不反思。关系反思由 speak (玩家对话) 触发, 不在此。
+        - 遗忘: observe/advance 已按 SWEEP_INTERVAL 自动清扫 (降权不删除)。
+        - 持久化: 世界状态自动落库 (仅持久化世界)。
+        返回 {clock, tiers, new_observations}。
+        """
+        self.advance(now)
+        tiers = self.schedule_tiers(now)
+        new_obs: dict[str, int] = {}
+        for name, npc in self._npcs.items():
+            ids = self.perceive(name, now)
+            if ids:
+                new_obs[name] = len(ids)
+            if npc._tier != "idle":
+                npc.maybe_reflect_self(now)   # 重要性超阈值才反思 (内部门控)
+        if self._conn is not None:
+            self.save()
+        return {"clock": self.clock, "tiers": tiers, "new_observations": new_obs}
+
     # ------------------------------------------------------------- 移动与时钟
     def move(self, name: str, location_name: str, now: float) -> None:
         """把实体移到某区域, 并推进时钟。"""
@@ -236,9 +263,17 @@ class World:
             self._conn.execute(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('clock', ?)",
                 (json.dumps(self.clock),))
+            # NPC 注册表: {name: data_dir}, 供 load 恢复各 NPC 的记忆与面
+            self._conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('npcs', ?)",
+                (json.dumps(self._npc_data_dirs),))
 
-    def load(self) -> None:
-        """从 world.db 恢复世界状态 (实体位置 + 时钟)。"""
+    def load(self, llm=None, embedder=None) -> None:
+        """从 world.db 恢复世界状态 (实体位置 + 时钟 + NPC 注册表)。
+
+        传入 llm/embedder 时, 同时按注册表重新实例化各 NPC (从各自独立 db
+        恢复其全部记忆流与面)。不传则只恢复位置与时钟 (NPC 需另行 add_npc)。
+        """
         if self._conn is None:
             raise RuntimeError("该世界是内存世界, 无法加载")
         with self._lock:
@@ -253,6 +288,16 @@ class World:
                 "SELECT value FROM meta WHERE key='clock'").fetchone()
             if row:
                 self.clock = float(json.loads(row[0]))
+            # 恢复 NPC: 按注册表从各自独立 db 重新加载 (记忆流 + 面全部恢复)
+            row = self._conn.execute(
+                "SELECT value FROM meta WHERE key='npcs'").fetchone()
+            if row and llm is not None:
+                from .npc import NPC   # 函数级导入, 避免循环依赖
+                for name, data_dir in json.loads(row[0]).items():
+                    npc = NPC.load(os.path.join(data_dir, f"{name}.db"),
+                                   llm, embedder=embedder)
+                    self._npcs[name] = npc
+                    self._npc_data_dirs[name] = data_dir
 
     def close(self) -> None:
         if self._conn is not None:

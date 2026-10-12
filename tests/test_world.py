@@ -238,3 +238,45 @@ def test_world_event_global(tmp_path):
     result = w.world_event("眼狩令全城生效, 持神之眼者将被搜捕", now=5.0)
     assert set(result) == {"桃音", "刚郎"}, "全图事件应影响所有 NPC"
     w.close()
+
+
+# ---------------------------------------------------------------- 阶段 5: 模拟驱动 + 端到端持久化
+def test_step_loop(tmp_path):
+    """step 循环: 时钟推进、距离调度切档、感知生成观察、自动持久化。"""
+    w = _world(tmp_path)
+    w.add_npc("桃音", {"social": 0.8, "goal_oriented": 0.3},
+              llm=_StubLLM(), data_dir=str(tmp_path), location="治疗堂")
+    w.add_player("旅行者", "治疗堂")            # 同区域 → full
+    summary = w.step(now=10.0)
+    assert summary["clock"] == 10.0
+    assert summary["tiers"]["桃音"] == "full", "玩家同区域 → full"
+    assert summary["new_observations"].get("桃音", 0) >= 1, "感知应生成观察"
+    assert w.npc("桃音").memory_count(player_id="旅行者") >= 1
+    w.close()
+
+
+def test_world_end_to_end_persistence(tmp_path):
+    """端到端持久化: 存世界(位置+时钟+NPC), 新世界加载后 NPC 记忆与面全恢复。"""
+    w = _world(tmp_path)
+    w.add_npc("桃音", {"social": 0.8, "goal_oriented": 0.3},
+              llm=_StubLLM(), data_dir=str(tmp_path), location="治疗堂")
+    w.add_player("旅行者", "主城街道")
+    w.npc("桃音").observe("旅行者 帮 桃音 搬了货", 0.0, player_id="旅行者")
+    trust_before = w.npc("桃音").trust_toward("旅行者")
+    assert trust_before > 0
+    w.move("旅行者", "锻造坊", now=15.0)
+    w.save()
+    w.close()
+
+    # 新世界 (同 path) 加载, 传 llm/embedder 恢复 NPC
+    w2 = _world(tmp_path)
+    w2.load(llm=_StubLLM(), embedder=None)
+    # 世界状态恢复: 位置 + 时钟
+    assert w2.get("旅行者").location.name == "锻造坊"
+    assert w2.clock == pytest.approx(15.0)
+    # NPC 恢复: 记忆流 + 面 (信任) 全恢复
+    assert w2.npc("桃音") is not None, "NPC 应随世界恢复"
+    assert w2.npc("桃音").trust_toward("旅行者") == pytest.approx(trust_before), \
+        "NPC 的信任 (面) 应恢复"
+    assert w2.npc("桃音").memory_count(player_id="旅行者") >= 1, "NPC 记忆流应恢复"
+    w2.close()
