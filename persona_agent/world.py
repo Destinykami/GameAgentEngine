@@ -81,6 +81,7 @@ class World:
         self.path = path
         self._conn: sqlite3.Connection | None = None
         self._lock = threading.RLock()
+        self._last_plan_day = -1   # 已生成过日计划的天 (0-based); step 每天早晨自动规划
         if path is not None:
             self._open(path)
 
@@ -235,6 +236,13 @@ class World:
         """
         self.advance(now)
         tiers = self.schedule_tiers(now)
+        # 每天早晨 (新的一天且已过 07:00): 全体 NPC 在世界背景下生成当日计划
+        day = int(self.clock // 24)
+        if day != self._last_plan_day and self.clock % 24 >= 7.0:
+            for npc in self._npcs.values():
+                npc.generate_daily_plan(previous_day=f"第{day}天",
+                                        date=f"第{day+1}天", now=self.clock)
+            self._last_plan_day = day
         new_obs: dict[str, int] = {}
         for name, npc in self._npcs.items():
             ids = self.perceive(name, now)

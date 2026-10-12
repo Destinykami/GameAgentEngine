@@ -108,10 +108,8 @@ def main() -> int:
     # ============================ 第 1 天 ============================
     banner("第 1 天 07:00  眼狩令生效 (全图事件)")
     w.world_event("雷电将军颁布眼狩令: 全城神之眼一律收缴", now=7.0)
-    s = w.step(7.0)
+    s = w.step(7.0)   # step 内自动: 新的一天早晨 → 全体 NPC 在世界背景下生成当日计划
     print("档位:", tiers_str(s["tiers"]))
-    for name, _, _, _ in NPCS:
-        w.npc(name).generate_daily_plan(previous_day="", date="第1天", now=7.5)
 
     banner("第 1 天 09:00  旅行者到治疗堂, 初次帮桃音藏眼 (桃音自观察)")
     w.move("旅行者", "治疗堂", now=9.0)
@@ -272,10 +270,8 @@ def main() -> int:
     banner("第 7 天 08:00  世界事件: 最后清剿, 持眼者面临末路")
     w.world_event("雷电将军下令最后清剿: 限期交出神之眼, 逾期格杀", now=192.0)
     w.move("旅行者", "稻妻主城", now=192.5)
-    s = w.step(192.5)
+    s = w.step(192.5)   # step 内自动规划 (新的一天早晨)
     print("档位:", tiers_str(s["tiers"]))
-    for name, _, _, _ in NPCS:
-        w.npc(name).generate_daily_plan(previous_day="第6天", date="第7天", now=193.0)
 
     banner("第 7 天 10:00  旅行者到眼狩署, 与执行官摊牌 (执行官自观察)")
     w.move("旅行者", "眼狩署", now=194.0)
