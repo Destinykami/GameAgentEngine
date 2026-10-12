@@ -305,7 +305,7 @@ class RealLLM(LLMClient):
                 + ' "dest": "若移动去哪区域, 否则空", "reason": "简述理由"}\n'
                 + "action 选一个; 只输出 JSON。")
         data = self._chat_json("你是一个游戏角色决策器, 只输出一个 JSON 对象。",
-                               user, think=False, temperature=0.5)
+                               user, think=False, temperature=0.2)
         if isinstance(data, dict) and "action" in data:
             return {"action": str(data.get("action", "wait")),
                     "target": str(data.get("target", "")),

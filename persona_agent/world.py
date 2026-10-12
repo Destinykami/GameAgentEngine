@@ -223,8 +223,9 @@ class World:
         return "; ".join(visible) if visible else "(空无一人)"
 
     def agent_state(self, agent: Entity) -> str:
+        locs = "/".join(self.locations.keys())
         return (f"血{agent.health}, 攻{agent.attack}, 防{agent.defense}, "
-                f"在{agent.location.name}")
+                f"在{agent.location.name} (可选区域: {locs})")
 
     def decide_agent(self, agent: Entity, memory_context: str = "") -> dict:
         """agent 决策下一步: LLM 战略判断 (非全知, 只看自己感知+记忆+目标)。"""
@@ -283,12 +284,13 @@ class World:
         agent.record("观望")
         return f"{agent.name} 观望"
 
-    def step_autonomous(self, now: float) -> list[str]:
+    def step_autonomous(self, now: float) -> tuple[list[str], dict[str, dict]]:
         """多智能体自治一步: 所有存活 agent 先决策 (同一时刻感知) → 统一执行 →
-        重感知。NPC 额外走反思/计划。返回本步发生的事 (供打印)。
+        重感知。NPC 额外走反思/计划。返回 (本步发生的事, 各 agent 的决策)。
 
         先决策后执行: 所有 agent 基于同一时刻的感知做决定, 再统一执行, 避免
-        顺序偏差 (先行动的占便宜)。死亡即时生效。
+        顺序偏差 (先行动的占便宜)。死亡即时生效。返回决策供调用方精确判断
+        (如'旅行者本步是否对将军 talk'), 而非匹配历史文本。
         """
         self.advance(now)
         self.schedule_tiers(now)
@@ -325,7 +327,7 @@ class World:
                 npc.maybe_reflect_self(now)
         if self._conn is not None:
             self.save()
-        return events
+        return events, decisions
 
     # ------------------------------------------------------------- 距离调度
     def tier_of(self, npc_name: str) -> str:
