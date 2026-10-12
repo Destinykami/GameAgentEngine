@@ -14,14 +14,14 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import NPC, RealLLM, HashEmbedder
+from persona_agent import NPC, RealLLM, make_embedder
 
 TRAITS = {"social": 0.4, "goal_oriented": 0.8}   # 目标导向为主, 社交为辅
 
 
 def main() -> int:
     llm = RealLLM()   # 默认接入 10.121.39.10:30005
-    npc = NPC("Klaus", TRAITS, llm=llm, embedder=HashEmbedder())
+    npc = NPC("Klaus", TRAITS, llm=llm, embedder=make_embedder())
 
     print("=" * 72)
     print("千人千面 NPC demo (真实 LLM: Qwen3.8-27B-Coder @ SGLang)")

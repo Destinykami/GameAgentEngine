@@ -12,7 +12,9 @@ import re
 from abc import ABC, abstractmethod
 from typing import Iterable, Sequence
 
-_TOKEN_RE = re.compile(r"[a-z0-9\u4e00-\u9fff]+")
+# 英文/数字按连续串成词, 中文按单字 —— 否则 "咖啡馆的运营" 和 "咖啡馆运营"
+# 会被当成两个零重叠的整串 token, 词面信号严重漏检。
+_TOKEN_RE = re.compile(r"[a-z0-9]+|[\u4e00-\u9fff]")
 
 
 def _tokens(text: str) -> list[str]:

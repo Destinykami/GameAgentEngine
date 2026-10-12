@@ -36,8 +36,13 @@ NPC 对玩家 p 的面 (每玩家独立成流, 动态)
 - `llm_real.RealLLM`: 唯一实现, 通过 OpenAI 兼容接口 (`/v1/chat/completions`)
   接入 SGLang 部署的 `Qwen3.8-27B-Coder/BF16`。要换别的 OpenAI 兼容端点,
   改 `base_url` / `model` 即可。
-- `embeddings.Embedder`: `HashEmbedder` 用词袋哈希向量, 余弦相似度反映词面重叠,
-  支撑检索的相关性维度。接真实 embedding 时实现 `embed()` 并保证归一化即可。
+- `embeddings.Embedder`: 可插拔向量接口, 两个实现:
+  - `HashEmbedder` (默认回退): 词袋哈希, 余弦相似度反映**词面重叠**, 确定性、
+    零依赖。中文按单字、英文按词分词。
+  - `embeddings_real.RealEmbedder`: 接 OpenAI 兼容 `/v1/embeddings`, 默认指向
+    SGLang 部署的 `Alibaba-NLP/gte-Qwen2-1.5B-instruct` @ `10.121.39.10:30006`
+    (1536 维, 语义相似度 —— 换说法的同义句也能高相似)。
+  - `make_embedder()`: 优先真实端点, 不可达自动回退 HashEmbedder。示例默认用它。
 
 ## 运行
 
@@ -50,6 +55,19 @@ python examples/demo_real.py
 # 集成探针 (需 pytest, 需 LLM 可达; 不可达自动 skip)
 pytest tests/ -v
 ```
+
+## 反思质量 (级联切断 + 语义去重)
+
+两个曾导致"57 条记忆里 51 条反思"失控的机制, 已修:
+
+1. **级联切断**: 反思找证据时限定 `types=["observation"]` —— 反思只能由真实
+   观察支撑, 不能拿别的反思当证据 (否则一代代复述放大自己)。
+2. **语义去重**: `ReflectionEngine._save` 保存前, 新洞察与同玩家已有反思做
+   余弦比对, `>= 0.95` 视为同一条认知的复述, 跳过不入库。阈值来自
+   gte-Qwen2 实测: 措辞不同的重复 0.955~1.000, 不同面向的独立洞察 <= ~0.90。
+
+效果: 2 条观察 → 4 条互不重复的反思 (两两相似度最高 0.92), 证据全指向观察。
+用 `python tools/inspect_npc.py data/<name>.db` 可审查证据链与相似度。
 
 ## 接入 LLM (RealLLM)
 
@@ -79,22 +97,23 @@ npc = NPC("Klaus", {"social": 0.4, "goal_oriented": 0.8},
 `NPC.load`, 记忆流与元数据存于 `data/<name>.db` (一个 NPC 一个 SQLite 库):
 
 ```python
-from persona_agent import NPC, RealLLM, HashEmbedder
+from persona_agent import NPC, RealLLM, make_embedder
 
 # 创建或加载 (不存在则新建并落库, 已存在则等价于 load)
 isabella = NPC.create("Isabella", {"social": 0.8, "goal_oriented": 0.3},
-                      llm=RealLLM(), embedder=HashEmbedder(), data_dir="data")
+                      llm=RealLLM(), embedder=make_embedder(), data_dir="data")
 isabella.observe("Aria 帮 Isabella 整理了菜单", now=10.0, player_id="Aria")
 isabella.save()
 
 # 之后任何时候 (新进程也行) 加载, 记忆流 + 信任状态 + 游戏时钟全部恢复
-isabella2 = NPC.load("data/Isabella.db", llm=RealLLM(), embedder=HashEmbedder())
+isabella2 = NPC.load("data/Isabella.db", llm=RealLLM(), embedder=make_embedder())
 isabella2.trust_toward("Aria")   # +1.00, 与上次一致
 ```
 
 - 持久化的内容: 全部记忆流 (观察/反思/计划)、信任状态 (由记忆派生)、游戏时钟。
 - `save()` 只写元数据 (名称/人格/时钟), 记忆流落库即持久, 无需额外同步。
-- `HashEmbedder` 是确定性的, 加载后向量缓存按需重建, 检索结果一致。
+- 向量不入库: `HashEmbedder` 确定性、`RealEmbedder` 端点稳定, 加载后向量缓存
+  按需重建, 检索结果一致。
 - 同一 .db 同一时刻只应被一个进程打开 (未做并发写锁)。
 
 `python examples/persistence.py` 演示两次游戏会话的跨进程往返。
@@ -118,7 +137,8 @@ isabella2.trust_toward("Aria")   # +1.00, 与上次一致
 
 ## 当前局限 (与 blog 一致, 待办)
 
-- 记忆只增不合并: 缺记忆固化/去重/遗忘 (blog 2.2.5 的 `R=(content,evidence,confidence,timestamp)` 已部分落地, 冲突失效已实现, 去重未做)。
+- 记忆只增不遗忘: 反思去重 (语义 >= 0.95 跳过) 与冲突失效已落地, 但缺
+  **遗忘/衰减** —— 远期低重要性记忆不会被清除或降权, 库会持续增长。
 - 反应决策是关键词价值表, 非学习型决策函数。
 - 成本闸门是"档位+缓存"的粗粒度方案, 未做按距离的动态调度。
-- 检索相关性用词袋哈希向量; 接真实 embedding 后, 非全知与检索质量会进一步提升。
+- 观察本身仍可能重复入库 (同一事件重放时不去重), 目前只做了反思层去重。

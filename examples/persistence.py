@@ -18,7 +18,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import NPC, RealLLM, HashEmbedder
+from persona_agent import NPC, RealLLM, make_embedder
 
 TRAITS = {"social": 0.8, "goal_oriented": 0.3}
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
@@ -53,13 +53,13 @@ def run_session(npc: NPC, session_no: int) -> None:
 def main() -> int:
     banner("会话 1 — NPC.create (不存在则新建并落库)")
     isabella = NPC.create("Isabella", dict(TRAITS), llm=RealLLM(),
-                          embedder=HashEmbedder(), data_dir=DATA_DIR)
+                          embedder=make_embedder(), data_dir=DATA_DIR)
     run_session(isabella, 1)
     isabella.store.close()
 
     banner("会话 2 — NPC.load (从磁盘恢复, 验证跨会话持久)")
     isabella2 = NPC.load(os.path.join(DATA_DIR, "Isabella.db"), llm=RealLLM(),
-                         embedder=HashEmbedder())
+                         embedder=make_embedder())
     run_session(isabella2, 2)
     isabella2.store.close()
 

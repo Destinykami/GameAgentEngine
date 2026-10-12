@@ -21,7 +21,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import NPC, RealLLM, HashEmbedder
+from persona_agent import NPC, RealLLM, make_embedder
 
 
 def banner(title: str) -> None:
@@ -35,7 +35,7 @@ def main() -> int:
         "Isabella",
         {"social": 0.8, "goal_oriented": 0.3},   # 外向爱交友, 低目标导向
         llm=RealLLM(),
-        embedder=HashEmbedder(),
+        embedder=make_embedder(),
     )
 
     banner("① 07:00 开始一天 — generate_daily_plan (人格驱动计划)")

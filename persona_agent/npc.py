@@ -38,7 +38,7 @@ class NPC:
         self.embedder = embedder or HashEmbedder()
         self.llm = llm
         self.store = store or MemoryStore(self.embedder)
-        self.reflection = ReflectionEngine(self.llm)
+        self.reflection = ReflectionEngine(self.llm, self.embedder)
         self.planner = PlanningEngine(self.llm)
         self.decider = ReactionDecider(self.store)
         self.dialogue = DialogueManager(self.llm, self.store, persona_traits,

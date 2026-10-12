@@ -11,6 +11,11 @@ from .memory import MemoryRecord, MemoryStore
 from .llm import LLMClient, LLMContext
 from .llm_real import RealLLM, DEFAULT_BASE_URL, DEFAULT_MODEL
 from .embeddings import Embedder, HashEmbedder
+from .embeddings_real import (
+    RealEmbedder, make_embedder,
+    DEFAULT_BASE_URL as EMBEDDING_BASE_URL,
+    DEFAULT_MODEL as EMBEDDING_MODEL,
+)
 
 __all__ = [
     "NPC",
@@ -23,6 +28,10 @@ __all__ = [
     "DEFAULT_MODEL",
     "Embedder",
     "HashEmbedder",
+    "RealEmbedder",
+    "make_embedder",
+    "EMBEDDING_BASE_URL",
+    "EMBEDDING_MODEL",
 ]
 
 __version__ = "0.1.0"

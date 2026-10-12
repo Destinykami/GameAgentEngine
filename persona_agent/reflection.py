@@ -14,8 +14,13 @@ from __future__ import annotations
 
 from typing import Sequence
 
+from .embeddings import Embedder, cosine_similarity
 from .llm import LLMClient
 from .memory import MemoryRecord, MemoryStore
+
+# 反思去重阈值: 新洞察与已有反思语义相似度 >= 0.95 视为同一条认知, 跳过。
+# (gte-Qwen2 实测: 措辞不同的重复 0.955~1.000, 不同面向的独立洞察 <= ~0.90)
+DEDUP_THRESHOLD = 0.95
 
 # 冲突检测词表 (启发式, 自包含): 反思里出现信任/警惕类词, 观察里出现帮助/伤害类词。
 TRUST_WORDS = ("信任", "可靠", "朋友", "感激", "亲近", "盟友", "伙伴", "支持者")
@@ -25,8 +30,12 @@ HURT_WORDS = ("背叛", "欺骗", "撒谎", "骗", "爽约", "放鸽子", "警�
 
 
 class ReflectionEngine:
-    def __init__(self, llm: LLMClient) -> None:
+    def __init__(self, llm: LLMClient,
+                 embedder: Embedder | None = None,
+                 dedup_threshold: float = DEDUP_THRESHOLD) -> None:
         self._llm = llm
+        self._embedder = embedder
+        self._dedup_threshold = dedup_threshold
 
     # ------------------------------------------------------------- 自我反思
     def reflect_self(self, store: MemoryStore, now: float,
@@ -50,9 +59,11 @@ class ReflectionEngine:
             if not ev_pairs:
                 continue
             for insight, ev_ids in self._llm.reflection_insights(ev_pairs, n=3):
-                new_ids.append(self._save(store, now, content=insight,
-                                          evidence=ev_ids, player_id=None,
-                                          confidence=0.8))
+                new_id = self._save(store, now, content=insight,
+                                    evidence=ev_ids, player_id=None,
+                                    confidence=0.8)
+                if new_id is not None:
+                    new_ids.append(new_id)
         return new_ids
 
     # ------------------------------------------------------------- 关系反思
@@ -79,9 +90,11 @@ class ReflectionEngine:
             for insight, ev_ids in self._llm.reflection_insights(ev_pairs, n=3):
                 # 关系反思的置信度: 证据越多越高, 但有上限
                 confidence = min(0.95, 0.5 + 0.1 * len(ev_ids))
-                new_ids.append(self._save(store, now, content=insight,
-                                          evidence=ev_ids, player_id=player_id,
-                                          confidence=confidence))
+                new_id = self._save(store, now, content=insight,
+                                    evidence=ev_ids, player_id=player_id,
+                                    confidence=confidence)
+                if new_id is not None:
+                    new_ids.append(new_id)
         return new_ids
 
     # ------------------------------------------------------------- 冲突处理
@@ -112,10 +125,17 @@ class ReflectionEngine:
         return handled
 
     # --------------------------------------------------------------- 内部
-    @staticmethod
-    def _save(store: MemoryStore, now: float, content: str,
+    def _save(self, store: MemoryStore, now: float, content: str,
               evidence: Sequence[int], player_id: str | None,
-              confidence: float) -> int:
+              confidence: float) -> int | None:
+        """保存反思; 与同玩家已有反思几乎同义 (>= 阈值) 时跳过, 返回 None。"""
+        if self._embedder is not None and self._dedup_threshold > 0:
+            existing = store.all_valid(player_id=player_id, types=["reflection"])
+            if existing:
+                v_new = self._embedder.embed([content])[0]
+                v_ex = self._embedder.embed([m.content for m in existing])
+                if max(cosine_similarity(v_new, v) for v in v_ex) >= self._dedup_threshold:
+                    return None   # 同一条认知的又一次复述, 不入库
         rec = MemoryRecord(
             content=content, timestamp=now, type="reflection",
             player_id=player_id, evidence=list(evidence),
