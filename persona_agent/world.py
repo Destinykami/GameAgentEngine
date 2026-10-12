@@ -61,12 +61,14 @@ class World:
     """
 
     def __init__(self, name: str, locations: list[Location],
-                 path: str | None = None) -> None:
+                 path: str | None = None,
+                 perception_radius: float = 1.5) -> None:
         self.name = name
         self.locations: dict[str, Location] = {loc.name: loc for loc in locations}
         self.entities: dict[str, Entity] = {}
         self._npcs: dict[str, "NPC"] = {}   # NPC 认知对象 (实体注册表的子集)
         self.clock: float = 0.0            # 游戏内时间 (小时, 单调递增)
+        self.perception_radius = perception_radius   # 视距: 玩家距 NPC 超过则感知不到
         self.path = path
         self._conn: sqlite3.Connection | None = None
         self._lock = threading.RLock()
@@ -104,6 +106,32 @@ class World:
 
     def npc(self, name: str) -> "NPC | None":
         return self._npcs.get(name)
+
+    # ------------------------------------------------------------- 空间感知
+    def perceive(self, npc_name: str, now: float,
+                 radius: float | None = None) -> list[int]:
+        """空间感知: NPC 感知视距内的玩家, 生成自然语言观察喂 npc.observe()。
+
+        替代手写 observe(): 玩家走进 NPC 视距 → NPC 自然"看到"并记下。
+        粒度随认知档位: full=富细节 (玩家+位置+与NPC的接近), compressed=稀疏
+        (仅在场), idle=不感知。视距外 (distance > radius) 感知不到。
+        重复感知同一在场走既有观察去重 (0.92 合并), 不灌水。返回观察 id 列表。
+        """
+        npc = self._npcs.get(npc_name)
+        if npc is None or npc._tier == "idle":
+            return []
+        me = self.entities[npc_name]
+        r = self.perception_radius if radius is None else radius
+        ids: list[int] = []
+        for ent in self.entities.values():
+            if ent.kind != "player" or distance(me, ent) > r:
+                continue   # 非玩家或视距外
+            if npc._tier == "full":
+                content = f"{ent.name} 出现在 {me.location.name}, 靠近 {npc_name}"
+            else:   # compressed
+                content = f"{ent.name} 在 {me.location.name}"
+            ids.append(npc.observe(content, now, player_id=ent.name))
+        return ids
 
     # ------------------------------------------------------------- 移动与时钟
     def move(self, name: str, location_name: str, now: float) -> None:

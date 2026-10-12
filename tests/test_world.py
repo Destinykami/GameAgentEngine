@@ -110,3 +110,61 @@ def test_multi_npc_trust_isolation(tmp_path):
     momone_mems = [m.content for m in w.npc("桃音").store.all_valid(player_id="旅行者")]
     assert not any("刚郎" in c for c in momone_mems), "跨 NPC 记忆不应污染"
     w.close()
+
+
+# ---------------------------------------------------------------- 阶段 2: 空间感知 → 观察
+def _world_with_npc_player(tmp_path):
+    w = _world(tmp_path)
+    w.add_npc("桃音", {"social": 0.8, "goal_oriented": 0.3},
+              llm=_StubLLM(), data_dir=str(tmp_path), location="治疗堂")
+    return w
+
+
+def test_perceive_nearby_player_generates_observation(tmp_path):
+    """玩家走进 NPC 视距 → 感知生成观察; 离开视距 → 不生成。"""
+    w = _world_with_npc_player(tmp_path)
+    w.add_player("旅行者", "主城街道")          # 距治疗堂(1,0)=1.0 < 1.5 视距内
+    ids = w.perceive("桃音", now=1.0)
+    assert len(ids) >= 1, "视距内玩家应被感知"
+    assert w.npc("桃音").memory_count(player_id="旅行者") >= 1
+    w.move("旅行者", "神樱庭", now=2.0)          # 距治疗堂 sqrt(1+9)=3.16 > 1.5 视距外
+    ids2 = w.perceive("桃音", now=2.0)
+    assert ids2 == [], "玩家离开视距后不应再感知"
+    w.close()
+
+
+def test_perceive_idle_no_observation(tmp_path):
+    """idle 档位的 NPC 不感知。"""
+    w = _world_with_npc_player(tmp_path)
+    w.add_player("旅行者", "治疗堂")             # 同区域 (距离 0)
+    w.npc("桃音").set_tier("idle")
+    assert w.perceive("桃音", now=1.0) == [], "idle 档位不应感知"
+    w.close()
+
+
+def test_perceive_dedup_no_flooding(tmp_path):
+    """重复感知同一在场, 走观察去重合并, 不灌水。"""
+    w = _world_with_npc_player(tmp_path)
+    w.add_player("旅行者", "治疗堂")             # 同区域
+    w.perceive("桃音", now=1.0)
+    w.perceive("桃音", now=2.0)                  # 重复感知同一在场
+    assert w.npc("桃音").memory_count(player_id="旅行者") == 1, \
+        "重复感知同一在场应去重合并, 不灌水"
+    w.close()
+
+
+def test_perceive_full_vs_compressed_granularity(tmp_path):
+    """full 档感知富细节, compressed 档感知稀疏。"""
+    w = _world_with_npc_player(tmp_path)
+    w.add_player("旅行者", "治疗堂")
+    w.npc("桃音").set_tier("compressed")
+    w.perceive("桃音", now=1.0)
+    comp_content = w.npc("桃音").store.all_valid(player_id="旅行者")[0].content
+    w.npc("桃音").store.invalidate(
+        w.npc("桃音").store.all_valid(player_id="旅行者")[0].id)  # 清掉, 换档位再感知
+    w.npc("桃音").set_tier("full")
+    w.perceive("桃音", now=2.0)
+    full_content = w.npc("桃音").store.all_valid(player_id="旅行者")[0].content
+    assert "靠近" in full_content, "full 档应含富细节 (靠近)"
+    assert "靠近" not in comp_content, "compressed 档应稀疏 (无'靠近')"
+    w.close()
