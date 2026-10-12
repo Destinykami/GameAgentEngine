@@ -1,5 +1,8 @@
 # persona_agent — 千人千面游戏 NPC 框架
 
+> 先看 **[OVERVIEW.md](OVERVIEW.md)** 的系统总览 (自我/面解耦、LLM 推理栈、
+> 记忆卫生链、判断型决策、成本管理、验证体系)。本 README 是逐模块的实现细节。
+
 基于 [Generative Agents: Interactive Simulacra of Human Behavior](https://arxiv.org/abs/2304.03442)
 的思路, 构建能随玩家互动历史**动态变化面孔**的游戏 NPC。
 
