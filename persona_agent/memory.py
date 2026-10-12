@@ -32,6 +32,10 @@ ALPHA_RECENCY = 1.0
 ALPHA_IMPORTANCE = 1.0
 ALPHA_RELEVANCE = 1.0
 
+# 观察层去重: 同玩家的近义观察 (>= 阈值) 合并而非重复入库。
+# 观察比反思更公式化、近义重复更多, 阈值比反思去重 (0.95) 略松。
+OBS_DEDUP_THRESHOLD = 0.92
+
 # 遗忘/衰减 (blog 2.2.5 的遗忘维度): strength = base * 0.5 ** (age / half_life)
 # - base: 反思用 confidence, 观察/计划用 importance/10
 # - age:  距 max(timestamp, last_accessed) 的小时数 —— 被回忆过的记忆衰减更慢
@@ -259,6 +263,46 @@ class MemoryStore:
             args.append(player_id)
         with self._lock:
             return int(self._conn.execute(sql, args).fetchone()[0])
+
+    # ------------------------------------------------------------------ 观察去重
+    def find_similar_observation(self, content: str,
+                                 player_id: str | None = None,
+                                 threshold: float = OBS_DEDUP_THRESHOLD,
+                                 recent_n: int = 50) -> MemoryRecord | None:
+        """在同玩家的近期观察里找语义近义的一条 (>= threshold), 否则 None。
+
+        只在观察层做 (反思去重在 reflection.py), 且限定同一玩家流 ——
+        跨玩家"相似"是不同关系, 不该合并。
+        """
+        cands = self.all_valid(player_id=player_id,
+                               types=["observation"])[-recent_n:]
+        if not cands:
+            return None
+        v_new = self._embedder.embed([content])[0]
+        best: MemoryRecord | None = None
+        best_s = 0.0
+        for c in cands:
+            s = cosine_similarity(self._vec(c), v_new)
+            if s >= threshold and s > best_s:
+                best, best_s = c, s
+        return best
+
+    def merge_observation(self, mem_id: int, now: float,
+                          extra_importance: float) -> float:
+        """合并重复观察: 刷新 last_accessed (重复发生 = 记忆强化, 抗遗忘),
+        并以 +1 上限 10 提升 importance (反复发生的事件更突出)。返回新值。"""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT importance FROM memory WHERE id = ?", (mem_id,)
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"观察 {mem_id} 不存在")
+            new_imp = min(10.0, row[0] + 1.0)
+            with self._conn:
+                self._conn.execute(
+                    "UPDATE memory SET last_accessed = ?, importance = ? "
+                    "WHERE id = ?", (now, new_imp, mem_id))
+            return new_imp
 
     def all_invalid(self) -> list[MemoryRecord]:
         """取全部已失效记忆 (被遗忘/冲突失效), 按时间排序, 供审查。"""

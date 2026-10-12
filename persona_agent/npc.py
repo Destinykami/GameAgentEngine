@@ -83,9 +83,21 @@ class NPC:
     # ---------------------------------------------------------------- 观察
     def observe(self, content: str, now: float,
                 player_id: str | None = None) -> int:
-        """记录一条观察 (世界事件或关系事件), 按玩家参照系打重要性分。"""
+        """记录一条观察 (世界事件或关系事件), 按玩家参照系打重要性分。
+
+        观察层去重: 同玩家的近义观察 (>= 0.92) 合并进已有记录 ——
+        刷新 last_accessed (重复发生强化记忆) 并提升 importance,
+        不新增。防止事件重放灌水: 信任度不再被重复计分,
+        重要性累积不再被重复观察反复抬高。返回 (可能已存在的) 记忆 id。
+        """
         self._advance(now)
         importance = self.llm.score_importance(content, player_id)
+        dup = self.store.find_similar_observation(content, player_id)
+        if dup is not None:
+            self.store.merge_observation(dup.id, now, importance)
+            if self._tier != "idle":
+                self._importance_accum += importance
+            return dup.id
         rec = MemoryRecord(content=content, timestamp=now, type="observation",
                            player_id=player_id, importance=importance)
         mem_id = self.store.add(rec)
