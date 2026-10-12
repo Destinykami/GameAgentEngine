@@ -23,7 +23,7 @@ import json
 import sqlite3
 import threading
 from dataclasses import dataclass, field, asdict
-from typing import Iterable, Sequence
+from typing import Any, Iterable, Sequence
 
 from .embeddings import Embedder, cosine_similarity
 
@@ -81,6 +81,10 @@ class MemoryStore:
             )
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_type ON memory(type)"
+            )
+            # NPC 元数据 (名称/人格/游戏时钟): 与记忆流同库, 一个 NPC 一个 .db
+            self._conn.execute(
+                "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
             )
 
     # ------------------------------------------------------------------ 写入
@@ -240,6 +244,32 @@ class MemoryStore:
             args.append(player_id)
         with self._lock:
             return int(self._conn.execute(sql, args).fetchone()[0])
+
+    # ------------------------------------------------------------------ 元数据
+    def set_meta(self, key: str, value: Any) -> None:
+        """存一条 NPC 元数据 (JSON 序列化)。"""
+        with self._lock, self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                (key, json.dumps(value)),
+            )
+
+    def get_meta(self, key: str, default: Any = None) -> Any:
+        """取一条 NPC 元数据; 不存在返回 default。"""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT value FROM meta WHERE key = ?", (key,)
+            ).fetchone()
+        return json.loads(row[0]) if row else default
+
+    def db_path(self) -> str | None:
+        """文件库的绝对路径; :memory: 返回 None。"""
+        row = self._conn.execute("PRAGMA database_list").fetchone()
+        return row[2] if row and row[2] not in (":memory:", None, "") else None
+
+    def is_persistent(self) -> bool:
+        """是否为文件库 (可持久化); :memory: 返回 False。"""
+        return self.db_path() is not None
 
     def close(self) -> None:
         with self._lock:

@@ -73,6 +73,32 @@ npc = NPC("Klaus", {"social": 0.4, "goal_oriented": 0.8},
 - **非全知**: 对话 prompt 只把检索到的记忆喂给模型, 没检索到就答"没印象"。
 - **无依赖**: 用标准库 `urllib` 发请求, 不引入 openai/requests。
 
+## 持久化 (NPC 落库)
+
+默认 NPC 是**内存态**的 (进程退出即失忆)。要持久化, 用 `NPC.create` /
+`NPC.load`, 记忆流与元数据存于 `data/<name>.db` (一个 NPC 一个 SQLite 库):
+
+```python
+from persona_agent import NPC, RealLLM, HashEmbedder
+
+# 创建或加载 (不存在则新建并落库, 已存在则等价于 load)
+isabella = NPC.create("Isabella", {"social": 0.8, "goal_oriented": 0.3},
+                      llm=RealLLM(), embedder=HashEmbedder(), data_dir="data")
+isabella.observe("Aria 帮 Isabella 整理了菜单", now=10.0, player_id="Aria")
+isabella.save()
+
+# 之后任何时候 (新进程也行) 加载, 记忆流 + 信任状态 + 游戏时钟全部恢复
+isabella2 = NPC.load("data/Isabella.db", llm=RealLLM(), embedder=HashEmbedder())
+isabella2.trust_toward("Aria")   # +1.00, 与上次一致
+```
+
+- 持久化的内容: 全部记忆流 (观察/反思/计划)、信任状态 (由记忆派生)、游戏时钟。
+- `save()` 只写元数据 (名称/人格/时钟), 记忆流落库即持久, 无需额外同步。
+- `HashEmbedder` 是确定性的, 加载后向量缓存按需重建, 检索结果一致。
+- 同一 .db 同一时刻只应被一个进程打开 (未做并发写锁)。
+
+`python examples/persistence.py` 演示两次游戏会话的跨进程往返。
+
 ## 四个探针 (集成测试)
 
 `probes.py` 把"它真的千人千面了吗"变成对真实 LLM 的集成回归。每个探针混合

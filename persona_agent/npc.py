@@ -15,6 +15,8 @@
 
 from __future__ import annotations
 
+import os
+
 from .dialogue import DialogueManager
 from .embeddings import Embedder, HashEmbedder
 from .llm import LLMClient
@@ -49,11 +51,20 @@ class NPC:
         # 每玩家"上次关系反思时的观察数": 用于门控, 避免每次对话都重跑反思
         # 导致反思无限增殖、信任度漂移 (只有出现新观察才值得再反思)
         self._reflected_obs: dict[str, int] = {}
+        # 持久化: 文件库路径 + 游戏内时钟 (小时, 单调递增)
+        self._data_path: str | None = None
+        self._game_time: float = 0.0
+
+    def _advance(self, now: float) -> None:
+        """推进游戏时钟 (取 max, 容忍乱序事件)。"""
+        if now > self._game_time:
+            self._game_time = now
 
     # ---------------------------------------------------------------- 观察
     def observe(self, content: str, now: float,
                 player_id: str | None = None) -> int:
         """记录一条观察 (世界事件或关系事件), 按玩家参照系打重要性分。"""
+        self._advance(now)
         importance = self.llm.score_importance(content, player_id)
         rec = MemoryRecord(content=content, timestamp=now, type="observation",
                            player_id=player_id, importance=importance)
@@ -74,6 +85,7 @@ class NPC:
 
     def reflect_relationship(self, player_id: str, now: float) -> list[int]:
         """对某玩家做关系反思并检查冲突失效。"""
+        self._advance(now)
         ids = self.reflection.reflect_relationship(self.store, player_id, now)
         self.reflection.check_conflicts(self.store, player_id, now)
         return ids
@@ -83,6 +95,7 @@ class NPC:
         """对玩家发言作出回应 (非全知, 只用自己记忆流)。"""
         # 近处: 仅当该玩家出现新观察时才重跑关系反思 (否则反思无限增殖、
         # 信任度随反复反思漂移)。已有反思足以指导本次对话。
+        self._advance(now)
         if self._tier == "full":
             obs_count = len(self.store.all_valid(player_id=player_id,
                                                  types=["observation"]))
@@ -95,6 +108,7 @@ class NPC:
     def react(self, event: str, player_id: str, now: float,
               current_plan: str | None = None) -> ReactionDecision:
         """决定是否响应事件。带语义缓存: 相似情境复用反应。"""
+        self._advance(now)
         plan = current_plan if current_plan is not None else self._current_plan
         # 语义缓存: 按事件+玩家+关系档位缓存 (关系档位粗粒度, 避免过度失效)
         trust = self.decider.relationship_trust(player_id)
@@ -113,6 +127,7 @@ class NPC:
     # ---------------------------------------------------------------- 规划
     def generate_daily_plan(self, previous_day: str, date: str, now: float) -> list[int]:
         """生成日计划并存入记忆流, 设为当前计划。"""
+        self._advance(now)
         ids = self.planner.make_daily_plan(self.store, self.persona_traits,
                                            previous_day, date, now)
         self._current_plan = "日计划已生成"
@@ -120,6 +135,7 @@ class NPC:
 
     def replan(self, now: float, interruption: str) -> list[int]:
         """反应后从当前时刻重规划后续。"""
+        self._advance(now)
         ids = self.planner.replan_from_now(self.store, self.persona_traits,
                                            now, interruption)
         self._current_plan = interruption
@@ -140,3 +156,51 @@ class NPC:
 
     def trust_toward(self, player_id: str) -> float:
         return self.decider.relationship_trust(player_id)
+
+    # ---------------------------------------------------------------- 持久化
+    @classmethod
+    def create(cls, name: str, persona_traits: dict[str, float],
+               llm: LLMClient, embedder: Embedder | None = None,
+               data_dir: str = "data") -> "NPC":
+        """创建或加载一个持久化 NPC。
+
+        记忆流与元数据存于 data_dir/<name>.db (一个 NPC 一个库)。
+        不存在则新建并写入元数据; 已存在则等价于 load()。
+        """
+        os.makedirs(data_dir, exist_ok=True)
+        path = os.path.join(data_dir, f"{name}.db")
+        if os.path.exists(path):
+            return cls.load(path, llm, embedder=embedder)
+        embedder = embedder or HashEmbedder()
+        npc = cls(name, persona_traits, llm=llm, embedder=embedder,
+                  store=MemoryStore(embedder, path=path))
+        npc._data_path = path
+        npc.save()
+        return npc
+
+    @classmethod
+    def load(cls, path: str, llm: LLMClient,
+             embedder: Embedder | None = None) -> "NPC":
+        """从 .db 文件加载一个已持久化的 NPC (记忆流 + 元数据全部恢复)。"""
+        embedder = embedder or HashEmbedder()
+        store = MemoryStore(embedder, path=path)
+        meta = store.get_meta("npc")
+        if not meta:
+            raise ValueError(f"{path} 中没有 NPC 元数据 (不是 NPC 库)")
+        npc = cls(meta["name"], meta["persona_traits"], llm=llm,
+                  embedder=embedder, store=store)
+        npc._data_path = path
+        npc._game_time = float(store.get_meta("game_time", 0.0))
+        # _reflected_obs 留空: 加载后若某玩家有观察但未反思, speak 会补跑
+        return npc
+
+    def save(self) -> None:
+        """把 NPC 元数据 (名称/人格/游戏时钟) 写入库。记忆流本身落库即持久。"""
+        if not self.store.is_persistent():
+            raise RuntimeError("该 NPC 使用 :memory: 库, 无法持久化 "
+                               "(请用 NPC.create / NPC.load 创建)")
+        self.store.set_meta("npc", {"name": self.name,
+                                    "persona_traits": self.persona_traits})
+        self.store.set_meta("game_time", self._game_time)
+        if self._data_path is None:
+            self._data_path = self.store.db_path()

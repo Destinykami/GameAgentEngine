@@ -1,0 +1,81 @@
+"""持久化往返测试 (无网络, 用 stub LLM): create → observe → save → load → 断言。"""
+
+from __future__ import annotations
+
+import os
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from persona_agent import NPC, MemoryStore
+from persona_agent.llm import LLMClient, LLMContext
+
+
+class _StubLLM(LLMClient):
+    """最小 stub: 返回固定值, 不联网, 仅用于持久化逻辑测试。"""
+
+    def complete(self, ctx: LLMContext) -> str:
+        return "stub-reply"
+
+    def score_importance(self, text: str, player_id: str | None = None) -> float:
+        return 5.0
+
+    def reflection_questions(self, recent) -> list[str]:
+        return ["stub-q"]
+
+    def reflection_insights(self, evidence, n: int = 5):
+        return [("stub-insight", [e[0] for e in evidence[:1]])] if evidence else []
+
+    def generate_plan(self, persona_traits, previous_day, date):
+        return [(7, 9, "stub-activity")]
+
+    def decompose_activity(self, activity, start, end):
+        return [(start, end, "stub-subtask")]
+
+
+TRAITS = {"social": 0.7, "goal_oriented": 0.5}
+
+
+def test_create_save_load_roundtrip(tmp_path):
+    npc = NPC.create("Testling", dict(TRAITS), llm=_StubLLM(),
+                     data_dir=str(tmp_path))
+    assert npc.store.is_persistent()
+    assert os.path.exists(os.path.join(str(tmp_path), "Testling.db"))
+    assert npc.memory_count() == 0
+
+    # 喂入记忆 + 推进时钟
+    npc.observe("Aria 帮 Testling 修好了咖啡机", 10.0, player_id="Aria")
+    npc.observe("Testling 清理了桌子", 11.0)
+    npc.save()
+    count_before = npc.memory_count()
+    assert count_before == 2
+
+    # 加载: 元数据 + 记忆流 + 时钟全部恢复
+    npc2 = NPC.load(os.path.join(str(tmp_path), "Testling.db"), llm=_StubLLM())
+    assert npc2.name == "Testling"
+    assert npc2.persona_traits == TRAITS
+    assert npc2.memory_count() == count_before
+    assert npc2.trust_toward("Aria") == npc.trust_toward("Aria")  # 信任状态随记忆恢复
+    assert npc2._game_time == pytest.approx(11.0)  # 游戏时钟恢复
+
+    # create 幂等: 对同名再 create 等价于 load
+    npc3 = NPC.create("Testling", dict(TRAITS), llm=_StubLLM(),
+                      data_dir=str(tmp_path))
+    assert npc3.memory_count() == count_before
+
+
+def test_memory_not_persistent_raises():
+    npc = NPC("Ephemeral", dict(TRAITS), llm=_StubLLM())   # 默认 :memory:
+    assert not npc.store.is_persistent()
+    with pytest.raises(RuntimeError):
+        npc.save()
+
+
+def test_load_missing_meta_raises(tmp_path):
+    # 裸 MemoryStore 文件没有 NPC 元数据
+    from persona_agent import HashEmbedder
+    MemoryStore(HashEmbedder(), path=str(tmp_path / "bare.db")).close()
+    with pytest.raises(ValueError):
+        NPC.load(str(tmp_path / "bare.db"), llm=_StubLLM())
