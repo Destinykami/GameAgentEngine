@@ -1,7 +1,7 @@
 """集成探针: 对真实 LLM (SGLang) 验证"千人千面"是否成立。
 
-四个探针, 每个混合两类断言:
-- 确定性架构断言 (不依赖 LLM 措辞, 稳定): 信任度差异、人格特质稳定。
+六个探针, 每个混合两类断言:
+- 确定性架构断言 (不依赖 LLM 措辞, 稳定): 信任度差异、人格特质稳定、跨 NPC 隔离。
 - 宽松真实 LLM 断言 (对措辞鲁棒): 对话不同、非全知不编造、计划目标导向。
 
 需要网络可达 10.121.39.10:30005。不可达时 _llm_available() 返回 False,
@@ -166,8 +166,39 @@ def probe_first_person(npc: NPC, now: float) -> ProbeResult:
     return ProbeResult("第一人称探针", passed, detail)
 
 
+# ---------------------------------------------------------------- 探针 6
+def probe_world_isolation(now: float) -> ProbeResult:
+    """世界隔离: 同一玩家对不同 NPC 的面独立 (帮 A、骗 B, 互不污染)。
+
+    世界层的多 NPC 千人千面: 同一个旅行者, 对受助的 NPC A 信任为正, 对被骗的
+    NPC B 信任为负, 且 A 的记忆流不含 B 的交互 (跨 NPC 不污染)。
+    """
+    import tempfile
+    from .world import World, Location
+    tmp = tempfile.mkdtemp()
+    w = World("测试镇", [Location("主城", 0, 0), Location("堂口", 1, 0)])
+    w.add_npc("亚雅", dict(TRAITS), llm=RealLLM(), embedder=HashEmbedder(),
+              data_dir=tmp, location="主城")
+    w.add_npc("刚造", dict(TRAITS), llm=RealLLM(), embedder=HashEmbedder(),
+              data_dir=tmp, location="堂口")
+    w.add_player("旅行者", "主城")
+    w.npc("亚雅").observe("旅行者 帮 亚雅 搬了货", 0.0, player_id="旅行者")
+    w.npc("刚造").observe("旅行者 骗了 刚造 并 偷 走了他的豆子", 0.0, player_id="旅行者")
+    t_aya = w.npc("亚雅").trust_toward("旅行者")
+    t_goro = w.npc("刚造").trust_toward("旅行者")
+    isolated = t_aya > t_goro   # 帮过的 A 信任 > 骗过的 B 信任
+    aya_mems = [m.content for m in w.npc("亚雅").store.all_valid(player_id="旅行者")]
+    no_cross_pollution = not any("刚造" in c for c in aya_mems)
+    passed = isolated and no_cross_pollution
+    detail = (f"帮亚雅信任 > 骗刚造信任: {isolated} "
+              f"(亚雅={t_aya:+.2f}, 刚造={t_goro:+.2f}); "
+              f"跨NPC不污染: {no_cross_pollution}")
+    w.close()
+    return ProbeResult("世界隔离探针", passed, detail)
+
+
 def run_all_probes(verbose: bool = True) -> list[ProbeResult]:
-    """跑全部五个探针 (需 LLM 可达), 返回结果列表。"""
+    """跑全部六个探针 (需 LLM 可达), 返回结果列表。"""
     if not _llm_available():
         raise RuntimeError("LLM 端点不可达, 无法跑集成探针")
     npc, now = build_scenario()
@@ -177,6 +208,7 @@ def run_all_probes(verbose: bool = True) -> list[ProbeResult]:
         probe_persistence(npc, now),
         probe_drift(npc, now),
         probe_first_person(npc, now),
+        probe_world_isolation(now),
     ]
     if verbose:
         for r in results:

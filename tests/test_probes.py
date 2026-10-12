@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from persona_agent.probes import (
     _llm_available, build_scenario, probe_consistency,
     probe_non_omniscience, probe_persistence, probe_drift,
-    probe_first_person,
+    probe_first_person, probe_world_isolation,
 )
 
 
@@ -55,4 +55,11 @@ def test_drift(scenario):
 def test_first_person(scenario):
     npc, now = scenario
     r = probe_first_person(npc, now)
+    assert r.passed, r.detail
+
+
+def test_world_isolation():
+    if not _llm_available():
+        pytest.skip("LLM 端点不可达, 跳过集成探针")
+    r = probe_world_isolation(40.0)
     assert r.passed, r.detail
