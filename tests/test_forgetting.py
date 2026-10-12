@@ -93,6 +93,29 @@ def test_recalled_memory_decays_slower(tmp_path):
     assert obs[never].importance == pytest.approx(MIN_IMPORTANCE), "未回忆记忆触底"
 
 
+def test_trust_does_not_fade_with_forgetting(tmp_path):
+    """信任度不随遗忘淡化: 帮助记忆被降权 (但不删除) 后, 信任保持不变。
+
+    遗忘只降 importance 不删除, 且 judge_trust 只看内容不看 importance,
+    所以久远的帮助/背叛仍是关系认知, 信任不因"久远"而清零。
+    """
+    npc = _make(tmp_path)
+    npc.observe("Aria 帮 Fade 修了咖啡机", 0.0, player_id="Aria")
+    trust_before = npc.trust_toward("Aria")
+    assert trust_before > 0, "帮助应产生正信任"
+    # 遗忘降权: 帮助记忆 importance 降到下限, 但保留 (不删除)
+    down = npc.forget(now=720.0)
+    assert down, "帮助记忆应被降权"
+    obs = _by_id(npc, "observation")
+    help_id = down[0]
+    assert help_id in obs, "被降权的帮助记忆应保留 (不删除)"
+    # 强制重判信任 (清签名缓存), 验证不淡化
+    npc.decider.clear_cache()
+    trust_after = npc.trust_toward("Aria")
+    assert trust_after == pytest.approx(trust_before), \
+        "信任度不应随遗忘 (降权) 淡化"
+
+
 def test_auto_sweep_on_time_advance(tmp_path):
     """游戏时钟跨 SWEEP_INTERVAL 时, observe 自动触发遗忘清扫 (降权)。"""
     from persona_agent.npc import SWEEP_INTERVAL
