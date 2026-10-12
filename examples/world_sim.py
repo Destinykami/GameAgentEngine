@@ -307,20 +307,39 @@ def main() -> int:
         row = f"   {name:<8}" + "".join(f"{trajectory[d][name]:>+8.2f}"
                                          for d in range(7))
         print(row)
-    print("\n   桃音(受助→生死相托)信任一路升温 / 刚郎(务实交易)稳步上升 /")
-    print("   小梅(好奇→学缘→求助)由 0 转正 / 执行官(藏匿→迁怒→摊牌)警惕 /")
-    print("   雷电将军疏离 (从不接近, 始终 idle, 信任恒 0)")
+    # 动态总结: 信任走向从实际 D1→D7 值推导 (不写死, 结果变了描述跟着变)
+    for name, _, _, _ in NPCS:
+        d1, d7 = trajectory[0][name], trajectory[6][name]
+        if abs(d1) < 0.05 and abs(d7) < 0.05:
+            desc = f"恒 0 (全程无有效互动, 始终疏离)"
+        elif d7 > d1 + 0.05:
+            desc = f"升温 {d1:+.2f} → {d7:+.2f}"
+        elif d7 < d1 - 0.05:
+            desc = f"下降 {d1:+.2f} → {d7:+.2f}"
+        else:
+            desc = f"平稳 {d1:+.2f} → {d7:+.2f}"
+        print(f"   {name:<8} {desc}")
 
     banner("一周记忆增长 (观察/反思) — 认知深化")
+    counts = {}   # {npc: (观察, 反思, 自我反思)} — 供下表与动态总结共用
     for name, _, _, _ in NPCS:
         npc = w.npc(name)
         n_obs = len(npc.store.all_valid(types=["observation"]))
         n_refl = len(npc.store.all_valid(types=["reflection"]))
         n_self = len([r for r in npc.store.all_valid(types=["reflection"])
                       if r.player_id is None])
+        counts[name] = (n_obs, n_refl, n_self)
         print(f"   {name:<8} 观察{n_obs:>3} / 反思{n_refl:>3} (含自我反思{n_self})")
-    print("\n   自我反思已触发 (阈值调到 25): 高频互动的 NPC 产生高阶自我认知,")
-    print("   疏离的将军几乎无认知。记忆随时间降权 (遗忘), 但信任不淡化。")
+    # 动态总结: 自我反思触发情况从实际反思数推导 (不写死)
+    triggered = [n for n, (_, _, s) in counts.items() if s > 0]
+    not_triggered = [n for n, (_, _, s) in counts.items() if s == 0]
+    print(f"\n   自我反思已触发: {', '.join(triggered) if triggered else '无'} "
+          f"(阈值 {REFLECT_THRESHOLD:.0f})。")
+    if not_triggered:
+        print(f"   未触发: {', '.join(not_triggered)} "
+              f"(互动/重要性累积不足, 未达反思阈值)。")
+    # 机制陈述 (设计保证, 非本次运行结果): 降权遗忘与信任不淡化是构造性质
+    print("   [机制] 记忆随时间降权 (遗忘不删除), 信任不淡化 —— 框架设计保证。")
 
     w.close()
     print(f"\n世界状态已存: {os.path.abspath(DATA)}/world.db  (每 NPC 独立 <name>.db)")
