@@ -33,6 +33,7 @@ NPC 框架**：纯 Python 标准库 + SQLite，真实 LLM（SGLang 部署的
 | 反应 | `reacting.py` | 效用函数决策，事件价值 + 关系信任度均由 LLM 判断 |
 | 对话 | `dialogue.py` | 非全知：只用自己记忆流，把"对话者是谁"并入检索 |
 | 成本闸门 | `npc.py` | 分级认知（full/compressed/idle）+ 语义缓存 |
+| **游戏世界层** | `world.py` | 多 NPC + 多玩家共存、空间感知、距离调度档位、世界事件、模拟驱动、独立持久化 |
 | LLM 层 | `llm.py` / `llm_real.py` | 9 方法抽象接口 + 唯一 RealLLM 实现（OpenAI 兼容） |
 | 向量层 | `embeddings.py` / `embeddings_real.py` | HashEmbedder（回退）+ RealEmbedder（gte-Qwen2）+ make_embedder |
 
@@ -108,22 +109,42 @@ react 当且仅当 U ≥ 0
 
 ## 七、成本管理（blog「问题一」的落地）
 
-三层闸门，让 LLM 开销可控：
+四层闸门，让 LLM 开销可控：
 
 1. **分级认知**：近处 NPC 走完整循环（full）、远处压缩更新（compressed）、空闲
-   只做记忆（idle）。当前 `set_tier` 手动。
+   只做记忆（idle）。**档位由距离自动调度**（世界层 `tier_of`）：玩家同区域→full、
+   视距内→compressed、远离/离开→idle。近处全认知、远处省认知，自动降档。
 2. **语义缓存**：相似情境复用反应，命中不重复调 LLM。
 3. **推理级缓存**：事件价值/信任/冲突各自按内容签名缓存，重复判断零成本。
 4. **反思门控**：只有出现新观察才重跑关系反思，避免反思无限增殖、信任漂移。
 
-## 八、验证体系
+## 八、游戏世界层（多 NPC 真实世界）
 
-- **5 个集成探针**（`probes.py`，需真实 LLM，不可达自动 skip）：把"它真的千人
-  千面了吗"变成对真实 LLM 的回归——一致性（信任不同+回答不同）、非全知（LLM
-  裁判判"是否自信编造"）、持久性（背叛者信任<帮助者）、漂移（人格稳定）、第一
-  人称（不自称名字）。
-- **离线测试**（16 个，无网络，stub LLM）：观察去重 6 + 遗忘 7 + 持久化 3，
-  覆盖架构确定性。
+在单个 NPC 之上加了一个世界层（`world.py`），把"脚本手喂单个 NPC"升级为
+**多 NPC + 多玩家在空间世界里自动感知、距离调度认知**：
+
+- **空间与实体**：`Location`（有坐标的区域）/ `Entity` / `Player` / `World`。
+  稻妻城 6 区域，5 个 NPC + 1 个脚本驱动旅行者。
+- **空间感知**：`World.perceive` 让 NPC 感知视距内的玩家，自动生成观察喂
+  `npc.observe()`（替代手写），粒度随档位（full 富细节 / compressed 稀疏 / idle 无）。
+- **距离调度**：`World.tier_of` / `schedule_tiers` 按最近玩家距离自动设档——
+  近处全认知、远处省认知（blog 问题一落地）。
+- **世界事件**：`World.world_event` 共享事件（眼狩令生效 / 执行官搜捕），范围内
+  NPC 半径感知，全图事件影响所有 NPC。
+- **模拟驱动**：`World.step` 完整循环（时钟→距离调度→感知→按档反思→遗忘→落库）。
+- **独立持久化**：世界状态单独存 `world.db`（位置/时钟/NPC 注册表），每 NPC 独立
+  `<name>.db`，跨进程恢复整个世界（含各 NPC 记忆与面）。
+- **稻妻城·眼狩令 demo**（`examples/world_demo.py`）：5 NPC（桃音/刚郎/小梅 持神之
+  眼、执行官、雷电将军）+ 旅行者，跨一天演示距离调度、千人千面、世界事件。
+
+## 九、验证体系
+
+- **6 个集成探针**（`probes.py`，需真实 LLM，不可达自动 skip）：把"它真的千人千面
+  了吗"变成对真实 LLM 的回归——一致性（信任不同+回答不同）、非全知（LLM 裁判判
+  "是否自信编造"）、持久性（背叛者信任<帮助者）、漂移（人格稳定）、第一人称
+  （不自称名字）、**世界隔离（同一玩家对不同 NPC 的面独立、跨 NPC 不污染）**。
+- **离线测试**（34 个，无网络，stub LLM）：世界层 18（骨架/多NPC/感知/距离调度/
+  世界事件/模拟持久化）+ 观察去重 6 + 遗忘 7 + 持久化 3，覆盖架构确定性。
 
 ## 九、怎么用
 
@@ -141,20 +162,44 @@ npc.trust_toward("Aria")   # LLM 判的信任度
 npc.save()                  # 落库, 跨进程恢复
 ```
 
-端到端 demo：`python examples/game_loop.py`（Klaus 对 Aria/Bram 的千人千面）。
+单 NPC 端到端 demo：`python examples/game_loop.py`（Klaus 对 Aria/Bram 的千人千面）。
 审查工具：`python tools/inspect_npc.py data/<name>.db`（看记忆流、证据链、相似度）。
+
+世界层 API：
+
+```python
+from persona_agent import World, Location, RealLLM, make_embedder
+
+w = World("稻妻城", [Location("主城", 0, 0), Location("治疗堂", 1, 0)],
+          path="data/inazuma/world.db")                 # 世界状态独立存 world.db
+w.add_npc("桃音", {"social": 0.8, "goal_oriented": 0.3},
+          llm=RealLLM(), embedder=make_embedder(),
+          data_dir="data/inazuma", location="治疗堂")     # 每 NPC 独立 <name>.db
+w.add_player("旅行者", "主城")
+w.world_event("雷电将军颁布眼狩令", now=7.0)               # 世界事件, 半径/全图感知
+w.step(8.0)                                               # 距离调度 + 感知 + 反思 + 落库
+w.npc("桃音").trust_toward("旅行者")                       # 千人千面: 各 NPC 独立的面
+w.save()                                                  # 跨进程恢复整个世界
+```
+
+多 NPC 真实世界 demo：`python examples/world_demo.py`（稻妻城·眼狩令：5 NPC + 旅行
+者，距离调度、千人千面、世界事件）。
 
 ## 十、不变式（始终守住）
 
 自我/面解耦 · 每玩家独立记忆流 · 非全知 · 信任调制效用 · 反思门控 · 固化保护 ·
-证据只引用观察 · 降权不删除。
+证据只引用观察 · 降权不删除 · **跨 NPC 记忆隔离**（每 NPC 独立记忆流，不互相污染）·
+**距离调度认知**（近处全认知、远处省认知，档位由距离自动推导）。
 
 ## 十一、当前状态
 
 - **已落地**：反思去重、观察去重、降权遗忘、LLM 反应决策、LLM 信任度、LLM 冲突
-  失效、持久化、5 探针。
-- **下一步：游戏世界层**——多 NPC + 多玩家在空间世界里自动感知、距离调度认知
-  档位、世界事件联动。实施计划见 **[WorldPlan.md](WorldPlan.md)**（分 7 阶段，
-  阶段 3 即落地"距离→档位自动调度"，清掉下面的搁置债）。
-- **搁置的债**：成本闸门的"距离/注意力→档位"自动调度——`set_tier` 仍靠手动。
-  将由世界层阶段 3 解决。
+  失效、持久化、6 探针，以及**完整的游戏世界层**（多 NPC + 多玩家空间共存、空间
+  感知、距离调度档位、世界事件、模拟驱动、独立持久化）。
+- **世界层完成**：7 阶段全部落地，blog「问题一」（距离→档位自动调度）已由世界层
+  阶段 3 解决，不再手动 `set_tier`。实施记录见 **[WorldPlan.md](WorldPlan.md)**。
+- **稻妻城·眼狩令 demo**（`examples/world_demo.py`）已用真实 LLM 跑通：距离调度档位
+  全对、信任千人千面（受助高/务实中/藏匿警惕/疏离零）、眼狩令全图事件、执行官半径
+  搜捕、非全知对话。
+- **没有遗留债**：此前搁置的"距离/注意力→档位"自动调度债已清。后续可扩展：更多
+  区域与 NPC、玩家脚本动作（帮/骗/搜捕）驱动关系事件、多玩家对抗。

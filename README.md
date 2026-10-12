@@ -30,6 +30,7 @@ NPC 对玩家 p 的面 (每玩家独立成流, 动态)
 | Reacting | `reacting.py` | 效用函数 `U=w_s·V_s+w_g·V_g−C_int`, 事件价值与关系信任度均由 LLM 判断 (签名缓存), 人格权重 + 信任调制 |
 | Dialogue | `dialogue.py` | 非全知: 只用自己记忆流, 检索时把"对话者是谁"并入查询 |
 | 成本闸门 (blog 问题一) | `npc.py` | 分级认知 (full/compressed/idle) + 语义缓存 |
+| **游戏世界层** | `world.py` | 多 NPC + 多玩家空间共存、空间感知、**距离自动调度档位**、世界事件、模拟驱动、独立持久化 (blog 问题一落地) |
 
 ## LLM / 向量层
 
@@ -121,7 +122,49 @@ isabella2.trust_toward("Aria")   # +1.00, 与上次一致
 
 `python examples/persistence.py` 演示两次游戏会话的跨进程往返。
 
-## 五个探针 (集成测试)
+## 游戏世界层 (多 NPC 真实世界)
+
+在单个 NPC 之上加了一层**世界层** (`world.py`)，把"脚本手喂单个 NPC"升级为
+**多 NPC + 多玩家在空间世界里自动感知、距离调度认知**：
+
+- **空间与实体**：`Location`(有坐标区域) / `Entity` / `Player` / `World`。距离用
+  欧氏度量 `distance(a, b)`。
+- **多 NPC 共存**：`World.add_npc(name, persona, llm, embedder, data_dir, location)`
+  复用 `NPC.create`，每 NPC 独立 db，各自独立记忆流与面，跨 NPC 不污染。
+  `add_player` 登记玩家实体。
+- **空间感知**：`World.perceive(npc, now)` 让 NPC 感知视距内的玩家，自动生成
+  自然语言观察喂 `npc.observe()`（替代手写），粒度随档位：full=富细节、
+  compressed=稀疏、idle=无。重复感知同一在场走既有观察去重，不灌水。
+- **距离调度**：`World.tier_of(npc)` 按最近玩家距离自动推导档位——同区域
+  (≤full_radius) → full、视距内 (≤perception_radius) → compressed、远离/无玩家 →
+  idle。`schedule_tiers` 给所有 NPC 自动设档。**这就是 blog「问题一」的落地：
+  认知开销随距离自动降档，不再手动 `set_tier`。**
+- **世界事件**：`World.world_event(desc, now, at, radius)` 共享事件（眼狩令生效/
+  执行官搜捕），范围内 NPC 作为世界观察（不带 player_id）半径感知；`at=None`
+  全图事件影响所有 NPC。
+- **模拟驱动**：`World.step(now)` 完整循环——时钟→距离调度→空间感知→按档自我
+  反思→遗忘清扫→自动落库。
+- **独立持久化**：世界状态单独存 `world.db`（实体位置+时钟+NPC 注册表），与每
+  NPC 的独立 `<name>.db` 分离，不破坏"一 NPC 一库"。`World.load(llm, embedder)`
+  跨进程恢复整个世界（含各 NPC 记忆流与面）。
+
+```python
+from persona_agent import World, Location, RealLLM, make_embedder
+w = World("稻妻城", [Location("主城", 0, 0), Location("治疗堂", 1, 0)],
+          path="data/inazuma/world.db")
+w.add_npc("桃音", {"social": 0.8, "goal_oriented": 0.3},
+          llm=RealLLM(), embedder=make_embedder(), data_dir="data/inazuma",
+          location="治疗堂")
+w.add_player("旅行者", "主城")
+w.world_event("雷电将军颁布眼狩令", now=7.0)
+w.step(8.0)                        # 距离调度 + 感知 + 反思 + 落库
+w.npc("桃音").trust_toward("旅行者")  # 千人千面
+```
+
+`python examples/world_demo.py` 演示稻妻城·眼狩令真实世界（5 NPC + 旅行者，
+距离调度、千人千面、世界事件）。
+
+## 六个探针 (集成测试)
 
 `probes.py` 把"它真的千人千面了吗"变成对真实 LLM 的集成回归。每个探针混合
 **确定性架构断言** (信任度差异、特质稳定, 不依赖 LLM 措辞) 与 **宽松真实 LLM
@@ -137,6 +180,9 @@ isabella2.trust_toward("Aria")   # +1.00, 与上次一致
 5. **第一人称探针** — 记忆流是第三人称叙述, NPC 开口时不该用自己的名字称呼
    自己 (防"梳理和 Isabella 的协作流程"式自指 bug)。对话 prompt 里显式把
    记忆中的 NPC 名字映射为"我"。
+6. **世界隔离探针** — 同一玩家对不同 NPC 的面独立: 帮过的 NPC 信任为正、骗过的
+   为负, 且该 NPC 的记忆流不含另一个 NPC 的交互 (跨 NPC 不污染)。验证世界层的
+   多 NPC 千人千面。
 
 ## 遗忘 / 衰减 (部分衰减降权, 不删除)
 
@@ -216,11 +262,16 @@ age   = now − max(timestamp, last_accessed)  # 被回忆过 → 衰减更慢
 - **成本闸门**: 判断按 `(反思内容, 观察内容)` 缓存, 重复检查同一对零 LLM 成本;
   且 `check_conflicts` 由 `reflect_relationship` 触发, 后者已被"有新观察才反思"门控。
 
-## 当前局限 (与 blog 一致, 待办)
+## 当前状态 (与 blog 一致)
 
-- 反思去重、观察去重、遗忘降权、LLM 反应决策、LLM 信任度、LLM 冲突失效均已落地。
+- 反思去重、观察去重、遗忘降权、LLM 反应决策、LLM 信任度、LLM 冲突失效、持久化、
+  **游戏世界层** (多 NPC 空间共存、空间感知、距离调度档位、世界事件、模拟驱动、
+  独立持久化) 均已落地。
 - 信任度**不随遗忘淡化是显式设计**: 信任是持久的关系认知, `judge_trust` 只看
   关系记忆内容、刻意不看 importance (帮过的人不会因久远被时间冲淡)。回归测试
   `test_trust_does_not_fade_with_forgetting` 锁定该行为。
-- 成本闸门是"档位+缓存"的粗粒度方案, `set_tier` 靠调用方手动设,
-  未做"距离/注意力 → 档位"的自动调度 (仅剩的待办)。
+- **距离调度已落地**: blog「问题一」的"距离/注意力 → 档位"自动调度由世界层
+  `tier_of`/`schedule_tiers` 实现 (近处 full、远处 compressed/idle), 不再手动
+  `set_tier`, 无遗留债。
+
+后续可扩展: 更多区域与 NPC、玩家脚本动作 (帮/骗/搜捕) 驱动关系事件、多玩家对抗。
