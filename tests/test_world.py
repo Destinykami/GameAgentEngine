@@ -10,6 +10,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from persona_agent.world import World, Location, Entity, Player, distance
+from tests.test_persistence import _StubLLM
 
 
 def _inazuma_locations() -> list[Location]:
@@ -75,3 +76,37 @@ def test_inmemory_cannot_persist(tmp_path):
     w = _world(tmp_path, persistent=False)
     with pytest.raises(RuntimeError):
         w.save()
+
+
+# ---------------------------------------------------------------- 阶段 1: 多 NPC 注册 + 玩家共存
+def test_multi_npc_registration(tmp_path):
+    """世界可注册多个 NPC + 一个玩家, 各自独立实体与认知对象。"""
+    w = _world(tmp_path)
+    w.add_npc("桃音", {"social": 0.8, "goal_oriented": 0.3},
+              llm=_StubLLM(), data_dir=str(tmp_path), location="治疗堂")
+    w.add_npc("刚郎", {"social": 0.3, "goal_oriented": 0.8},
+              llm=_StubLLM(), data_dir=str(tmp_path), location="锻造坊")
+    w.add_player("旅行者", "主城街道")
+    assert w.npc("桃音") is not None and w.npc("刚郎") is not None
+    assert w.get("旅行者").kind == "player"
+    assert w.get("桃音").location.name == "治疗堂"
+    assert w.get("刚郎").location.name == "锻造坊"
+    w.close()
+
+
+def test_multi_npc_trust_isolation(tmp_path):
+    """同一玩家对两个 NPC 的信任流独立: 帮桃音、骗刚郎, 互不污染。"""
+    w = _world(tmp_path)
+    w.add_npc("桃音", {"social": 0.8, "goal_oriented": 0.3},
+              llm=_StubLLM(), data_dir=str(tmp_path), location="治疗堂")
+    w.add_npc("刚郎", {"social": 0.3, "goal_oriented": 0.8},
+              llm=_StubLLM(), data_dir=str(tmp_path), location="锻造坊")
+    w.add_player("旅行者", "主城街道")
+    w.npc("桃音").observe("旅行者 帮 桃音 搬了货", 0.0, player_id="旅行者")
+    w.npc("刚郎").observe("旅行者 骗了 刚郎 并 偷 走了他的豆子", 0.0, player_id="旅行者")
+    assert w.npc("桃音").trust_toward("旅行者") > 0, "帮过的 NPC 信任应为正"
+    assert w.npc("刚郎").trust_toward("旅行者") < 0, "骗过的 NPC 信任应为负"
+    # 跨 NPC 记忆隔离: 桃音的记忆流不含刚郎的交互
+    momone_mems = [m.content for m in w.npc("桃音").store.all_valid(player_id="旅行者")]
+    assert not any("刚郎" in c for c in momone_mems), "跨 NPC 记忆不应污染"
+    w.close()

@@ -65,6 +65,7 @@ class World:
         self.name = name
         self.locations: dict[str, Location] = {loc.name: loc for loc in locations}
         self.entities: dict[str, Entity] = {}
+        self._npcs: dict[str, "NPC"] = {}   # NPC 认知对象 (实体注册表的子集)
         self.clock: float = 0.0            # 游戏内时间 (小时, 单调递增)
         self.path = path
         self._conn: sqlite3.Connection | None = None
@@ -78,6 +79,31 @@ class World:
 
     def get(self, name: str) -> Entity | None:
         return self.entities.get(name)
+
+    def add_npc(self, name: str, persona_traits: dict[str, float], llm,
+                embedder=None, data_dir: str = "data",
+                location: str | None = None) -> "NPC":
+        """创建或加载一个持久化 NPC (复用 NPC.create, 一 NPC 一库) 并登记入世界。
+
+        location 缺省时放到第一个区域。NPC 认知对象与位置实体分开持有:
+        _npcs 管认知, entities 管位置 (感知/档位调度用)。
+        """
+        from .npc import NPC   # 函数级导入, 避免模块加载期循环依赖
+        npc = NPC.create(name, persona_traits, llm=llm, embedder=embedder,
+                         data_dir=data_dir)
+        self._npcs[name] = npc
+        loc = self.locations[location] if location else next(iter(self.locations.values()))
+        self.add_entity(Entity("npc", name, loc))
+        return npc
+
+    def add_player(self, name: str, location: str) -> Player:
+        """登记一个玩家实体到某区域。"""
+        player = Player(name, self.locations[location])
+        self.add_entity(player)
+        return player
+
+    def npc(self, name: str) -> "NPC | None":
+        return self._npcs.get(name)
 
     # ------------------------------------------------------------- 移动与时钟
     def move(self, name: str, location_name: str, now: float) -> None:
