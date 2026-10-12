@@ -254,26 +254,39 @@ class RealLLM(LLMClient):
                 + "+5 比较信任, +10 极度信任/很可靠。")
         raw = self._chat("你是一个关系信任度评估器, 只输出一个整数。", user,
                          think=False, temperature=0.0, max_tokens=8).strip()
-        return self._extract_trust_int(raw) / 10.0
+        return self._extract_int(raw, -10, 10) / 10.0
+
+    # ------------------------------------------------------------ 矛盾强度
+    def judge_conflict(self, reflection: str, observation: str) -> int:
+        """判断更晚观察与反思的矛盾强度 0-10。取代词表方向匹配。"""
+        user = ("下面是 NPC 的一条关系反思, 和一条更晚发生的观察。\n"
+                "反思: " + reflection + "\n"
+                "观察: " + observation + "\n\n"
+                "判断这条更晚的观察是否与反思矛盾, 输出矛盾强度 0 到 10 的整数:\n"
+                "0 = 完全一致/无关, 5 = 部分矛盾(有所削弱), 10 = 强烈矛盾(直接推翻)。\n"
+                "只输出整数。")
+        raw = self._chat("你是一个记忆矛盾检测器, 只输出一个 0 到 10 的整数。",
+                         user, think=False, temperature=0.0, max_tokens=8).strip()
+        return self._extract_int(raw, 0, 10, default=0)
 
     @staticmethod
-    def _extract_trust_int(raw: str) -> int:
-        """从模型输出里提取第一个 (可负) 整数, 夹到 -10..10; 提不出给 0。"""
-        i = 0
-        n = len(raw)
+    def _extract_int(raw: str, lo: int, hi: int, default: int = 0) -> int:
+        """提取第一个整数并夹到 [lo, hi]; 支持负号; 提不出给 default。"""
+        i, n = 0, len(raw)
         while i < n and raw[i] not in "-0123456789":
             i += 1
         if i >= n:
-            return 0
+            return default
+        sign = 1
         if raw[i] == "-":
             sign = -1
             i += 1
-        else:
-            sign = 1
         digits = ""
         while i < n and raw[i].isdigit():
             digits += raw[i]
             i += 1
         if not digits:
-            return 0
-        return max(-10, min(10, sign * int(digits)))
+            return default
+        return max(lo, min(hi, sign * int(digits)))
+
+

@@ -22,7 +22,12 @@ from .memory import MemoryRecord, MemoryStore
 # (gte-Qwen2 实测: 措辞不同的重复 0.955~1.000, 不同面向的独立洞察 <= ~0.90)
 DEDUP_THRESHOLD = 0.95
 
-# 冲突检测词表 (启发式, 自包含): 反思里出现信任/警惕类词, 观察里出现帮助/伤害类词。
+# 冲突失效阈值 (LLM 判矛盾强度 0-10): >= 7 直接推翻 → 反思失效; 3-6 部分削弱 → 衰减。
+CONFLICT_INVALIDATE = 7
+CONFLICT_DECAY = 3
+
+# 冲突检测词表 (启发式, 自包含)。check_conflicts 已升级为 LLM 判矛盾强度,
+# 这些词表现仅供离线测试 stub 与语义文档用途, 生产冲突判定不再依赖它们。
 TRUST_WORDS = ("信任", "可靠", "朋友", "感激", "亲近", "盟友", "伙伴", "支持者")
 DISTRUST_WORDS = ("警惕", "不信任", "不可信", "防备", "背叛", "欺骗", "背叛的轨迹")
 HELP_WORDS = ("帮助", "帮", "礼物", "送", "保护", "可靠", "朋友", "信任", "感谢")
@@ -36,6 +41,9 @@ class ReflectionEngine:
         self._llm = llm
         self._embedder = embedder
         self._dedup_threshold = dedup_threshold
+        # 冲突判断缓存: (反思内容, 观察内容) → 矛盾强度。反思与观察内容稳定,
+        # 重复检查同一对零 LLM 成本 (check_conflicts 可能被多次触发)。
+        self._conflict_cache: dict[tuple[str, str], int] = {}
 
     # ------------------------------------------------------------- 自我反思
     def reflect_self(self, store: MemoryStore, now: float,
@@ -100,25 +108,34 @@ class ReflectionEngine:
     # ------------------------------------------------------------- 冲突处理
     def check_conflicts(self, store: MemoryStore, player_id: str,
                         now: float) -> list[int]:
-        """检测关系反思与新观察的冲突, 失效/衰减矛盾的旧反思, 返回被处理的 id。"""
+        """检测关系反思与更晚观察的矛盾 (LLM 判矛盾强度), 失效/衰减矛盾反思。
+
+        取代词表方向匹配: 让 LLM 判语义矛盾强度 0-10 —— 强背叛推翻强信任 =
+        高分 → 失效; 轻微帮助削弱轻微警惕 = 中分 → 衰减。只检查**更晚**的观察
+        (时间上只有新证据能推翻旧信念)。判断按 (反思内容, 观察内容) 缓存,
+        重复检查同一对零 LLM 成本。
+        """
         handled: list[int] = []
         reflections = store.all_valid(player_id=player_id, types=["reflection"])
         observations = store.all_valid(player_id=player_id, types=["observation"])
 
         for ref in reflections:
-            ref_trust = any(w in ref.content for w in TRUST_WORDS)
-            ref_distrust = any(w in ref.content for w in DISTRUST_WORDS)
-            # 找晚于该反思的观察
-            later_obs = [o for o in observations if o.timestamp > ref.timestamp]
-            for obs in later_obs:
-                obs_trust = any(w in obs.content for w in HELP_WORDS)
-                obs_distrust = any(w in obs.content for w in HURT_WORDS)
-                if ref_trust and obs_distrust:
-                    store.invalidate(ref.id)   # 曾信任, 但新观察是背叛 → 失效
+            for obs in observations:
+                if obs.timestamp <= ref.timestamp:
+                    continue   # 只有更晚的观察能矛盾更早的反思
+                key = (ref.content, obs.content)
+                cached = self._conflict_cache.get(key)
+                if cached is not None:
+                    severity = cached
+                else:
+                    severity = self._llm.judge_conflict(ref.content, obs.content)
+                    self._conflict_cache[key] = severity
+                if severity >= CONFLICT_INVALIDATE:
+                    store.invalidate(ref.id)   # 强烈矛盾 → 直接推翻, 反思失效
                     handled.append(ref.id)
                     break
-                if ref_distrust and obs_trust:
-                    # 曾警惕, 但新观察是帮助 → 衰减置信度 (不完全失效)
+                if severity >= CONFLICT_DECAY:
+                    # 部分矛盾 → 衰减置信度 (不完全失效, 信念被削弱但未推翻)
                     store.update_confidence(ref.id, ref.confidence * 0.5)
                     handled.append(ref.id)
                     break

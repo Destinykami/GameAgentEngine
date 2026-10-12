@@ -38,6 +38,10 @@ class _StubLLM(LLMClient):
         # 固定价值: 社交事件偏高, 供反应决策测试 (不联网)
         return (8.0, 1.0, 3.0)
 
+    def judge_conflict(self, reflection, observation):
+        # 离线确定性: 默认无矛盾 (不失效/不衰减任何反思), 离线架构测试不依赖冲突判定。
+        return 0
+
     def judge_trust(self, memories, player_id):
         # 离线确定性: 用词表计数模拟 LLM 信任判断 (与旧生产语义一致),
         # 供离线架构测试断言信任值。真实 LLM 的信任质量由集成探针覆盖。

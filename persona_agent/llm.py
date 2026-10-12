@@ -1,6 +1,6 @@
 """LLM 层: LLMClient 抽象接口 + LLMContext 上下文。
 
-框架让 LLM 承担八类推理, 全部抽象成接口方法:
+框架让 LLM 承担九类推理, 全部抽象成接口方法:
 - complete(ctx)                       对话/反应回复
 - score_importance(text, player_id)   记忆重要性打分 (1-10)
 - reflection_questions(recent)        生成反思用的 3 个高层问题
@@ -9,6 +9,7 @@
 - decompose_activity(...)             把活动分解为子任务
 - score_event(...)                    判断事件价值 (社交/目标/打断代价)
 - judge_trust(...)                    基于关系记忆判断对玩家的信任度 (-1..1)
+- judge_conflict(reflection, obs)     判断更晚观察与反思的矛盾强度 (0-10)
 
 实现: persona_agent.llm_real.RealLLM (OpenAI 兼容, SGLang 部署)。
 实现者只应使用传入的记忆内容 —— 这是"非全知"原则的体现。
@@ -80,4 +81,12 @@ class LLMClient(ABC):
         memories 是 (类型, 内容) 列表 (观察 + 反思)。取代关键词词表计数:
         LLM 能理解"搭把手"=帮、"放鸽子"=背叛等花样措辞, 不会被词表漏判。
         -1 = 极度不信任/被背叛, 0 = 中立, +1 = 极度信任/可靠。
+        """
+
+    @abstractmethod
+    def judge_conflict(self, reflection: str, observation: str) -> int:
+        """判断一条更晚的观察与某条反思的矛盾强度, 返回 0-10 整数。
+
+        取代词表方向匹配 (信任词 vs 背叛词): LLM 判语义矛盾。
+        0 = 一致/无关, 5 = 部分矛盾(削弱), 10 = 强烈矛盾(直接推翻)。
         """
