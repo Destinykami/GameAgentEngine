@@ -62,13 +62,15 @@ class World:
 
     def __init__(self, name: str, locations: list[Location],
                  path: str | None = None,
-                 perception_radius: float = 1.5) -> None:
+                 perception_radius: float = 1.5,
+                 full_radius: float = 0.5) -> None:
         self.name = name
         self.locations: dict[str, Location] = {loc.name: loc for loc in locations}
         self.entities: dict[str, Entity] = {}
         self._npcs: dict[str, "NPC"] = {}   # NPC 认知对象 (实体注册表的子集)
         self.clock: float = 0.0            # 游戏内时间 (小时, 单调递增)
         self.perception_radius = perception_radius   # 视距: 玩家距 NPC 超过则感知不到
+        self.full_radius = full_radius             # 同区域半径: 玩家距 NPC <= 此值 = full
         self.path = path
         self._conn: sqlite3.Connection | None = None
         self._lock = threading.RLock()
@@ -132,6 +134,41 @@ class World:
                 content = f"{ent.name} 在 {me.location.name}"
             ids.append(npc.observe(content, now, player_id=ent.name))
         return ids
+
+    # ------------------------------------------------------------- 距离调度
+    def tier_of(self, npc_name: str) -> str:
+        """距离调度: 按 NPC 到最近玩家的距离推导认知档位 (替代手动 set_tier)。
+
+        - 玩家同区域 (distance <= full_radius)   → full   (近处全认知)
+        - 玩家在视距内 (distance <= 视距)         → compressed (远处压缩认知)
+        - 无玩家在视距内 / 世界无玩家              → idle   (空闲省认知)
+        这是 blog「问题一」的落地: 认知开销随距离自动降档。
+        """
+        me = self.entities[npc_name]
+        nearest: float | None = None
+        for ent in self.entities.values():
+            if ent.kind != "player":
+                continue
+            d = distance(me, ent)
+            if nearest is None or d < nearest:
+                nearest = d
+        if nearest is None:
+            return "idle"
+        if nearest <= self.full_radius:
+            return "full"
+        if nearest <= self.perception_radius:
+            return "compressed"
+        return "idle"
+
+    def schedule_tiers(self, now: float) -> dict[str, str]:
+        """按距离给所有 NPC 自动设档, 返回 {npc: 档位}。step (阶段5) 每步调用。"""
+        result: dict[str, str] = {}
+        for name in self._npcs:
+            tier = self.tier_of(name)
+            self._npcs[name].set_tier(tier)
+            result[name] = tier
+        self.advance(now)
+        return result
 
     # ------------------------------------------------------------- 移动与时钟
     def move(self, name: str, location_name: str, now: float) -> None:
