@@ -32,6 +32,18 @@ ALPHA_RECENCY = 1.0
 ALPHA_IMPORTANCE = 1.0
 ALPHA_RELEVANCE = 1.0
 
+# 遗忘/衰减 (blog 2.2.5 的遗忘维度): strength = base * 0.5 ** (age / half_life)
+# - base: 反思用 confidence, 观察/计划用 importance/10
+# - age:  距 max(timestamp, last_accessed) 的小时数 —— 被回忆过的记忆衰减更慢
+# - 半衰期: 原始观察最先淡去, 反思(高阶认知)留存最久, 计划隔夜即过期
+# - 跌破 FORGET_FLOOR 的记忆被失效 (valid=0)
+FORGET_FLOOR = 0.15
+FORGET_HALF_LIVES: dict[str, float] = {
+    "observation": 48.0,   # ~2 天: 没被固化、没被回忆的原始事件淡去
+    "reflection": 168.0,   # ~2 周: 高阶认知留存最久
+    "plan": 24.0,          # ~1 天: 计划隔夜即失效
+}
+
 
 @dataclass
 class MemoryRecord:
@@ -247,6 +259,55 @@ class MemoryStore:
             args.append(player_id)
         with self._lock:
             return int(self._conn.execute(sql, args).fetchone()[0])
+
+    def all_invalid(self) -> list[MemoryRecord]:
+        """取全部已失效记忆 (被遗忘/冲突失效), 按时间排序, 供审查。"""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM memory WHERE valid = 0 ORDER BY timestamp, id"
+            ).fetchall()
+        cols = ("id", "type", "content", "timestamp", "importance", "player_id",
+                "evidence", "confidence", "valid", "last_accessed")
+        return [MemoryRecord(**{**dict(zip(cols, r)),
+                                "evidence": json.loads(r[6] or "[]")})
+                for r in rows]
+
+    # ------------------------------------------------------------------ 遗忘
+    def decay_and_forget(self, now: float, floor: float = FORGET_FLOOR,
+                         half_lives: dict[str, float] | None = None
+                         ) -> list[int]:
+        """时间遗忘: 把衰减后强度跌破 floor 的记忆失效, 返回被遗忘的 id。
+
+        强度 = base * 0.5 ** (age / half_life), 其中
+          base = 反思的 confidence / 观察与计划的 importance/10
+          age  = now - max(timestamp, last_accessed or timestamp)
+                 (被回忆过的记忆从"上次被检索"起算, 衰减更慢)
+        保护: 被有效反思引用为证据的观察不遗忘 —— 它已固化为高阶认知,
+        忘了它会断开反思的证据链。保护集在清扫前按当前有效反思快照计算。
+        """
+        hl = half_lives or FORGET_HALF_LIVES
+        mems = self.all_valid()
+        if not mems:
+            return []
+        # 保护集: 有效反思的证据 id (反思只引用观察, 见 reflection.py)
+        protected: set[int] = set()
+        for m in mems:
+            if m.type == "reflection" and m.evidence:
+                protected.update(m.evidence)
+        invalidated: list[int] = []
+        for m in mems:
+            if m.type == "observation" and m.id in protected:
+                continue
+            anchor = max(m.timestamp,
+                         m.last_accessed if m.last_accessed is not None
+                         else m.timestamp)
+            age = max(0.0, now - anchor)
+            base = m.confidence if m.type == "reflection" else m.importance / 10.0
+            strength = base * (0.5 ** (age / hl.get(m.type, 48.0)))
+            if strength < floor:
+                self.invalidate(m.id, reason="forgetting")
+                invalidated.append(m.id)
+        return invalidated
 
     # ------------------------------------------------------------------ 元数据
     def set_meta(self, key: str, value: Any) -> None:

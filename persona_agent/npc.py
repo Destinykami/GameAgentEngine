@@ -26,6 +26,7 @@ from .reacting import ReactionDecider, ReactionDecision
 from .reflection import ReflectionEngine
 
 REFLECTION_THRESHOLD = 150.0   # 重要性累积阈值, 触发反思 (同论文)
+SWEEP_INTERVAL = 6.0           # 游戏时钟每推进 6h 自动做一次遗忘清扫
 
 
 class NPC:
@@ -55,11 +56,29 @@ class NPC:
         # 持久化: 文件库路径 + 游戏内时钟 (小时, 单调递增)
         self._data_path: str | None = None
         self._game_time: float = 0.0
+        self._last_sweep: float | None = None   # 上次遗忘清扫的游戏时刻
 
     def _advance(self, now: float) -> None:
-        """推进游戏时钟 (取 max, 容忍乱序事件)。"""
+        """推进游戏时钟 (取 max, 容忍乱序事件); 到点自动清扫遗忘。"""
         if now > self._game_time:
             self._game_time = now
+        # 背景遗忘: 每 SWEEP_INTERVAL 游戏小时清扫一次 (纯本地计算, 零 LLM)
+        if self._last_sweep is None:
+            self._last_sweep = now
+        elif now - self._last_sweep >= SWEEP_INTERVAL:
+            self.forget(now)
+            self._last_sweep = now
+
+    # ---------------------------------------------------------------- 遗忘
+    def forget(self, now: float) -> list[int]:
+        """时间遗忘清扫: 失效衰减后强度跌破阈值的记忆, 返回被遗忘的 id。
+
+        - 原始观察最先淡去 (~2 天半衰期), 反思留存最久 (~2 周), 计划隔夜即过期。
+        - 被有效反思引用为证据的观察受保护 (已固化为高阶认知)。
+        - 被回忆过 (last_accessed) 的记忆衰减更慢。
+        副作用: 信任度由有效观察派生, 久远的帮助/背叛淡去后信任自然向 0 回归。
+        """
+        return self.store.decay_and_forget(now)
 
     # ---------------------------------------------------------------- 观察
     def observe(self, content: str, now: float,
