@@ -32,10 +32,14 @@ class PlanningEngine:
             top_id = self._save_plan(store, now, f"{start:02d}-{end:02d} {activity}",
                                      player_id=None)
             top_ids.append(top_id)
-            # 分解为小时级子任务
-            for s, e, sub in self._llm.decompose_activity(activity, start, end):
-                self._save_plan(store, now, f"{s:02d}-{e:02d} {sub}",
-                                player_id=None)
+            # 只对多于一小时的块分解为小时级子任务; 1 小时块已是最细粒度, 分解会
+            # 把原活动原样回声成"子任务"造成重复, 故跳过。
+            if end - start > 1:
+                for s, e, sub in self._llm.decompose_activity(activity, start, end):
+                    sub_content = f"{s:02d}-{e:02d} {sub}"
+                    if sub_content == f"{start:02d}-{end:02d} {activity}":
+                        continue   # 保险: 子任务与顶层块完全相同则跳过
+                    self._save_plan(store, now, sub_content, player_id=None)
         return top_ids
 
     # ------------------------------------------------------------- 重规划
