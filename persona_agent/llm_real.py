@@ -94,6 +94,14 @@ class RealLLM(LLMClient):
                 raise RuntimeError(f"LLM 请求失败: {e}") from e
         raise RuntimeError(f"LLM 请求失败: {last_err}")
 
+    # ------------------------------------------------------------- 通用问答
+    def ask(self, question: str, system: str = "", *, think: bool = False,
+            temperature: float = 0.0, max_tokens: int = 256) -> str:
+        """公开的单轮问答 (供探针裁判、外部逻辑复用)。默认关思考、低温。"""
+        return self._chat(system or "你是一个简洁的助手。", question,
+                          think=think, temperature=temperature,
+                          max_tokens=max_tokens)
+
     def _chat_json(self, system: str, user: str, *, think: bool = False,
                    temperature: float = 0.0, max_tokens: int = 2048) -> Any:
         """请求模型返回严格 JSON 并解析; 解析失败则重试一次。"""

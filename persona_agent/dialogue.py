@@ -15,11 +15,11 @@ from .memory import MemoryStore
 
 class DialogueManager:
     def __init__(self, llm: LLMClient, store: MemoryStore,
-                 persona_traits: dict[str, float]) -> None:
+                 persona_traits: dict[str, float], name: str) -> None:
         self._llm = llm
         self._store = store
         self._traits = persona_traits
-        self._name = "Klaus"   # NPC 自称
+        self._name = name   # NPC 自称
 
     def reply(self, player_id: str, utterance: str, now: float,
               top_k: int = 8) -> str:
@@ -28,9 +28,12 @@ class DialogueManager:
         query = f"{utterance} (对话者: {player_id})"
         memories = self._store.retrieve(
             query=query, now=now, top_k=top_k, include_player=player_id)
+        # 记忆流是第三人称叙述, 必须显式告诉模型: 记忆里的名字就是你自己,
+        # 开口时改用"我", 否则模型会把 NPC 自己当成第三方复述 (自指 bug)。
         ctx = LLMContext(
-            system=(f"你是 {self._name}。只基于你记得的事情回答。"
-                    f"人格特质: {self._traits}"),
+            system=(f"你是 {self._name}。记忆流里出现的 {self._name} 就是你本人, "
+                    f"开口时一律用'我', 不要在自己的话里用名字称呼自己。"
+                    f"只基于你记得的事情回答。人格特质: {self._traits}"),
             player_id=player_id,
             memories=memories,
             question=utterance,

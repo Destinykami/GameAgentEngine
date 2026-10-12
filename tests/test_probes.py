@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from persona_agent.probes import (
     _llm_available, build_scenario, probe_consistency,
     probe_non_omniscience, probe_persistence, probe_drift,
+    probe_first_person,
 )
 
 
@@ -48,4 +49,10 @@ def test_persistence(scenario):
 def test_drift(scenario):
     npc, now = scenario
     r = probe_drift(npc, now)
+    assert r.passed, r.detail
+
+
+def test_first_person(scenario):
+    npc, now = scenario
+    r = probe_first_person(npc, now)
     assert r.passed, r.detail

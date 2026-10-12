@@ -41,7 +41,8 @@ class NPC:
         self.reflection = ReflectionEngine(self.llm)
         self.planner = PlanningEngine(self.llm)
         self.decider = ReactionDecider(self.store)
-        self.dialogue = DialogueManager(self.llm, self.store, persona_traits)
+        self.dialogue = DialogueManager(self.llm, self.store, persona_traits,
+                                        name=name)
 
         # 成本闸门状态
         self._importance_accum = 0.0

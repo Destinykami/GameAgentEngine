@@ -83,20 +83,33 @@ def probe_consistency(npc: NPC, now: float) -> ProbeResult:
 
 
 # ---------------------------------------------------------------- 探针 2
-# 非全知的本质行为: 对没观察过的事, NPC 承认自己不知道/没印象 (而非自信编造)。
-UNKNOWN_CUES = ("不记得", "没印象", "没有印象", "不知道", "不确定",
-                "没偷过", "没撒谎", "没有骗", "不太记得")
+def _judge_affirms_fabrication(answer: str, entity: str) -> bool:
+    """用 LLM 裁判: 回答是否**自信断言**了 entity 做过具体坏事。
+
+    关键词判不了中文否定式 (没偷过/偷没偷/没什么印象/没留意过...),
+    交给 LLM 直接判语义: 自信断言具体事实 → True (编造);
+    表达不确定/没印象/否认 → False (非全知, 正确)。
+    """
+    from .llm_real import RealLLM
+    llm = RealLLM()
+    prompt = (f"下面是一个游戏 NPC 的回答。这个 NPC 从未亲眼观察到 {entity} "
+              f"做过任何事。\n\n回答: {answer}\n\n"
+              f"判断: 这个回答是否自信地断言了 {entity} 做过某件具体的坏事"
+              f"(如偷东西/撒谎/欺骗)?\n"
+              f"若断言了具体事实, 只输出 YES; 若表达不确定/没印象/否认, 只输出 NO。")
+    verdict = llm.ask(prompt, system="你是一个严格的判断器。", max_tokens=8).strip().upper()
+    return verdict.startswith("YES")
 
 
 def probe_non_omniscience(now: float) -> ProbeResult:
-    """非全知: 只喂了 Aria 记忆的 NPC, 被问 Bram 时应承认不知道, 不自信编造。"""
+    """非全知: 只喂了 Aria 记忆的 NPC, 被问 Bram 时不自信编造其背叛。"""
     npc = _make_npc()
     for t, c in ARIA_MEMS:      # 只有 Aria, 没有任何 Bram 记忆
         npc.observe(c, t, player_id="Aria")
     ans = npc.speak("Aria", "Bram 上周对你做了什么? 他有没有偷过你的东西?", now)
-    says_unknown = any(cue in ans for cue in UNKNOWN_CUES)
-    passed = says_unknown
-    detail = f"承认不知道/没印象 (非全知): {says_unknown}\n  回答: {ans}"
+    fabricates = _judge_affirms_fabrication(ans, "Bram")
+    passed = not fabricates
+    detail = f"未自信编造 Bram 的背叛 (LLM 裁判): {not fabricates}\n  回答: {ans}"
     return ProbeResult("非全知探针", passed, detail)
 
 
@@ -141,8 +154,20 @@ def probe_drift(npc: NPC, now: float) -> ProbeResult:
     return ProbeResult("漂移探针", passed, detail)
 
 
+# ---------------------------------------------------------------- 探针 5
+def probe_first_person(npc: NPC, now: float) -> ProbeResult:
+    """第一人称一致性: 记忆流是第三人称叙述, 但 NPC 开口时不该用自己的名字
+    称呼自己 (否则就是 '梳理和 Isabella 的协作流程' 这种自指 bug)。"""
+    ans = npc.speak("Aria", "你最近忙什么?", now)
+    self_name = npc.name
+    self_referenced = self_name in ans
+    passed = not self_referenced
+    detail = f"回复中未出现自己的名字 '{self_name}': {not self_referenced}\n  回答: {ans}"
+    return ProbeResult("第一人称探针", passed, detail)
+
+
 def run_all_probes(verbose: bool = True) -> list[ProbeResult]:
-    """跑全部四个探针 (需 LLM 可达), 返回结果列表。"""
+    """跑全部五个探针 (需 LLM 可达), 返回结果列表。"""
     if not _llm_available():
         raise RuntimeError("LLM 端点不可达, 无法跑集成探针")
     npc, now = build_scenario()
@@ -151,6 +176,7 @@ def run_all_probes(verbose: bool = True) -> list[ProbeResult]:
         probe_non_omniscience(now),
         probe_persistence(npc, now),
         probe_drift(npc, now),
+        probe_first_person(npc, now),
     ]
     if verbose:
         for r in results:
