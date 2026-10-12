@@ -24,15 +24,15 @@ NPC 对玩家 p 的面 (每玩家独立成流, 动态)
 | Memory Stream + Retrieval | `memory.py` | 每条记忆带 `player_id`; 检索三维评分 (recency/importance/relevance) 之外, 对当前玩家记忆加权 |
 | Reflection | `reflection.py` | 分**自我反思**与**关系反思**两条轨; 带证据引用 + 冲突失效/衰减 |
 | Planning | `planning.py` | 层次化 (日→小时→分钟); plan 作为记忆参与检索; 反应后从当前时刻重规划 |
-| Reacting | `reacting.py` | 效用函数 `U=w_s·V_s+w_g·V_g−C_int`, 事件价值由 LLM 判断 (带缓存), 人格权重 + 关系信任度调制 |
+| Reacting | `reacting.py` | 效用函数 `U=w_s·V_s+w_g·V_g−C_int`, 事件价值与关系信任度均由 LLM 判断 (签名缓存), 人格权重 + 信任调制 |
 | Dialogue | `dialogue.py` | 非全知: 只用自己记忆流, 检索时把"对话者是谁"并入查询 |
 | 成本闸门 (blog 问题一) | `npc.py` | 分级认知 (full/compressed/idle) + 语义缓存 |
 
 ## LLM / 向量层
 
-- `llm.LLMClient`: 抽象接口, 七个方法 `complete / score_importance /
+- `llm.LLMClient`: 抽象接口, 八个方法 `complete / score_importance /
   reflection_questions / reflection_insights / generate_plan / decompose_activity /
-  score_event`。实现者只应使用传入的记忆内容 (非全知原则)。
+  score_event / judge_trust`。实现者只应使用传入的记忆内容 (非全知原则)。
 - `llm_real.RealLLM`: 唯一实现, 通过 OpenAI 兼容接口 (`/v1/chat/completions`)
   接入 SGLang 部署的 `Qwen3.8-27B-Coder/BF16`。要换别的 OpenAI 兼容端点,
   改 `base_url` / `model` 即可。
@@ -186,11 +186,25 @@ age   = now − max(timestamp, last_accessed)   # 被回忆过 → 衰减更慢
 - **信任仍独立调制**: 事件价值是"事"的分量, 信任度(记忆派生)单独调制
   `w_social`, 二者相乘 —— 同一派对, 对信任者接受、对背叛者拒绝。
 
+## 信任度 (LLM 判断, 取代词表)
+
+`ReactionDecider.relationship_trust` 不再数关键词, 改为让 LLM 基于该玩家
+的全部关系记忆 (观察 + 反思) 判断信任度 `-1..1` (`LLMClient.judge_trust`)。
+
+- **理解花样措辞**: "搭把手"=帮、"接济"=帮、"放鸽子/拿钱跑路"=背叛, 这些词表
+  漏判的说法 LLM 都能判对 (实测 +0.2/+0.5/-1.0)。且是**程度判断** (搭把手 +0.2
+  < 修咖啡机 +0.5), 比词表二值 ±1 更细腻。
+- **成本闸门 (签名缓存)**: 信任是高频读取 (`react` 建缓存键就要用), 不能每次
+  调 LLM。按玩家缓存, 失效键 = 关系记忆签名 `(条数, 最新时间戳)` —— 只有该
+  玩家的关系记忆真正变化 (新增观察/反思、被遗忘) 才重判, 否则命中缓存零成本。
+
+> 注: `reflection.check_conflicts` 的冲突失效仍用词表 (它判的是"信任类反思 vs
+> 背叛类观察"的矛盾, 与信任度打分是两回事, 暂未纳入 LLM)。
+
 ## 当前局限 (与 blog 一致, 待办)
 
-- 反思去重、观察去重、冲突失效、遗忘/衰减、LLM 反应决策均已落地。
-- **信任度仍是关键词词表计数** (TRUST/DISTRUST 词), 非 LLM 判断 —— 措辞花样多
-  时判不准, 且不会"学乖"。
+- 反思去重、观察去重、冲突失效、遗忘/衰减、LLM 反应决策、LLM 信任度均已落地。
 - 成本闸门是"档位+缓存"的粗粒度方案, `set_tier` 靠调用方手动设,
   未做"距离/注意力 → 档位"的自动调度。
 - 遗忘是"整条失效", 未做部分衰减 (如把低强度记忆的 importance 逐步调低而非直接删除)。
+- 冲突失效 (`check_conflicts`) 仍是词表, 未纳入 LLM 判断。

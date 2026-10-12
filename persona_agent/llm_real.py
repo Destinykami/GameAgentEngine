@@ -241,3 +241,39 @@ class RealLLM(LLMClient):
                 return default
         return (_clip("v_social", 3.0), _clip("v_goal", 3.0),
                 _clip("c_interrupt", 2.0))
+
+    # ------------------------------------------------------------ 关系信任度
+    def judge_trust(self, memories: list[tuple[str, str]],
+                    player_id: str) -> float:
+        """基于关系记忆判断对玩家的信任度, 返回 -1..1。取代关键词词表。"""
+        mem_lines = "\n".join(f"- [{t}] {c}" for t, c in memories)
+        user = ("以下是 NPC 关于玩家 " + player_id + " 的记忆 (观察与反思):\n"
+                + mem_lines + "\n\n判断 NPC 对 " + player_id
+                + " 的信任度, 只输出 -10 到 10 的整数 (可带负号):\n"
+                + "-10 极度不信任/被背叛过, -5 略有戒备, 0 中立/不太了解, "
+                + "+5 比较信任, +10 极度信任/很可靠。")
+        raw = self._chat("你是一个关系信任度评估器, 只输出一个整数。", user,
+                         think=False, temperature=0.0, max_tokens=8).strip()
+        return self._extract_trust_int(raw) / 10.0
+
+    @staticmethod
+    def _extract_trust_int(raw: str) -> int:
+        """从模型输出里提取第一个 (可负) 整数, 夹到 -10..10; 提不出给 0。"""
+        i = 0
+        n = len(raw)
+        while i < n and raw[i] not in "-0123456789":
+            i += 1
+        if i >= n:
+            return 0
+        if raw[i] == "-":
+            sign = -1
+            i += 1
+        else:
+            sign = 1
+        digits = ""
+        while i < n and raw[i].isdigit():
+            digits += raw[i]
+            i += 1
+        if not digits:
+            return 0
+        return max(-10, min(10, sign * int(digits)))

@@ -20,7 +20,6 @@ from dataclasses import dataclass
 
 from .llm import LLMClient
 from .memory import MemoryStore
-from .reflection import TRUST_WORDS, DISTRUST_WORDS
 
 
 @dataclass
@@ -40,19 +39,29 @@ class ReactionDecider:
         # 事件价值缓存: (事件文本, 当前计划) → (v_social, v_goal, c_interrupt)。
         # 反应是高频路径, 同一情境不重复调 LLM。
         self._value_cache: dict[tuple[str, str], tuple[float, float, float]] = {}
+        # 信任度缓存: 玩家 → (信任值, 关系记忆签名)。签名 = (条数, 最新时间戳),
+        # 只有该玩家的关系记忆真正变化 (新增观察/反思、被遗忘) 才重判。
+        # 信任是高频读取 (react 建缓存键就要用), 必须缓存, 否则每次都烧 LLM。
+        self._trust_cache: dict[str, tuple[float, tuple]] = {}
 
     # -------------------------------------------------------- 关系信任度
     def relationship_trust(self, player_id: str) -> float:
-        """计算对该玩家的信任度, 范围 -1..1。基于关系记忆词表计数 (启发式)。"""
+        """对该玩家的信任度 -1..1, 由 LLM 基于关系记忆判断 (按签名缓存)。
+
+        取代关键词词表计数: LLM 能理解"搭把手"=帮、"放鸽子"=背叛等花样措辞。
+        关系记忆不变时命中缓存, 零 LLM 成本。
+        """
         rel = self._store.all_valid(player_id=player_id)
         if not rel:
             return 0.0
-        pos = sum(1 for m in rel if any(w in m.content for w in TRUST_WORDS + ("帮助", "帮", "感谢")))
-        neg = sum(1 for m in rel if any(w in m.content for w in DISTRUST_WORDS + ("背叛", "欺骗", "撒谎", "骗", "偷")))
-        total = pos + neg
-        if total == 0:
-            return 0.0
-        return (pos - neg) / total
+        sig = (len(rel), max(m.timestamp for m in rel))
+        cached = self._trust_cache.get(player_id)
+        if cached is not None and cached[1] == sig:
+            return cached[0]
+        mems = [(m.type, m.content) for m in rel]
+        trust = self._llm.judge_trust(mems, player_id)
+        self._trust_cache[player_id] = (trust, sig)
+        return trust
 
     # -------------------------------------------------------- 反应决策
     def decide(self, event: str, player_id: str,
@@ -96,3 +105,4 @@ class ReactionDecider:
 
     def clear_cache(self) -> None:
         self._value_cache.clear()
+        self._trust_cache.clear()

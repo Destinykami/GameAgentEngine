@@ -38,6 +38,17 @@ class _StubLLM(LLMClient):
         # 固定价值: 社交事件偏高, 供反应决策测试 (不联网)
         return (8.0, 1.0, 3.0)
 
+    def judge_trust(self, memories, player_id):
+        # 离线确定性: 用词表计数模拟 LLM 信任判断 (与旧生产语义一致),
+        # 供离线架构测试断言信任值。真实 LLM 的信任质量由集成探针覆盖。
+        from persona_agent.reflection import TRUST_WORDS, DISTRUST_WORDS
+        pos = sum(1 for _, c in memories
+                  if any(w in c for w in TRUST_WORDS + ("帮助", "帮", "感谢")))
+        neg = sum(1 for _, c in memories
+                  if any(w in c for w in DISTRUST_WORDS + ("背叛", "欺骗", "撒谎", "骗", "偷")))
+        total = pos + neg
+        return (pos - neg) / total if total else 0.0
+
 
 TRAITS = {"social": 0.7, "goal_oriented": 0.5}
 
