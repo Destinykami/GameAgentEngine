@@ -33,12 +33,14 @@ class NPC:
     def __init__(self, name: str, persona_traits: dict[str, float],
                  llm: LLMClient,
                  embedder: Embedder | None = None,
-                 store: MemoryStore | None = None) -> None:
+                 store: MemoryStore | None = None,
+                 reflection_threshold: float = REFLECTION_THRESHOLD) -> None:
         self.name = name
         self.persona_traits = persona_traits
         self.embedder = embedder or HashEmbedder()
         self.llm = llm
         self.store = store or MemoryStore(self.embedder)
+        self._reflection_threshold = reflection_threshold   # 重要性累积到多少触发自我反思 (可调)
         self.reflection = ReflectionEngine(self.llm, self.embedder)
         self.planner = PlanningEngine(self.llm)
         self.decider = ReactionDecider(self.store, self.llm)
@@ -110,8 +112,8 @@ class NPC:
 
     # ---------------------------------------------------------------- 反思
     def maybe_reflect_self(self, now: float) -> list[int]:
-        """重要性累积超阈值时触发自我反思。"""
-        if self._importance_accum < REFLECTION_THRESHOLD:
+        """重要性累积超阈值时触发自我反思 (阈值可配置, 默认 150 同论文)。"""
+        if self._importance_accum < self._reflection_threshold:
             return []
         ids = self.reflection.reflect_self(self.store, now)
         self._importance_accum = 0.0
@@ -195,34 +197,47 @@ class NPC:
     @classmethod
     def create(cls, name: str, persona_traits: dict[str, float],
                llm: LLMClient, embedder: Embedder | None = None,
-               data_dir: str = "data") -> "NPC":
+               data_dir: str = "data",
+               reflection_threshold: float = REFLECTION_THRESHOLD) -> "NPC":
         """创建或加载一个持久化 NPC。
 
         记忆流与元数据存于 data_dir/<name>.db (一个 NPC 一个库)。
         不存在则新建并写入元数据; 已存在则等价于 load()。
+        reflection_threshold: 重要性累积到多少触发自我反思 (默认 150 同论文,
+        调低可让反思更频繁 —— 供世界模拟等场景使用)。
         """
         os.makedirs(data_dir, exist_ok=True)
         path = os.path.join(data_dir, f"{name}.db")
         if os.path.exists(path):
-            return cls.load(path, llm, embedder=embedder)
+            return cls.load(path, llm, embedder=embedder,
+                            reflection_threshold=reflection_threshold)
         embedder = embedder or HashEmbedder()
         npc = cls(name, persona_traits, llm=llm, embedder=embedder,
-                  store=MemoryStore(embedder, path=path))
+                  store=MemoryStore(embedder, path=path),
+                  reflection_threshold=reflection_threshold)
         npc._data_path = path
         npc.save()
         return npc
 
     @classmethod
     def load(cls, path: str, llm: LLMClient,
-             embedder: Embedder | None = None) -> "NPC":
-        """从 .db 文件加载一个已持久化的 NPC (记忆流 + 元数据全部恢复)。"""
+             embedder: Embedder | None = None,
+             reflection_threshold: float | None = None) -> "NPC":
+        """从 .db 文件加载一个已持久化的 NPC (记忆流 + 元数据全部恢复)。
+
+        reflection_threshold 缺省时用库内存的值 (旧库无该字段则回退默认 150)。
+        """
         embedder = embedder or HashEmbedder()
         store = MemoryStore(embedder, path=path)
         meta = store.get_meta("npc")
         if not meta:
             raise ValueError(f"{path} 中没有 NPC 元数据 (不是 NPC 库)")
+        threshold = (reflection_threshold
+                     if reflection_threshold is not None
+                     else meta.get("reflection_threshold", REFLECTION_THRESHOLD))
         npc = cls(meta["name"], meta["persona_traits"], llm=llm,
-                  embedder=embedder, store=store)
+                  embedder=embedder, store=store,
+                  reflection_threshold=threshold)
         npc._data_path = path
         npc._game_time = float(store.get_meta("game_time", 0.0))
         # _reflected_obs 留空: 加载后若某玩家有观察但未反思, speak 会补跑
@@ -234,7 +249,9 @@ class NPC:
             raise RuntimeError("该 NPC 使用 :memory: 库, 无法持久化 "
                                "(请用 NPC.create / NPC.load 创建)")
         self.store.set_meta("npc", {"name": self.name,
-                                    "persona_traits": self.persona_traits})
+                                    "persona_traits": self.persona_traits,
+                                    "reflection_threshold":
+                                        self._reflection_threshold})
         self.store.set_meta("game_time", self._game_time)
         if self._data_path is None:
             self._data_path = self.store.db_path()

@@ -93,15 +93,20 @@ class World:
 
     def add_npc(self, name: str, persona_traits: dict[str, float], llm,
                 embedder=None, data_dir: str = "data",
-                location: str | None = None) -> "NPC":
+                location: str | None = None,
+                reflection_threshold: float | None = None) -> "NPC":
         """创建或加载一个持久化 NPC (复用 NPC.create, 一 NPC 一库) 并登记入世界。
 
         location 缺省时放到第一个区域。NPC 认知对象与位置实体分开持有:
         _npcs 管认知, entities 管位置 (感知/档位调度用)。
+        reflection_threshold: 透传给 NPC (重要性累积到多少触发自我反思);
+        缺省用 NPC 默认 150。
         """
         from .npc import NPC   # 函数级导入, 避免模块加载期循环依赖
+        kwargs = {} if reflection_threshold is None else \
+            {"reflection_threshold": reflection_threshold}
         npc = NPC.create(name, persona_traits, llm=llm, embedder=embedder,
-                         data_dir=data_dir)
+                         data_dir=data_dir, **kwargs)
         self._npcs[name] = npc
         self._npc_data_dirs[name] = data_dir   # 记录其独立 db 位置, 供世界持久化恢复
         loc = self.locations[location] if location else next(iter(self.locations.values()))
