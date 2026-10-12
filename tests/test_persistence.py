@@ -28,7 +28,8 @@ class _StubLLM(LLMClient):
     def reflection_insights(self, evidence, n: int = 5):
         return [("stub-insight", [e[0] for e in evidence[:1]])] if evidence else []
 
-    def generate_plan(self, persona_traits, previous_day, date):
+    def generate_plan(self, persona_traits, previous_day, date, context=""):
+        # context 是 NPC 近期记忆/世界事件 (世界背景驱动计划), stub 忽略
         return [(7, 9, "stub-activity")]
 
     def decompose_activity(self, activity, start, end):

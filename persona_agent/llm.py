@@ -56,8 +56,14 @@ class LLMClient(ABC):
 
     @abstractmethod
     def generate_plan(self, persona_traits: dict[str, float],
-                      previous_day: str, date: str) -> list[tuple[int, int, str]]:
-        """生成日计划: 5-8 个 (start_hour, end_hour, activity) 时间块。"""
+                      previous_day: str, date: str,
+                      context: str = "") -> list[tuple[int, int, str]]:
+        """生成日计划: 5-8 个 (start_hour, end_hour, activity) 时间块。
+
+        context 是 NPC 的近期记忆/世界事件 (如刚颁布的眼狩令)。计划在世界背景
+        下生成: 情境紧张时计划应反映 (避开危险地、谨慎、检查藏匿处), 而非无视
+        世界事件的岁月静好。context 为空时退回纯人格+前一天活动。
+        """
 
     @abstractmethod
     def decompose_activity(self, activity: str, start: int, end: int) -> \

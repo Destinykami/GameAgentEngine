@@ -178,10 +178,18 @@ class NPC:
 
     # ---------------------------------------------------------------- 规划
     def generate_daily_plan(self, previous_day: str, date: str, now: float) -> list[int]:
-        """生成日计划并存入记忆流, 设为当前计划。"""
+        """生成日计划并存入记忆流, 设为当前计划。
+
+        计划在世界背景下生成: 取 NPC 近期观察 (含世界事件) 作为 context 喂给
+        generate_plan, 让计划反映所处世界 (如持眼者逢眼狩令会规划躲避), 而非
+        只靠人格+前一天活动生成岁月静好的日程。
+        """
         self._advance(now)
+        recent = [m.content for m in self.store.all_valid(
+            types=["observation"])[-10:]]
+        context = " | ".join(recent) if recent else ""
         ids = self.planner.make_daily_plan(self.store, self.persona_traits,
-                                           previous_day, date, now)
+                                           previous_day, date, now, context=context)
         self._current_plan = "日计划已生成"
         return ids
 

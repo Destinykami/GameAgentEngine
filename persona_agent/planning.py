@@ -20,9 +20,13 @@ class PlanningEngine:
 
     # ------------------------------------------------------------- 日计划
     def make_daily_plan(self, store: MemoryStore, persona_traits: dict,
-                        previous_day: str, date: str, now: float) -> list[int]:
-        """生成日计划并逐层分解, 全部存为 plan 记忆, 返回顶层计划 id。"""
-        top_blocks = self._llm.generate_plan(persona_traits, previous_day, date)
+                        previous_day: str, date: str, now: float,
+                        context: str = "") -> list[int]:
+        """生成日计划并逐层分解, 全部存为 plan 记忆, 返回顶层计划 id。
+
+        context 是 NPC 近期记忆/世界事件, 让世界背景驱动计划 (而非只靠人格)。
+        """
+        top_blocks = self._llm.generate_plan(persona_traits, previous_day, date, context)
         top_ids: list[int] = []
         for start, end, activity in top_blocks:
             top_id = self._save_plan(store, now, f"{start:02d}-{end:02d} {activity}",
