@@ -36,16 +36,20 @@ ALPHA_RELEVANCE = 1.0
 # 观察比反思更公式化、近义重复更多, 阈值比反思去重 (0.95) 略松。
 OBS_DEDUP_THRESHOLD = 0.92
 
-# 遗忘/衰减 (blog 2.2.5 的遗忘维度): strength = base * 0.5 ** (age / half_life)
-# - base: 反思用 confidence, 观察/计划用 importance/10
-# - age:  距 max(timestamp, last_accessed) 的小时数 —— 被回忆过的记忆衰减更慢
+# 遗忘 = 部分衰减降权 (不直接删除): importance *= 0.5 ** (age / half_life),
+# 渐近降到 MIN_IMPORTANCE 为止, 记忆**保留**(valid 恒为 1), 只是 importance
+# 被调低。检索的 importance 维用 importance/10, 所以老记忆自然跌出前排,
+# 但仍在库里 —— 被回忆(last_accessed 刷新)或 merge 时又能升回来。
+# - age: 距 max(timestamp, last_accessed) 的小时数 —— 被回忆过的记忆衰减更慢
 # - 半衰期: 原始观察最先淡去, 反思(高阶认知)留存最久, 计划隔夜即过期
-# - 跌破 FORGET_FLOOR 的记忆被失效 (valid=0)
+# - FORGET_FLOOR 是强度(0-1)下限; MIN_IMPORTANCE = FORGET_FLOOR*10 是
+#   对应的 importance(0-10)下限 —— 降权到此为止, 不再删。
 FORGET_FLOOR = 0.15
+MIN_IMPORTANCE = FORGET_FLOOR * 10.0   # = 1.5, importance 降权下限
 FORGET_HALF_LIVES: dict[str, float] = {
-    "observation": 48.0,   # ~2 天: 没被固化、没被回忆的原始事件淡去
-    "reflection": 168.0,   # ~2 周: 高阶认知留存最久
-    "plan": 24.0,          # ~1 天: 计划隔夜即失效
+    "observation": 48.0,   # ~2 天: 没被固化、没被回忆的原始事件先降权
+    "reflection": 168.0,   # ~2 周: 高阶认知降权最慢
+    "plan": 24.0,          # ~1 天: 计划隔夜即降权
 }
 
 
@@ -255,6 +259,15 @@ class MemoryStore:
                 (confidence, mem_id),
             )
 
+    def _set_importance(self, mem_id: int, importance: float) -> None:
+        """设某条记忆的 importance (遗忘降权用; 只降不升, 下限 MIN_IMPORTANCE)。"""
+        importance = max(MIN_IMPORTANCE, min(10.0, importance))
+        with self._lock, self._conn:
+            self._conn.execute(
+                "UPDATE memory SET importance = ? WHERE id = ?",
+                (importance, mem_id),
+            )
+
     def count(self, player_id: str | None = None) -> int:
         sql = "SELECT COUNT(*) FROM memory WHERE valid = 1"
         args: list = []
@@ -305,7 +318,9 @@ class MemoryStore:
             return new_imp
 
     def all_invalid(self) -> list[MemoryRecord]:
-        """取全部已失效记忆 (被遗忘/冲突失效), 按时间排序, 供审查。"""
+        """取全部已失效记忆 (冲突失效), 按时间排序, 供审查。
+
+        注意: 遗忘改为降权后不再产生失效记录, 这里只剩冲突失效的反思。"""
         with self._lock:
             rows = self._conn.execute(
                 "SELECT * FROM memory WHERE valid = 0 ORDER BY timestamp, id"
@@ -317,17 +332,19 @@ class MemoryStore:
                 for r in rows]
 
     # ------------------------------------------------------------------ 遗忘
-    def decay_and_forget(self, now: float, floor: float = FORGET_FLOOR,
+    def decay_and_forget(self, now: float,
                          half_lives: dict[str, float] | None = None
                          ) -> list[int]:
-        """时间遗忘: 把衰减后强度跌破 floor 的记忆失效, 返回被遗忘的 id。
+        """时间遗忘 (部分衰减降权, 不删除): 把每条未受保护记忆的 importance
+        乘以衰减因子, 渐近降到 MIN_IMPORTANCE 为止, 返回被降权的 id。
 
-        强度 = base * 0.5 ** (age / half_life), 其中
-          base = 反思的 confidence / 观察与计划的 importance/10
-          age  = now - max(timestamp, last_accessed or timestamp)
-                 (被回忆过的记忆从"上次被检索"起算, 衰减更慢)
-        保护: 被有效反思引用为证据的观察不遗忘 —— 它已固化为高阶认知,
-        忘了它会断开反思的证据链。保护集在清扫前按当前有效反思快照计算。
+        importance *= 0.5 ** (age / half_life), 其中
+          age = now - max(timestamp, last_accessed or timestamp)
+                (被回忆过 / merge 刷新的记忆衰减更慢, 抗遗忘)
+        记忆**保留** (valid 恒 1), 只降 importance —— 检索 importance 维随之
+        跌出前排, 但仍可被检索, 被回忆又能升回。这是"降权"不是"抹除"。
+        保护: 被有效反思引用为证据的观察不降权 —— 它已固化为高阶认知,
+        降了它会削弱反思的证据链。保护集按当前有效反思快照计算。
         """
         hl = half_lives or FORGET_HALF_LIVES
         mems = self.all_valid()
@@ -338,7 +355,7 @@ class MemoryStore:
         for m in mems:
             if m.type == "reflection" and m.evidence:
                 protected.update(m.evidence)
-        invalidated: list[int] = []
+        downweighted: list[int] = []
         for m in mems:
             if m.type == "observation" and m.id in protected:
                 continue
@@ -346,12 +363,12 @@ class MemoryStore:
                          m.last_accessed if m.last_accessed is not None
                          else m.timestamp)
             age = max(0.0, now - anchor)
-            base = m.confidence if m.type == "reflection" else m.importance / 10.0
-            strength = base * (0.5 ** (age / hl.get(m.type, 48.0)))
-            if strength < floor:
-                self.invalidate(m.id, reason="forgetting")
-                invalidated.append(m.id)
-        return invalidated
+            factor = 0.5 ** (age / hl.get(m.type, 48.0))
+            new_imp = max(MIN_IMPORTANCE, m.importance * factor)
+            if new_imp < m.importance - 1e-9:   # importance 实际下调
+                self._set_importance(m.id, new_imp)
+                downweighted.append(m.id)
+        return downweighted
 
     # ------------------------------------------------------------------ 元数据
     def set_meta(self, key: str, value: Any) -> None:
