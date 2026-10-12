@@ -59,8 +59,14 @@ def tiers_str(tiers: dict) -> str:
     return "  ".join(f"{n}={t}" for n, t in tiers.items())
 
 
-def say(npc_name: str, line: str, reply: str) -> None:
-    print(f"   {line}\n   {npc_name}: {reply}")
+def say(npc_name: str, player_line: str, reply: str) -> None:
+    """打印一段对话: 旅行者的话 (脚本驱动, 是喂给 speak 的输入) + NPC 的回复
+    (NPC 自己用 LLM 非全知生成, 只用它自己的记忆流)。"""
+    # 兼容旧调用里 "NPC: 台词" 的写法, 统一显示成旅行者说
+    if player_line.startswith(f"{npc_name}: "):
+        player_line = player_line[len(npc_name) + 2:]
+    print(f"   旅行者: {player_line}")
+    print(f"   {npc_name}: {reply}")
 
 
 def snapshot(w: World, day_label: str) -> None:
