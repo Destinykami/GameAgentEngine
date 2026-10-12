@@ -32,7 +32,9 @@ class ReflectionEngine:
     def reflect_self(self, store: MemoryStore, now: float,
                      recent_n: int = 100) -> list[int]:
         """从最近的自我/世界记忆生成自我反思, 返回新记忆 id。"""
-        recent = store.all_valid(player_id=None, types=["observation", "reflection"])
+        # 只用真实观察生成问题与证据: 若把反思也纳入, 反思会拿别的反思当证据,
+        # 一代代复述放大自己 (级联失控)。观察是唯一的"事实"来源。
+        recent = store.all_valid(player_id=None, types=["observation"])
         recent = recent[-recent_n:]
         if not recent:
             return []
@@ -42,7 +44,8 @@ class ReflectionEngine:
         new_ids: list[int] = []
         for q in questions:
             evidence = store.retrieve(query=q, now=now,
-                                      player_id=None, top_k=10)
+                                      player_id=None, top_k=10,
+                                      types=["observation"])
             ev_pairs = [(e["id"], e["content"]) for e in evidence]
             if not ev_pairs:
                 continue
@@ -66,8 +69,10 @@ class ReflectionEngine:
 
         new_ids: list[int] = []
         for q in questions:
+            # 证据只用真实观察, 不用其他反思 → 切断"反思引用反思"的级联。
             evidence = store.retrieve(query=q, now=now, player_id=player_id,
-                                      top_k=10, include_player=player_id)
+                                      top_k=10, include_player=player_id,
+                                      types=["observation"])
             ev_pairs = [(e["id"], e["content"]) for e in evidence]
             if not ev_pairs:
                 continue

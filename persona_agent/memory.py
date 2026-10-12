@@ -153,16 +153,19 @@ class MemoryStore:
                  player_id: str | None = None,
                  top_k: int = 8,
                  include_player: str | None = None,
-                 min_score: float = 0.0) -> list[dict]:
+                 min_score: float = 0.0,
+                 types: Sequence[str] | None = None) -> list[dict]:
         """三维检索。
 
         - query: 查询文本 (应已含玩家身份, 使 relevance 偏向该玩家)。
         - now: 当前游戏内时间。
         - player_id: 限定只检索某玩家的关系流 (可选)。
         - include_player: 在评分上额外给"属于该玩家"的记忆加权 (千人千面)。
+        - types: 限定记忆类型 (如 ["observation"]), 用于让反思只以真实观察为证据,
+          切断"反思引用反思"的级联。
         """
         q_vec = self._embedder.embed([query])[0]
-        cands = self.all_valid(player_id=player_id)
+        cands = self.all_valid(player_id=player_id, types=types)
         if not cands:
             return []
 
