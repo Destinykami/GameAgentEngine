@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import sqlite3
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 # --------------------------------------------------------------------- 区域
@@ -30,19 +31,52 @@ class Location:
 # --------------------------------------------------------------------- 实体
 @dataclass
 class Entity:
-    """世界实体: NPC 或玩家, 都有位置。kind = "npc" | "player"。"""
+    """世界实体 (Agent): NPC 或玩家, 都有位置 + 物理状态 + 目标。
+
+    kind = "npc" | "player"。多智能体自治 (world_auto_sim) 里每个实体都是
+    Agent: 感知 (非全知) → 决策 → 行动。物理状态 (血/攻防) 供战斗, goal 驱动
+    决策, history 是自身近期事件 (决策用的非全知视图, 不读别人记忆)。
+    """
     kind: str
     name: str
     location: Location
+    health: int = 100          # 血量, 0 = 死亡
+    attack: int = 10           # 攻击 (伤害 = 攻 - 对方防 + 随机)
+    defense: int = 0           # 防御
+    goal: str = ""             # 目标 (LLM 决策的驱动力)
+    dead: bool = False         # 死亡标记 (移出世界)
+    history: list[str] = field(default_factory=list)   # 自身近期事件 (非全知视图)
 
     def move(self, location: Location) -> None:
         self.location = location
 
+    def is_alive(self) -> bool:
+        return not self.dead
+
+    def take_damage(self, dmg: int) -> int:
+        """承受伤害, 返回实际扣血; 归零死亡。"""
+        if self.dead:
+            return 0
+        self.health -= dmg
+        if self.health <= 0:
+            self.health = 0
+            self.dead = True
+        return dmg
+
+    def record(self, event: str) -> None:
+        """记入自身近期事件 (决策用的非全知视图), 上限 20 条。"""
+        self.history.append(event)
+        self.history = self.history[-20:]
+
 
 class Player(Entity):
-    """玩家实体 (kind=player)。阶段 0 只是位置占位; 脚本驱动走位+台词在阶段 6。"""
-    def __init__(self, name: str, location: Location) -> None:
-        super().__init__(kind="player", name=name, location=location)
+    """玩家 Agent (kind=player)。多智能体自治里是 LLM 驱动的 agent (有 goal)。"""
+    def __init__(self, name: str, location: Location,
+                 goal: str = "", health: int = 100,
+                 attack: int = 10, defense: int = 0) -> None:
+        super().__init__(kind="player", name=name, location=location,
+                         health=health, attack=attack, defense=defense,
+                         goal=goal)
 
 
 # --------------------------------------------------------------------- 距离
@@ -75,6 +109,8 @@ class World:
         self.entities: dict[str, Entity] = {}
         self._npcs: dict[str, "NPC"] = {}   # NPC 认知对象 (实体注册表的子集)
         self._npc_data_dirs: dict[str, str] = {}   # NPC → 其独立 db 的 data_dir (持久化注册表)
+        self._agent_llms: dict[str, object] = {}   # agent → 其 LLM (决策用, 自治循环)
+        self._agent_personas: dict[str, dict] = {}   # agent → 人格特质 (决策用)
         self.clock: float = 0.0            # 游戏内时间 (小时, 单调递增)
         self.perception_radius = perception_radius   # 视距: 玩家距 NPC 超过则感知不到
         self.full_radius = full_radius             # 同区域半径: 玩家距 NPC <= 此值 = full
@@ -162,6 +198,134 @@ class World:
             raise KeyError(f"NPC '{target_npc}' 未注册入世界")
         self.advance(now)
         return npc.perceive_action(player_name, action, now)
+
+    # ------------------------------------------------------------- 多智能体自治
+    def add_agent_player(self, name: str, location: str, goal: str, llm,
+                         persona_traits: dict[str, float] | None = None,
+                         health: int = 100, attack: int = 10,
+                         defense: int = 0) -> Player:
+        """注册一个 LLM 驱动的玩家 Agent (有 goal, 自治决策)。"""
+        player = Player(name, self.locations[location], goal=goal,
+                        health=health, attack=attack, defense=defense)
+        self.add_entity(player)
+        self._agent_llms[name] = llm
+        self._agent_personas[name] = persona_traits or {}
+        return player
+
+    def agent_perception(self, agent: Entity) -> str:
+        """构建 agent 的感知视图 (非全知): 视距内存活实体 + 其血量/位置。"""
+        visible = []
+        for other in self.entities.values():
+            if other is agent or other.dead:
+                continue
+            if distance(agent, other) <= self.perception_radius:
+                visible.append(f"{other.name}(血{other.health},在{other.location.name})")
+        return "; ".join(visible) if visible else "(空无一人)"
+
+    def agent_state(self, agent: Entity) -> str:
+        return (f"血{agent.health}, 攻{agent.attack}, 防{agent.defense}, "
+                f"在{agent.location.name}")
+
+    def decide_agent(self, agent: Entity, memory_context: str = "") -> dict:
+        """agent 决策下一步: LLM 战略判断 (非全知, 只看自己感知+记忆+目标)。"""
+        llm = self._agent_llms.get(agent.name)
+        if llm is None:
+            return {"action": "wait", "reason": "无 LLM"}
+        perception = self.agent_perception(agent)
+        if memory_context:
+            perception += " | 自己的记忆: " + memory_context
+        return llm.decide_action(agent.name, agent.goal,
+                                 self._agent_personas.get(agent.name, {}),
+                                 perception, agent.history, self.agent_state(agent))
+
+    def execute_action(self, agent: Entity, action: dict) -> str:
+        """执行动作并应用影响, 返回发生了什么 (供打印/记录)。非全知: 只影响直接相关方。"""
+        a = action.get("action", "wait")
+        target = self.get(action.get("target", "")) if action.get("target") else None
+        if a == "move":
+            dest = action.get("dest") or agent.location.name
+            if dest in self.locations:
+                agent.move(self.locations[dest])
+                agent.record(f"移动到 {dest}")
+                return f"{agent.name} 移动到 {dest}"
+            return f"{agent.name} 想移动到不存在的 {dest}, 未动"
+        if a == "talk" and target and target.is_alive():
+            line = action.get("utterance", "")
+            agent.record(f"对 {target.name} 说: {line}")
+            target.record(f"{agent.name} 对TA说: {line}")
+            return f"{agent.name} 对 {target.name} 说: {line}"
+        if a == "attack" and target and target.is_alive():
+            dmg = max(0, agent.attack - target.defense + random.randint(-2, 2))
+            target.take_damage(dmg)
+            agent.record(f"攻击 {target.name}, 造成 {dmg} 伤害")
+            target.record(f"{agent.name} 攻击了TA, 受到 {dmg} 伤害")
+            extra = f" → {target.name} 阵亡!" if target.dead else ""
+            return f"{agent.name} 攻击 {target.name}, 造成 {dmg} 伤害{extra}"
+        if a == "flee":
+            # 逃到离最近威胁最远的区域
+            threats = [o for o in self.entities.values()
+                       if o is not agent and not o.dead
+                       and distance(agent, o) <= self.perception_radius]
+            if threats:
+                def farthest(loc: Location) -> float:
+                    return min(((loc.x - t.location.x) ** 2 +
+                                (loc.y - t.location.y) ** 2) ** 0.5
+                               for t in threats)
+                best = max(self.locations.values(), key=farthest)
+                agent.move(best)
+                agent.record(f"逃离威胁, 逃到 {best.name}")
+                return f"{agent.name} 逃离威胁, 逃到 {best.name}"
+            return f"{agent.name} 想逃但无威胁"
+        if a in ("help", "hide") and target and target.is_alive():
+            agent.record(f"{'帮助' if a == 'help' else '替'} {target.name}")
+            target.record(f"{agent.name} {'帮了TA' if a == 'help' else '替TA藏匿'}")
+            return f"{agent.name} {'帮助' if a == 'help' else '替'} {target.name}"
+        agent.record("观望")
+        return f"{agent.name} 观望"
+
+    def step_autonomous(self, now: float) -> list[str]:
+        """多智能体自治一步: 所有存活 agent 先决策 (同一时刻感知) → 统一执行 →
+        重感知。NPC 额外走反思/计划。返回本步发生的事 (供打印)。
+
+        先决策后执行: 所有 agent 基于同一时刻的感知做决定, 再统一执行, 避免
+        顺序偏差 (先行动的占便宜)。死亡即时生效。
+        """
+        self.advance(now)
+        self.schedule_tiers(now)
+        # 每天早晨自动规划 (复用 step 的逻辑)
+        day = int(self.clock // 24)
+        if day != self._last_plan_day and self.clock % 24 >= 7.0:
+            for npc in self._npcs.values():
+                npc.generate_daily_plan(previous_day=f"第{day}天",
+                                        date=f"第{day+1}天", now=self.clock)
+            self._last_plan_day = day
+        # 1. 所有存活 agent 先决策 (基于同一时刻感知)
+        decisions: dict[str, dict] = {}
+        for name, agent in self.entities.items():
+            if not agent.is_alive():
+                continue
+            memory_context = ""
+            if name in self._npcs:   # NPC 用自己的记忆流做非全知上下文
+                npc = self._npcs[name]
+                mems = [m.content for m in npc.store.all_valid()[-5:]]
+                memory_context = " | ".join(mems)
+            decisions[name] = self.decide_agent(agent, memory_context)
+        # 2. 统一执行 (应用影响)
+        events: list[str] = []
+        for name, agent in self.entities.items():
+            if not agent.is_alive():
+                continue
+            events.append(self.execute_action(agent, decisions[name]))
+        # 3. 重感知 (行动改变了谁在哪/谁死了) + NPC 反思
+        for name, npc in self._npcs.items():
+            if self.entities[name].dead:
+                continue
+            self.perceive(name, now)
+            if npc._tier != "idle":
+                npc.maybe_reflect_self(now)
+        if self._conn is not None:
+            self.save()
+        return events
 
     # ------------------------------------------------------------- 距离调度
     def tier_of(self, npc_name: str) -> str:

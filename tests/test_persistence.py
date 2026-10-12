@@ -59,6 +59,13 @@ class _StubLLM(LLMClient):
         # 词供 trust 词表断言。真实 LLM 的观察生成质量由集成验证覆盖。
         return f"{player_name} {action}"
 
+    def decide_action(self, agent_name, goal, persona_traits, perception,
+                      history, state):
+        # 离线确定性: 默认等待 (不行动), 供多智能体循环骨架测试 (不联网)。
+        # 真实 LLM 的决策质量由 world_auto_sim 集成验证覆盖。
+        return {"action": "wait", "target": "", "utterance": "",
+                "dest": "", "reason": "stub-wait"}
+
 
 TRAITS = {"social": 0.7, "goal_oriented": 0.5}
 

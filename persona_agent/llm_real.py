@@ -288,6 +288,33 @@ class RealLLM(LLMClient):
         return self._chat("你是游戏 NPC 的观察者, 客观描述你看到的事, 只输出一句话。",
                           user, think=False, temperature=0.4, max_tokens=64).strip()
 
+    # ------------------------------------------------------------ Agent 决策
+    def decide_action(self, agent_name: str, goal: str,
+                      persona_traits: dict[str, float], perception: str,
+                      history: list[str], state: str) -> dict:
+        """Agent 决策下一步动作 (非全知)。输出结构化动作 JSON。"""
+        hist = "\n".join(f"- {h}" for h in history[-10:]) or "(无)"
+        user = ("你是游戏角色「" + agent_name + "」。你的目标: " + (goal or "(无)")
+                + "。人格特质: " + str(persona_traits) + "。\n"
+                + "你当前看到的 (非全知, 仅视距内): " + (perception or "(空无一人)") + "\n"
+                + "你近期的经历:\n" + hist + "\n"
+                + "你的状态: " + state + "\n\n"
+                + "基于以上, 决定你下一步做什么。输出 JSON 对象:\n"
+                + '{"action": "move"|"talk"|"attack"|"help"|"hide"|"flee"|"wait",'
+                + ' "target": "对象名或空", "utterance": "若对话说什么, 否则空",'
+                + ' "dest": "若移动去哪区域, 否则空", "reason": "简述理由"}\n'
+                + "action 选一个; 只输出 JSON。")
+        data = self._chat_json("你是一个游戏角色决策器, 只输出一个 JSON 对象。",
+                               user, think=False, temperature=0.5)
+        if isinstance(data, dict) and "action" in data:
+            return {"action": str(data.get("action", "wait")),
+                    "target": str(data.get("target", "")),
+                    "utterance": str(data.get("utterance", "")),
+                    "dest": str(data.get("dest", "")),
+                    "reason": str(data.get("reason", ""))}
+        return {"action": "wait", "target": "", "utterance": "",
+                "dest": "", "reason": "解析失败"}
+
     @staticmethod
     def _extract_int(raw: str, lo: int, hi: int, default: int = 0) -> int:
         """提取第一个整数并夹到 [lo, hi]; 支持负号; 提不出给 default。"""

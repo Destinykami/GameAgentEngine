@@ -11,6 +11,7 @@
 - judge_trust(...)                    基于关系记忆判断对玩家的信任度 (-1..1)
 - judge_conflict(reflection, obs)     判断更晚观察与反思的矛盾强度 (0-10)
 - perceive_action(npc, player, action)  NPC 把玩家的动作观察成自己的描述
+- decide_action(agent, goal, perception, ...)  Agent 决策下一步动作 (非全知)
 
 实现: persona_agent.llm_real.RealLLM (OpenAI 兼容, SGLang 部署)。
 实现者只应使用传入的记忆内容 —— 这是"非全知"原则的体现。
@@ -106,4 +107,18 @@ class LLMClient(ABC):
         脚本只提供原始动作 (动词+对象, 如"帮藏眼"/"委托打造武器"), NPC 结合
         自己的处境/记忆, 用第三人称客观描述"发生了什么" —— 观察内容由 NPC
         自己生成, 不是脚本写死的。context 是 NPC 该玩家近期记忆 (让描述连贯)。
+        """
+
+    @abstractmethod
+    def decide_action(self, agent_name: str, goal: str,
+                      persona_traits: dict[str, float], perception: str,
+                      history: list[str], state: str) -> dict:
+        """Agent 决策下一步动作 (第 11 类推理, 非全知)。
+
+        给定 agent 的名字/目标/人格/感知 (只看到视距内的实体+状态) /自身近期
+        事件/自身状态, LLM 输出结构化动作 dict:
+        {"action": "move"|"talk"|"attack"|"help"|"hide"|"flee"|"wait",
+         "target": "对象名(可空)", "utterance": "对话内容(可空)",
+         "dest": "移动目的地区域名(可空)", "reason": "理由"}
+        只决定做什么/对谁/说什么 (战略层), 数值由规则层执行。
         """
