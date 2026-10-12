@@ -88,6 +88,16 @@ def status_line(w: World) -> str:
     return " | ".join(parts)
 
 
+def snapshot(w: World) -> dict:
+    """抓一个世界状态快照 (供回放): 每个 agent 的血/位置/理由/攻/角色/存活。"""
+    return {
+        name: {"health": e.health, "loc": e.location.name, "dead": e.dead,
+               "reasons": list(e.reasons), "attack": e.attack, "role": e.role,
+               "kind": e.kind}
+        for name, e in w.entities.items()
+    }
+
+
 def main() -> int:
     shutil.rmtree(DATA, ignore_errors=True)
     os.makedirs(DATA, exist_ok=True)
@@ -115,6 +125,11 @@ def main() -> int:
     persuade_count = 0
     decree_ended = False
     last_persuade_day = -1   # 上次有效劝说的天 (将军"容我考虑", 当天再劝无效)
+    timeline: list[dict] = []   # 结构化时间线 (供回放)
+    timeline.append({"day": 0, "moment": 7.0, "clock": 7.0,
+                     "events": ["世界事件: 雷电将军颁布眼狩令, 全城神之眼一律收缴"],
+                     "states": snapshot(w), "persuade": 0, "decree_ended": False,
+                     "shogun_dead": False})
 
     for day in range(1, DAYS + 1):
         for moment in MOMENTS:
@@ -124,33 +139,42 @@ def main() -> int:
             for ev in events:
                 print("   " + ev)
             print("   [状态] " + status_line(w))
+            note = ""
             # 结局判定: 将军阵亡 或 被说服 (旅行者本步对将军直接 talk 才计数)
             if shogun.dead:
-                print(f"   ★ 雷电将军阵亡! 眼狩令随将军倒台而废止。")
+                note = "★ 雷电将军阵亡! 眼狩令随将军倒台而废止。"
+                print(f"   {note}")
                 decree_ended = True
-                break
-            t_act = decisions.get("旅行者", {})
-            if t_act.get("action") == "talk" and t_act.get("target") == "雷电将军":
-                trav = w.get("旅行者")
-                # 双关: 理由不够 或 实力不够 → 将军驳回 (空口白话无效)
-                if len(trav.reasons) < REASON_NEEDED:
-                    print(f"   (雷电将军: '你既无实证, 一派胡言。先去把眼狩令之弊查清楚。' "
-                          f"[理由{len(trav.reasons)}/{REASON_NEEDED} 不足, 驳回])")
-                elif trav.attack < ATTACK_NEEDED:
-                    print(f"   (雷电将军: '就凭你这副身板也敢诘问本将军? 去磨磨你的刀。' "
-                          f"[攻{trav.attack}/{ATTACK_NEEDED} 不足, 驳回])")
-                elif ONE_PERSUADE_PER_DAY and day == last_persuade_day:
-                    print("   (雷电将军: '本将军今日已听过了, 容我再想想。' 当天再劝无效)")
-                else:
-                    persuade_count += 1
-                    last_persuade_day = day
-                    print(f"   (双关已过, 旅行者当面劝说雷电将军, 将军沉吟'容我考虑' "
-                          f"— {persuade_count}/{PERSUADE_N})")
-            if persuade_count >= PERSUADE_N and not shogun.dead:
-                w.world_event("雷电将军被旅行者说服, 废止眼狩令: 持眼者可保留神之眼",
-                              now=now)
-                print(f"   ★ 雷电将军被说服 (当面劝说 {persuade_count} 次), 废止眼狩令!")
-                decree_ended = True
+            else:
+                t_act = decisions.get("旅行者", {})
+                if t_act.get("action") == "talk" and t_act.get("target") == "雷电将军":
+                    trav = w.get("旅行者")
+                    # 双关: 理由不够 或 实力不够 → 将军驳回 (空口白话无效)
+                    if len(trav.reasons) < REASON_NEEDED:
+                        note = (f"雷电将军驳回: '你既无实证, 一派胡言。' "
+                                f"[理由{len(trav.reasons)}/{REASON_NEEDED} 不足]")
+                    elif trav.attack < ATTACK_NEEDED:
+                        note = (f"雷电将军驳回: '就凭你这副身板也敢诘问本将军?' "
+                                f"[攻{trav.attack}/{ATTACK_NEEDED} 不足]")
+                    elif ONE_PERSUADE_PER_DAY and day == last_persuade_day:
+                        note = "雷电将军: '本将军今日已听过了, 容我再想想。' 当天再劝无效"
+                    else:
+                        persuade_count += 1
+                        last_persuade_day = day
+                        note = (f"双关已过, 旅行者当面劝说, 将军沉吟'容我考虑' "
+                                f"— {persuade_count}/{PERSUADE_N}")
+                    print("   (" + note + ")")
+                if persuade_count >= PERSUADE_N and not shogun.dead:
+                    w.world_event("雷电将军被旅行者说服, 废止眼狩令: 持眼者可保留神之眼",
+                                  now=now)
+                    note = f"★ 雷电将军被说服 (当面劝说 {persuade_count} 次), 废止眼狩令!"
+                    print(f"   {note}")
+                    decree_ended = True
+            timeline.append({"day": day, "moment": moment, "clock": now,
+                             "events": events, "note": note, "states": snapshot(w),
+                             "persuade": persuade_count, "decree_ended": decree_ended,
+                             "shogun_dead": shogun.dead})
+            if decree_ended or shogun.dead:
                 break
         if decree_ended or shogun.dead:
             break
@@ -161,8 +185,16 @@ def main() -> int:
         print(f"\n   眼狩令已废止 (将军{'阵亡' if shogun.dead else '被说服'})。旅行者目标达成。")
     else:
         print(f"\n   一周结束, 眼狩令仍在。将军: 血{shogun.health}, 被劝说 {persuade_count}/{PERSUADE_N} 次。")
+    # 存时间线 (供 replay.py 回放)
+    tl_path = os.path.join(DATA, "timeline.json")
+    with open(tl_path, "w", encoding="utf-8") as f:
+        import json
+        json.dump({"reason_needed": REASON_NEEDED, "attack_needed": ATTACK_NEEDED,
+                   "persuade_n": PERSUADE_N, "steps": timeline}, f, ensure_ascii=False,
+                  indent=2)
     w.close()
     print(f"\n世界状态已存: {os.path.abspath(DATA)}/world.db")
+    print(f"时间线已存:   {tl_path}  (回放: .venv/bin/python examples/replay.py)")
     return 0
 
 
