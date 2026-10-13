@@ -240,6 +240,21 @@ def test_world_event_global(tmp_path):
     w.close()
 
 
+def test_world_event_skips_dead_npc(tmp_path):
+    """L7: 死去的 NPC 不感知世界事件 (同 step/日计划的死亡检查)。"""
+    w = _world(tmp_path)
+    w.add_npc("桃音", {"social": 0.8, "goal_oriented": 0.3},
+              llm=_StubLLM(), data_dir=str(tmp_path), location="治疗堂")
+    w.add_npc("刚郎", {"social": 0.3, "goal_oriented": 0.8},
+              llm=_StubLLM(), data_dir=str(tmp_path), location="锻造坊")
+    w.get("刚郎").health = 0
+    w.get("刚郎").dead = True
+    result = w.world_event("眼狩令全城生效, 持神之眼者将被搜捕", now=5.0)
+    assert set(result) == {"桃音"}, "死者不应感知世界事件"
+    assert w.npc("刚郎").memory_count() == 0, "死者记忆流不应新增事件观察"
+    w.close()
+
+
 # ---------------------------------------------------------------- 阶段 5: 模拟驱动 + 端到端持久化
 def test_step_loop(tmp_path):
     """step 循环: 时钟推进、距离调度切档、感知生成观察、自动持久化。"""

@@ -460,6 +460,8 @@ class World:
                        if location_distance(center, self.entities[n]) <= r]
         result: dict[str, list[int]] = {}
         for name in targets:
+            if self.entities[name].dead:
+                continue   # L7: 死去的 NPC 不感知世界事件 (同 step/日计划的死亡检查)
             result[name] = [self._npcs[name].observe(desc, now)]
         self.advance(now)
         return result

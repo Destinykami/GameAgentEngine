@@ -44,7 +44,7 @@
 |---|---|---|---|---|---|
 | M8 | M | 反思洞察证据 id 无校验: prompt 枚举真实记忆 id (如 101,103), 模型可能回 [1,3], ev_ids 不校验归属就入库, 证据链断成幻影 id, decay 保护集保护不存在的 id, inspect_npc 展示断链 | llm_real.py:176-183 | 过滤 ev_ids ∩ 传入 id 集, 空则回退全部证据 | 已修: `reflection_insights` 引用编号过滤到传入 id 集, 全幻影/空引用回退全引传入证据 (宁宽勿断链), 集成测试断言入库反思证据 id 全部真实存在 |
 | M9 | M | `World.load` 丢失实体状态: entity 表只存 name/kind/location/x/y, health/goal/attack/role/history/reasons 全丢, 跨进程恢复后将军血条回 100、旅行者攻与理由清零, 自治弧线作废 (NPC 记忆流本身持久化是对的) | world.py:484-542 | 补字段进 entity 表, 或文档明确"只恢复位置与时钟" | 已修: entity 表补 8 列 (health/attack/defense/goal/dead/role/history/reasons), save 写全字段, load 按全字段重建 Entity; 旧库 PRAGMA+ALTER 迁移按 Entity 默认值兜底 (旧库本就没存过这些状态)。死者不复活、role 特殊判定与说服理由跨进程保留 |
-| L7 | L | `world_event` 不检查 NPC 死亡, dead NPC 也会感知世界事件 (step 的 perceive/reflection 都检查了) | world.py:435-436 | 加 dead 检查 | 待修 |
+| L7 | L | `world_event` 不检查 NPC 死亡, dead NPC 也会感知世界事件 (step 的 perceive/reflection 都检查了) | world.py:435-436 | 加 dead 检查 | 已修: world_event 遍历加 `if entities[name].dead: continue`, 死者不感知世界事件, 与 step/日计划循环的死亡检查对齐 |
 | L8 | L | 文档漂移: llm.py 头注"十类推理", OVERVIEW 说 9, 实际抽象方法 11 个 | llm.py:3, OVERVIEW.md:40-64 | 统一为 11 (或按功能分组重述) | 待修 |
 
 ## 测试缺口 (现有 40 个测试都没锁住)
