@@ -61,7 +61,8 @@ class MemoryRecord:
     type: str = "observation"          # observation | reflection | plan
     player_id: str | None = None
     evidence: list[int] = field(default_factory=list)
-    confidence: float = 1.0
+    confidence: float = 1.0            # 当前置信度 (反思会被冲突衰减)
+    base_confidence: float = 1.0       # 创建时的初始置信度 (幂等衰减的重算基准)
     valid: bool = True
     last_accessed: float | None = None
     id: int | None = None              # 由数据库分配
@@ -92,10 +93,18 @@ class MemoryStore:
                     evidence TEXT DEFAULT '[]',
                     confidence REAL DEFAULT 1.0,
                     valid INTEGER DEFAULT 1,
-                    last_accessed REAL
+                    last_accessed REAL,
+                    base_confidence REAL DEFAULT 1.0
                 )
                 """
             )
+            # 旧库迁移: H1 之前建的库没有 base_confidence 列, 补齐 (缺省 1.0,
+            # 旧反思的首次衰减以 1.0 为基准, 比真实初始值略高, 一次性小漂移可接受)
+            cols = {r[1] for r in self._conn.execute("PRAGMA table_info(memory)")}
+            if "base_confidence" not in cols:
+                self._conn.execute(
+                    "ALTER TABLE memory ADD COLUMN base_confidence REAL DEFAULT 1.0"
+                )
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_player ON memory(player_id)"
             )
@@ -115,8 +124,9 @@ class MemoryStore:
                 """
                 INSERT INTO memory
                     (type, content, timestamp, importance, player_id,
-                     evidence, confidence, valid, last_accessed)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     evidence, confidence, valid, last_accessed,
+                     base_confidence)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     rec.type,
@@ -128,6 +138,7 @@ class MemoryStore:
                     rec.confidence,
                     1 if rec.valid else 0,
                     rec.last_accessed,
+                    rec.base_confidence,
                 ),
             )
             new_id = int(cur.lastrowid)
@@ -166,6 +177,7 @@ class MemoryStore:
             id=row[0], type=row[1], content=row[2], timestamp=row[3],
             importance=row[4], player_id=row[5], evidence=json.loads(row[6]),
             confidence=row[7], valid=bool(row[8]), last_accessed=row[9],
+            base_confidence=row[10],
         )
 
     # ------------------------------------------------------------------ 检索
@@ -209,6 +221,11 @@ class MemoryStore:
         for c, r, i, s in zip(cands, r_norm, i_norm, s_norm):
             score = (ALPHA_RECENCY * r + ALPHA_IMPORTANCE * i +
                      ALPHA_RELEVANCE * s)
+            # 置信度折减 (H2): 被冲突衰减的反思按信念强度打折 —— check_conflicts
+            # 的幂等衰减每多一条冲突证据就折半一次, 这里乘 confidence 与之一一对应,
+            # 削弱的信念检索排名随之下降 (博客 2.2.5 "防不可靠推断被放大" 的落点)。
+            # 观察/计划的 confidence 恒 1.0, 不受影响。
+            score *= c.confidence
             # 千人千面: 属于当前玩家的记忆获得额外加权
             if include_player and c.player_id == include_player:
                 score += 0.5
@@ -326,7 +343,8 @@ class MemoryStore:
                 "SELECT * FROM memory WHERE valid = 0 ORDER BY timestamp, id"
             ).fetchall()
         cols = ("id", "type", "content", "timestamp", "importance", "player_id",
-                "evidence", "confidence", "valid", "last_accessed")
+                "evidence", "confidence", "valid", "last_accessed",
+                "base_confidence")
         return [MemoryRecord(**{**dict(zip(cols, r)),
                                 "evidence": json.loads(r[6] or "[]")})
                 for r in rows]

@@ -53,6 +53,8 @@ class ReactionDecider:
         刻意**不看 importance** —— 遗忘只降权不删除, 久远的帮助/背叛仍是
         认知, 不会因"久远"而清零。故信任度不随遗忘淡化。
         关系记忆不变时命中缓存 (签名 = 条数+最新时间戳), 零 LLM 成本。
+        置信度不进签名: 衰减只发生在 check_conflicts, 而它必由新观察触发
+        (speak 门控), 新观察已改签名 —— 所以签名未变 ⟹ 置信度未变, 缓存安全。
         """
         rel = self._store.all_valid(player_id=player_id)
         if not rel:
@@ -61,7 +63,7 @@ class ReactionDecider:
         cached = self._trust_cache.get(player_id)
         if cached is not None and cached[1] == sig:
             return cached[0]
-        mems = [(m.type, m.content) for m in rel]
+        mems = [(m.type, m.content, m.confidence) for m in rel]
         trust = self._llm.judge_trust(mems, player_id)
         self._trust_cache[player_id] = (trust, sig)
         return trust

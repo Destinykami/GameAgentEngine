@@ -46,10 +46,12 @@ class _StubLLM(LLMClient):
     def judge_trust(self, memories, player_id):
         # 离线确定性: 用词表计数模拟 LLM 信任判断 (与旧生产语义一致),
         # 供离线架构测试断言信任值。真实 LLM 的信任质量由集成探针覆盖。
+        # memories 是 (类型, 内容, 置信度); stub 只看内容, 置信度不参与词表计数
+        # (真实 LLM 会按置信度少加权被削弱的反思)。
         from persona_agent.reflection import TRUST_WORDS, DISTRUST_WORDS
-        pos = sum(1 for _, c in memories
+        pos = sum(1 for _t, c, _conf in memories
                   if any(w in c for w in TRUST_WORDS + ("帮助", "帮", "感谢")))
-        neg = sum(1 for _, c in memories
+        neg = sum(1 for _t, c, _conf in memories
                   if any(w in c for w in DISTRUST_WORDS + ("背叛", "欺骗", "撒谎", "骗", "偷")))
         total = pos + neg
         return (pos - neg) / total if total else 0.0

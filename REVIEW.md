@@ -9,8 +9,8 @@
 
 | ID | 严重度 | 问题 | 位置 | 修法 | 状态 |
 |---|---|---|---|---|---|
-| H1 | H | `check_conflicts` 置信度衰减不幂等: `_conflict_cache` 只缓存 LLM 判定的矛盾强度, 不缓存"已处置", 每次 `speak()` 触发都对新读到的 confidence 再 ×0.5 (实测 0.8→0.4→0.2), 对话越多塌得越快 | reflection.py:109-142 | 缓存值改记 (severity, 已处置), 或持久化已衰减/已失效的 (反思id, 观察id) 对; 每个冲突对只更新一次 | 待修 |
-| H2 | H | confidence 无下游消费者: 检索评分 (memory.py:208-215)、judge_trust 输入 (reacting.py:64)、对话 prompt (llm_real.py:122-123) 全都不用它, 冲突衰减烧钱且零行为效果, 博客 2.2.5 "防不可靠推断被放大" 的动机未兑现 | memory.py:208-215, reacting.py:64, llm_real.py:122-123 | 把 confidence 接进检索评分 (如反思的 relevance 乘 confidence 因子) 和/或 judge_trust 输入; 或降级为纯展示字段并砍掉衰减分支 | 待修 |
+| H1 | H | `check_conflicts` 置信度衰减不幂等: `_conflict_cache` 只缓存 LLM 判定的矛盾强度, 不缓存"已处置", 每次 `speak()` 触发都对新读到的 confidence 再 ×0.5 (实测 0.8→0.4→0.2), 对话越多塌得越快 | reflection.py:109-142 | 缓存值改记 (severity, 已处置), 或持久化已衰减/已失效的 (反思id, 观察id) 对; 每个冲突对只更新一次 | 已修: 方案 A —— 新增 base_confidence 列 (旧库 PRAGMA+ALTER 迁移), 衰减改为幂等目标水位 `base * 0.5^(不同冲突观察条数)`, 先数后设 + 守卫拦重复写; 重跑不漂移, 新证据恰好多折半一次 |
+| H2 | H | confidence 无下游消费者: 检索评分 (memory.py:208-215)、judge_trust 输入 (reacting.py:64)、对话 prompt (llm_real.py:122-123) 全都不用它, 冲突衰减烧钱且零行为效果, 博客 2.2.5 "防不可靠推断被放大" 的动机未兑现 | memory.py:208-215, reacting.py:64, llm_real.py:122-123 | 把 confidence 接进检索评分 (如反思的 relevance 乘 confidence 因子) 和/或 judge_trust 输入; 或降级为纯展示字段并砍掉衰减分支 | 已修: 三处接线 —— retrieve() 评分乘 confidence (与 H1 折半一一对应, 削弱信念排名下降)、judge_trust 改 (类型,内容,置信度) 三元组 + prompt 嘱咐少加权、对话 prompt 对被削弱的反思标注置信度 (观察恒 1.0 不注水) |
 | M1 | M | 关系反思兜底问题硬编码 "Klaus 和 {player_id} 的关系如何?", 非 Klaus 的 NPC 兜底时问出外来名字; 引擎不知道 NPC 是谁, 需传入 | reflection.py:87 | 反思方法接收 npc 名 (或引擎持有), 兜底问题用自己的名字 | 待修 |
 | M2 | M | `check_conflicts` 首次跑长关系是 O(反思×更晚观察) 次 LLM 调用 (10×50=500), 缓存不跨进程; 成本尖峰 | reflection.py:122-141 | 限定只查最近 K 条观察, 或跳过 confidence 已低于阈值的反思 | 待修 |
 | L1 | L | `_save` 反思去重每次嵌入该玩家全部已有反思, O(n) 随关系流增长 | reflection.py:149-155 | 缓存反思向量, 或只比较近期反思 | 待修 |
@@ -50,7 +50,7 @@
 
 | ID | 锁定目标 | 对应修复 | 状态 |
 |---|---|---|---|
-| T1 | 置信度衰减幂等: 同一 (ref, obs) 对检查两次, confidence 只降一次 | H1 | 待修 |
+| T1 | 置信度衰减幂等: 同一 (ref, obs) 对检查两次, confidence 只降一次 | H1 | 已修: tests/test_confidence.py (幂等重跑/新证据再折半/强矛盾失效不衰减/检索折减精确减半/信任三元组/对话标注) |
 | T2 | replan 锚定: 重规划块时间 ≥ now, 旧计划被失效 | H4 | 已修: tests/test_replan.py (4 用例: 裁过去块/旧计划失效/深夜无块/整点不误伤) |
 | T3 | react 拿到的 plan 含真实活动 (非"日计划已生成") | H3 | 已修: tests/test_plan_react.py (4 用例: 当前块/无块兜底/重规划中断/显式参数优先) |
 | T4 | merge_observation 对 importance 的实际行为 (当前恰好传 1.0 掩盖死参数) | M6 | 待修 |

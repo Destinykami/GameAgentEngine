@@ -37,14 +37,19 @@ def _open_ro(path: str) -> sqlite3.Connection:
 
 
 def _rows(conn: sqlite3.Connection, include_invalid: bool = False) -> list[dict]:
-    sql = """SELECT id, type, content, timestamp, importance, player_id,
-                    evidence, confidence, valid, last_accessed
+    has_base = "base_confidence" in {r[1] for r in conn.execute(
+        "PRAGMA table_info(memory)")}
+    base_col = ", base_confidence" if has_base else ""
+    sql = f"""SELECT id, type, content, timestamp, importance, player_id,
+                    evidence, confidence, valid, last_accessed{base_col}
              FROM memory"""
     if not include_invalid:
         sql += " WHERE valid = 1"
     sql += " ORDER BY timestamp, id"
     cols = ("id", "type", "content", "timestamp", "importance", "player_id",
             "evidence", "confidence", "valid", "last_accessed")
+    if has_base:
+        cols = cols + ("base_confidence",)
     return [dict(zip(cols, r)) for r in conn.execute(sql).fetchall()]
 
 
@@ -92,7 +97,9 @@ def _fmt_rec(r: dict, content_by_id: dict[int, str]) -> str:
     if r["player_id"]:
         bits.append(f"player={r['player_id']}")
     if r["type"] == "reflection":
-        bits.append(f"conf={r['confidence']:.2f}")
+        base = r.get("base_confidence")
+        conf = f"conf={r['confidence']:.2f}" + (f"/{base:.2f}" if base is not None else "")
+        bits.append(conf)
         if ev:
             bits.append("证据→" + ",".join(str(i) for i in ev))
     if not r["valid"]:

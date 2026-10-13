@@ -114,12 +114,21 @@ class ReflectionEngine:
         高分 → 失效; 轻微帮助削弱轻微警惕 = 中分 → 衰减。只检查**更晚**的观察
         (时间上只有新证据能推翻旧信念)。判断按 (反思内容, 观察内容) 缓存,
         重复检查同一对零 LLM 成本。
+
+        衰减是**幂等的目标水位** (H1), 不是累加操作:
+            目标置信度 = base_confidence * 0.5 ** (不同冲突观察的条数)
+        同一组证据重跑 check_conflicts, 水位不变 (守卫拦住重复写入); 一条**新**
+        冲突观察让指数 +1, 恰好多折半一次 —— "一条证据削弱一次信念"。旧实现
+        是"找到冲突对就乘 0.5 再 break", 缓存只记判定不记效果, 每跑一遍再折半,
+        对话越多置信度塌得越快 (0.8→0.4→0.2→...)。
         """
         handled: list[int] = []
         reflections = store.all_valid(player_id=player_id, types=["reflection"])
         observations = store.all_valid(player_id=player_id, types=["observation"])
 
         for ref in reflections:
+            decay_count = 0
+            invalidated = False
             for obs in observations:
                 if obs.timestamp <= ref.timestamp:
                     continue   # 只有更晚的观察能矛盾更早的反思
@@ -132,13 +141,17 @@ class ReflectionEngine:
                     self._conflict_cache[key] = severity
                 if severity >= CONFLICT_INVALIDATE:
                     store.invalidate(ref.id)   # 强烈矛盾 → 直接推翻, 反思失效
-                    handled.append(ref.id)
+                    invalidated = True
                     break
                 if severity >= CONFLICT_DECAY:
-                    # 部分矛盾 → 衰减置信度 (不完全失效, 信念被削弱但未推翻)
-                    store.update_confidence(ref.id, ref.confidence * 0.5)
+                    decay_count += 1           # 数全部部分矛盾, 不 break
+            if invalidated:
+                handled.append(ref.id)
+            elif decay_count:
+                target = ref.base_confidence * (0.5 ** decay_count)
+                if target < ref.confidence - 1e-9:   # 只写实际下降, 重跑不重复写
+                    store.update_confidence(ref.id, target)
                     handled.append(ref.id)
-                    break
         return handled
 
     # --------------------------------------------------------------- 内部
@@ -156,6 +169,6 @@ class ReflectionEngine:
         rec = MemoryRecord(
             content=content, timestamp=now, type="reflection",
             player_id=player_id, evidence=list(evidence),
-            confidence=confidence, valid=True,
+            confidence=confidence, base_confidence=confidence, valid=True,
         )
         return store.add(rec)

@@ -82,12 +82,14 @@ class LLMClient(ABC):
         """
 
     @abstractmethod
-    def judge_trust(self, memories: list[tuple[str, str]],
+    def judge_trust(self, memories: list[tuple[str, str, float]],
                     player_id: str) -> float:
         """基于 NPC 对某玩家的关系记忆判断信任度, 返回 -1..1。
 
-        memories 是 (类型, 内容) 列表 (观察 + 反思)。取代关键词词表计数:
+        memories 是 (类型, 内容, 置信度) 列表 (观察 + 反思)。取代关键词词表计数:
         LLM 能理解"搭把手"=帮、"放鸽子"=背叛等花样措辞, 不会被词表漏判。
+        置信度是反思的信念强度 (被后续证据部分矛盾后会衰减), LLM 应对低置信度
+        的反思少加权 —— 削弱的信念不该和稳固的信念同等分量地左右信任判断。
         -1 = 极度不信任/被背叛, 0 = 中立, +1 = 极度信任/可靠。
         """
 

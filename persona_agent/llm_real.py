@@ -162,11 +162,19 @@ class RealLLM(LLMClient):
         memories = ctx.memories or []
         if not memories:
             return "我对此没有印象。"
-        mem_lines = "\n".join(
-            f"- [{m['type']}] {m['content']}" for m in memories)
+
+        def _mem_line(m: dict) -> str:
+            # 被削弱的反思 (confidence<1) 显式标注置信度, 让 NPC 引用被部分推翻的
+            # 信念时带着相应的犹疑; 观察/计划恒 1.0, 保持原样不注水。
+            if m.get("type") == "reflection" and m.get("confidence", 1.0) < 0.999:
+                return f"- [反思] (置信度{m['confidence']:.2f}) {m['content']}"
+            return f"- [{m['type']}] {m['content']}"
+
+        mem_lines = "\n".join(_mem_line(m) for m in memories)
         who = f"当前和你说话的人是 {ctx.player_id}。" if ctx.player_id else ""
         user = (who + "\n你记得的事情 (只准用这些, 没提到的就当不知道):\n"
-                + mem_lines + "\n\n对方说: " + ctx.question
+                + mem_lines + "\n带'置信度'的记忆已被后来的事情部分推翻, "
+                "引用时语气要留有余地。\n\n对方说: " + ctx.question
                 + "\n\n用第一人称、符合你性格地回应对方。只说一两句。")
         return self._chat(ctx.system or "你是一个游戏 NPC, 只用你记得的事说话。",
                           user, think=self._think, temperature=0.7, max_tokens=256)
@@ -287,12 +295,20 @@ class RealLLM(LLMClient):
                 _clip("c_interrupt", 2.0))
 
     # ------------------------------------------------------------ 关系信任度
-    def judge_trust(self, memories: list[tuple[str, str]],
+    def judge_trust(self, memories: list[tuple[str, str, float]],
                     player_id: str) -> float:
-        """基于关系记忆判断对玩家的信任度, 返回 -1..1。取代关键词词表。"""
-        mem_lines = "\n".join(f"- [{t}] {c}" for t, c in memories)
+        """基于关系记忆判断对玩家的信任度, 返回 -1..1。取代关键词词表。
+
+        memories 是 (类型, 内容, 置信度)。置信度 <1 的反思已被后续证据部分
+        矛盾 (信念削弱), prompt 里显式标注并嘱咐少加权。
+        """
+        def _line(t: str, c: str, conf: float) -> str:
+            tag = "" if conf >= 0.999 else f" (置信度{conf:.2f})"
+            return f"- [{t}]{tag} {c}"
+        mem_lines = "\n".join(_line(t, c, conf) for t, c, conf in memories)
         user = ("以下是 NPC 关于玩家 " + player_id + " 的记忆 (观察与反思):\n"
-                + mem_lines + "\n\n判断 NPC 对 " + player_id
+                + mem_lines + "\n\n带'置信度'标注的反思已被后续证据部分矛盾, "
+                "信念被削弱, 判断时应少加权。\n\n判断 NPC 对 " + player_id
                 + " 的信任度, 只输出 -10 到 10 的整数 (可带负号):\n"
                 + "-10 极度不信任/被背叛过, -5 略有戒备, 0 中立/不太了解, "
                 + "+5 比较信任, +10 极度信任/很可靠。")
