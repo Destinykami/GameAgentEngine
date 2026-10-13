@@ -204,8 +204,10 @@ class ReflectionEngine:
         if self._embedder is not None and self._dedup_threshold > 0:
             existing = store.all_valid(player_id=player_id, types=["reflection"])
             if existing:
-                v_new = self._embedder.embed([content])[0]
-                v_ex = self._embedder.embed([m.content for m in existing])
+                v_new = self._embedder.embed([content])[0]   # 新洞察嵌入一次 (不可避免)
+                # L1: 已有反思取 store 缓存向量 (add 时已嵌入缓存), 不再整批重嵌入 ——
+                # RealEmbedder (无自缓存) 下每存一条反思的 O(n) 网络嵌入降为 O(1)。
+                v_ex = [store.vector(m) for m in existing]
                 if max(cosine_similarity(v_new, v) for v in v_ex) >= self._dedup_threshold:
                     return None   # 同一条认知的又一次复述, 不入库
         rec = MemoryRecord(

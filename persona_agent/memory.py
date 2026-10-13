@@ -156,6 +156,11 @@ class MemoryStore:
             self._vec_cache[rec.id] = vec
         return vec
 
+    def vector(self, rec: MemoryRecord) -> list[float]:
+        """取某记忆的向量 (命中缓存则不重嵌入)。供反思去重等需比较既有记忆的
+        向量场景使用 (L1): 已入库记忆的向量在 add 时已缓存, 此处零嵌入成本。"""
+        return self._vec(rec)
+
     def all_valid(self, player_id: str | None = None,
                   types: Sequence[str] | None = None) -> list[MemoryRecord]:
         """取全部有效记忆 (可按玩家/类型过滤), 用于反思与展示。"""

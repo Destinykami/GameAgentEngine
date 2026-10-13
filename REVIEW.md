@@ -13,7 +13,7 @@
 | H2 | H | confidence 无下游消费者: 检索评分 (memory.py:208-215)、judge_trust 输入 (reacting.py:64)、对话 prompt (llm_real.py:122-123) 全都不用它, 冲突衰减烧钱且零行为效果, 博客 2.2.5 "防不可靠推断被放大" 的动机未兑现 | memory.py:208-215, reacting.py:64, llm_real.py:122-123 | 把 confidence 接进检索评分 (如反思的 relevance 乘 confidence 因子) 和/或 judge_trust 输入; 或降级为纯展示字段并砍掉衰减分支 | 已修: 三处接线 —— retrieve() 评分乘 confidence (与 H1 折半一一对应, 削弱信念排名下降)、judge_trust 改 (类型,内容,置信度) 三元组 + prompt 嘱咐少加权、对话 prompt 对被削弱的反思标注置信度 (观察恒 1.0 不注水) |
 | M1 | M | 关系反思兜底问题硬编码 "Klaus 和 {player_id} 的关系如何?", 非 Klaus 的 NPC 兜底时问出外来名字; 引擎不知道 NPC 是谁, 需传入 | reflection.py:87 | 反思方法接收 npc 名 (或引擎持有), 兜底问题用自己的名字 | 已修: ReflectionEngine 构造注入 npc_name (NPC 传 self.name, 默认 "" 向后兼容), 兜底用真名、无名退中性 "NPC"; 同法过滤空白问题 ([""] 不再绕过判空) |
 | M2 | M | `check_conflicts` 首次跑长关系是 O(反思×更晚观察) 次 LLM 调用 (10×50=500), 缓存不跨进程; 成本尖峰 | reflection.py:122-141 | 限定只查最近 K 条观察, 或跳过 confidence 已低于阈值的反思 | 已修: 两端各砍一刀 —— 每反思只查最近 CONFLICT_RECENT_OBS=10 条更晚观察 (按时间戳显式排序取窗口), 首跑/重启成本 O(反思×观察)→O(反思×K); 置信度 < CONFLICT_DECAY_FLOOR=0.1 的反思整条跳过 (功能上已死), 活跃反思随衰减递减。K 窗口同时给衰减自然地板 (decay_count≤K, 信念最低 base×0.5^K 不被磨零)。窗口外旧矛盾不回查是有意取舍 (它该在新证据期被处理)。不持久化缓存 (K 封顶已压住尖峰) |
-| L1 | L | `_save` 反思去重每次嵌入该玩家全部已有反思, O(n) 随关系流增长 | reflection.py:149-155 | 缓存反思向量, 或只比较近期反思 | 待修 |
+| L1 | L | `_save` 反思去重每次嵌入该玩家全部已有反思, O(n) 随关系流增长 | reflection.py:149-155 | 缓存反思向量, 或只比较近期反思 | 已修: 去重改走 store.vector() 取已有反思的缓存向量 (add 时已嵌入), 不再整批重嵌入 —— RealEmbedder (无自缓存) 下每存一条反思的 O(n) 网络嵌入降为 O(1), 只嵌入新洞察 |
 | L9 | L | `reflect_self` 空白问题缺口: 与 M1 同族但 M1 只修了关系反思路径 —— 自我反思拿到 `[""]` 会把空查询流进证据检索 (零向量) 与洞察生成, 无兜底属有意设计 (低价值路径允许静默跳过), 只需补空白过滤 | reflection.py:59-62 | 同 M1 的 `q.strip()` 过滤, 不动无兜底的不对称设计 | 已修: reflect_self 补同款 `isinstance+strip` 过滤, 空白问题静默跳过, 空查询不再流入证据检索; 无兜底的不对称设计原样保留 |
 
 ## 规划 (planning.py + 集成点)
