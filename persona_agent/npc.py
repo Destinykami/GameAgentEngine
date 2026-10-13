@@ -41,7 +41,8 @@ class NPC:
         self.llm = llm
         self.store = store or MemoryStore(self.embedder)
         self._reflection_threshold = reflection_threshold   # 重要性累积到多少触发自我反思 (可调)
-        self.reflection = ReflectionEngine(self.llm, self.embedder)
+        # npc_name 注入: 关系反思兜底问题用本 NPC 真名 (无名退中性 "NPC")
+        self.reflection = ReflectionEngine(self.llm, self.embedder, npc_name=name)
         self.planner = PlanningEngine(self.llm)
         self.decider = ReactionDecider(self.store, self.llm)
         self.dialogue = DialogueManager(self.llm, self.store, persona_traits,

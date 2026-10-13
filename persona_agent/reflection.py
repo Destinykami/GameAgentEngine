@@ -37,10 +37,14 @@ HURT_WORDS = ("背叛", "欺骗", "撒谎", "骗", "爽约", "放鸽子", "警�
 class ReflectionEngine:
     def __init__(self, llm: LLMClient,
                  embedder: Embedder | None = None,
-                 dedup_threshold: float = DEDUP_THRESHOLD) -> None:
+                 dedup_threshold: float = DEDUP_THRESHOLD,
+                 npc_name: str = "") -> None:
         self._llm = llm
         self._embedder = embedder
         self._dedup_threshold = dedup_threshold
+        # 本引擎所属 NPC 的名字 (关系反思兜底问题需要; 无名时退中性 "NPC",
+        # 不写死任何 demo 名字)。
+        self._npc_name = npc_name
         # 冲突判断缓存: (反思内容, 观察内容) → 矛盾强度。反思与观察内容稳定,
         # 重复检查同一对零 LLM 成本 (check_conflicts 可能被多次触发)。
         self._conflict_cache: dict[tuple[str, str], int] = {}
@@ -82,9 +86,16 @@ class ReflectionEngine:
         if not rel:
             return []
         texts = [m.content for m in rel]
-        questions = self._llm.reflection_questions(texts)
+        # 过滤空白/非字符串问题: [""] 这类"假问题"非空列表, 旧判空拦不住, 会让
+        # 空查询流进证据检索 (零向量) 和洞察生成。过滤后再判空, 兜底才不会被绕过。
+        questions = [q for q in self._llm.reflection_questions(texts)
+                     if isinstance(q, str) and q.strip()]
         if not questions:
-            questions = [f"Klaus 和 {player_id} 的关系如何?"]
+            # 保"面"的 fail-safe: 问题生成形状漂移 (JSON 非数组) 时降级成一句通用
+            # 问题, 让证据→洞察链至少跑一遍, 关系认知照常形成 —— 降级而非跳过。
+            # 名字用本引擎所属 NPC (构造时注入), 无名退中性 "NPC", 不外泄 demo 名。
+            who = self._npc_name or "NPC"
+            questions = [f"{who} 和 {player_id} 的关系如何?"]
 
         new_ids: list[int] = []
         for q in questions:
