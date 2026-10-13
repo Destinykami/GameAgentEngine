@@ -38,6 +38,10 @@ class PlanningEngine:
         old_ids = [m.id for m in store.all_valid(types=["plan"])]
         top_ids: list[int] = []
         for start, end, activity in top_blocks:
+            # 审查#2: 顶层块过合法性闸 —— 越界 (25-26)/倒置 (10-9) 块丢弃, 不入库。
+            # PlanningEngine 自己的兜底, 不依赖 RealLLM 的 parse 层 (stub 会绕过)。
+            if not self._valid_block(start, end):
+                continue
             top_id = self._save_plan(store, now, f"{start:02d}-{end:02d} {activity}",
                                      player_id=None)
             top_ids.append(top_id)
@@ -94,10 +98,17 @@ class PlanningEngine:
         anchor = math.ceil(hour - 1e-9)
         clamped: list[tuple[int, int, str]] = []
         for start, end, activity in blocks:
+            # 审查#3: 先校验合法性 (0<=start<end<=24, 越界/倒置块丢弃) —— 日界
+            # (end<=24) 由校验保证, (23,25) 这类跨日块在此被丢, 不会存成越界计划。
+            # 再做 anchor 裁剪, 裁剪后复查 start<end (anchor 可能把整块吞掉)。
+            if not self._valid_block(start, end):
+                continue
             if end <= anchor:
                 continue   # 整块在过去
             if start < anchor:
                 start = anchor   # 跨越锚点: 只保留锚点之后的部分
+            if start >= end:
+                continue   # 裁剪后块为空
             clamped.append((start, end, activity))
         # 旧计划失效 (先收集再存新块, 别把刚存的新块也失效了)
         old_ids = [m.id for m in store.all_valid(types=["plan"])]
@@ -124,3 +135,13 @@ class PlanningEngine:
         return store.add(MemoryRecord(content=content, timestamp=now,
                                       type="observation", player_id=player_id,
                                       importance=5.0))
+
+    @staticmethod
+    def _valid_block(start, end) -> bool:
+        """计划块合法性: 0 <= start < end <= 24 (一日时间界 + 顺序不倒置)。
+
+        PlanningEngine 自己的兜底 (防御纵深): RealLLM 的 parse 层也过滤非法块,
+        但 stub/自定义 LLM 绕过 parse —— 越界块 (25-26)、倒置块 (10-9) 不得作为
+        有效计划进记忆流。int/float 都适用。
+        """
+        return 0 <= start < end <= 24

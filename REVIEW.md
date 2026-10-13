@@ -107,3 +107,22 @@
 3. M3, M8 (LLM 输出校验)
 4. M6, M7 (记忆语义)
 5. 其余 M/L 逐项
+
+---
+
+## 第三轮审查 (2026-07-03, 独立编号 R1–R7)
+
+> 前两轮 (内部 H/M/L/T + 外部 E1–E16) 全部处置完后的新一轮审查。本轮 7 条
+> **全部核实为真** (非误报), 与 E 系列是两套编号, 勿混。记忆/反思模块本轮确认
+> 无同等置信度 correctness bug; 两个设计取舍 (信任刻意不用 importance / 冲突检测
+> 只查最近 10 条) 是刻意的成本策略, 不算 bug。
+
+| # | 级别 | 问题 | 位置 | 现状 |
+|---|---|---|---|---|
+| R2+R3 | 高 | 计划块无统一校验: make_daily_plan 直接信任 generate_plan 返回值 (越界 25-26/倒置 10-9 原样入库); replan_from_now 只做 anchor 裁剪, 无日界 (end≤24) 校验、裁剪后不复查 start<end (跨日块 23-25 会存) | planning.py (make_daily_plan, replan_from_now) | **已修**: PlanningEngine 加 `_valid_block(start,end)=0<=start<end<=24`, 顶层块与重规划块都过这道闸 (重规划先校验再 anchor 裁剪再复查), 非法块丢弃; 不依赖 RealLLM parse (stub 绕过)。回归: test_plan_parsing 新增越界/倒置/跨日块丢弃 |
+| R1 | 高 | 自治决策无显式信任输入: decide_agent 只喂人格/感知/历史/记忆文本, trust_toward 与关系反思没进 decide_action, NPC 信任更新了决策接口仍靠 LLM 从文本猜 | world.py (decide_agent) | 待修 |
+| R4+R5 | 中 | _step_social 语义不健壮: 消费是裸 for 循环, reflect_relationship 抛异常则 clear() 不执行 → 下步重复反思+重复 LLM 调用; 且只调 execute_action 不推进自治步则反思永不触发, 接口契约不明 | world.py (step_autonomous _step_social 循环) | 待修 |
+| R6 | 中 | 社交动作非原子: attack 先 take_damage+record (物理/历史已改) 后才调可失败的 perceive_action (LLM/embedding), 失败留下"血已扣但 NPC 没观察到、反思队列没登记"的撕裂态; talk 同理 | world.py (execute_action attack/talk) | 待修 |
+| R7 | 低 | utterance 无类型校验: 显式传 None 时 get("utterance","") 返回 None, f-string 强转成字符串"None" (不崩但语义垃圾), 应在动作入口做 schema 校验 | world.py (execute_action talk) | 待修 |
+
+**本轮修复顺序**: R2+R3 计划校验 → R1 信任接入决策 → R4+R5 _step_social flush 语义 → R6 动作原子性 → R7 输入 schema 校验。

@@ -105,6 +105,38 @@ def test_make_daily_plan_clamps_subtasks_to_parent(tmp_path):
     assert not any("块前" in p for p in plans), "整段在父块前的子任务应丢弃"
 
 
+class _BadBlocksLLM(_StubLLM):
+    """回混合非法块 (越界/倒置) + 合法块, 验证 PlanningEngine 自身校验。"""
+    def __init__(self, blocks):
+        super().__init__()
+        self._blocks = blocks
+    def generate_plan(self, persona_traits, previous_day, date, context=""):
+        return list(self._blocks)
+
+
+def test_make_daily_plan_drops_invalid_top_blocks(tmp_path):
+    """审查#2: make_daily_plan 顶层块过合法性闸 —— 越界 (25-26)/倒置 (10-9) 丢弃,
+    合法块保留。PlanningEngine 自己的兜底, 不依赖 RealLLM parse (stub 绕过它)。"""
+    llm = _BadBlocksLLM([(25, 26, "越界"), (10, 9, "倒置"), (7, 9, "合法")])
+    npc = NPC.create("Klaus", dict(TRAITS), llm=llm, data_dir=str(tmp_path))
+    ids = npc.generate_daily_plan(previous_day="", date="第一天", now=7.0)
+    plans = [m.content for m in npc.store.all_valid(types=["plan"])]
+    assert any(p.startswith("07-09 合法") for p in plans), "合法块应入库"
+    assert not any("越界" in p for p in plans), "越界块 (25-26) 应丢弃"
+    assert not any("倒置" in p for p in plans), "倒置块 (10-9) 应丢弃"
+
+
+def test_replan_drops_cross_day_and_past_blocks(tmp_path):
+    """审查#3: replan_from_now 先校验合法性再 anchor 裁剪 —— 跨日块 (23-25) 被校验
+    丢 (end<=24), 过去块 (21-22) 被 anchor 丢, 合法块 (22-23) 保留。"""
+    llm = _BadBlocksLLM([(23, 25, "跨日"), (21, 22, "过去"), (22, 23, "合法")])
+    npc = NPC.create("Klaus", dict(TRAITS), llm=llm, data_dir=str(tmp_path))
+    ids, blocks = npc.planner.replan_from_now(
+        npc.store, npc.persona_traits, now=22.0, interruption="x")
+    assert blocks == [(22, 23, "合法")], \
+        f"跨日/过去块应丢, 只留合法块, 实际 {blocks}"
+
+
 def test_all_bad_plan_empty_store(tmp_path):
     """集成: 全坏计划 → make_daily_plan 零入库, NPC 无计划块 (诚实的"没计划")。"""
     class NoPlanLLM(_StubLLM):
