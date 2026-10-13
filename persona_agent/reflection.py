@@ -26,6 +26,17 @@ DEDUP_THRESHOLD = 0.95
 CONFLICT_INVALIDATE = 7
 CONFLICT_DECAY = 3
 
+# 冲突检测的成本封顶 (M2): 每对 反思×观察 都是一次 LLM 调用, 全量配对是
+# O(反思×观察), 长关系流首跑/重启即数百次尖峰。两端各砍一刀:
+# - CONFLICT_RECENT_OBS: 每个反思只查**最近 K 条更晚观察**。一条观察能推翻反思
+#   只可能发生在它还是新证据时 (那时在窗口内); 老到窗口外, 反思要么早被它失效,
+#   要么生成时已把它算进证据。首跑成本压到 O(反思×K)。
+# - CONFLICT_DECAY_FLOOR: 置信度跌破地板的反思直接跳过 —— 检索权重已被
+#   confidence 乘到近乎 0, 功能上已死, 再为它判矛盾是浪费; 被部分矛盾的反思
+#   陆续跌破地板退出活跃集, 每条新观察的配对成本随衰减递减。
+CONFLICT_RECENT_OBS = 10
+CONFLICT_DECAY_FLOOR = 0.1
+
 # 冲突检测词表 (启发式, 自包含)。check_conflicts 已升级为 LLM 判矛盾强度,
 # 这些词表现仅供离线测试 stub 与语义文档用途, 生产冲突判定不再依赖它们。
 TRUST_WORDS = ("信任", "可靠", "朋友", "感激", "亲近", "盟友", "伙伴", "支持者")
@@ -138,17 +149,27 @@ class ReflectionEngine:
         冲突观察让指数 +1, 恰好多折半一次 —— "一条证据削弱一次信念"。旧实现
         是"找到冲突对就乘 0.5 再 break", 缓存只记判定不记效果, 每跑一遍再折半,
         对话越多置信度塌得越快 (0.8→0.4→0.2→...)。
+
+        成本封顶 (M2): 只对**最近 CONFLICT_RECENT_OBS 条更晚观察**判矛盾, 且
+        置信度低于 CONFLICT_DECAY_FLOOR 的反思整个跳过 (功能上已死, 不值得调用)。
+        K 窗口同时给衰减一个自然地板: decay_count ≤ K, 信念最低到
+        base × 0.5^K 不再被无限磨零。首跑/重启成本从 O(反思×观察) 压到 O(反思×K)。
         """
         handled: list[int] = []
         reflections = store.all_valid(player_id=player_id, types=["reflection"])
         observations = store.all_valid(player_id=player_id, types=["observation"])
 
         for ref in reflections:
+            if ref.confidence < CONFLICT_DECAY_FLOOR:
+                continue   # M2: 已死信念不再花 LLM 调用 (衰减/失效都跳过)
+            # 只有更晚的观察能矛盾更早的反思; 只取最近 K 条 (M2 成本封顶)。
+            # 按时间戳显式排序取最近 K 条 —— 不依赖 all_valid 的插入序, 乱序
+            # 写入 (DB 恢复/补记) 也不会取错窗口。
+            later = sorted((o for o in observations if o.timestamp > ref.timestamp),
+                           key=lambda o: o.timestamp)[-CONFLICT_RECENT_OBS:]
             decay_count = 0
             invalidated = False
-            for obs in observations:
-                if obs.timestamp <= ref.timestamp:
-                    continue   # 只有更晚的观察能矛盾更早的反思
+            for obs in later:
                 key = (ref.content, obs.content)
                 cached = self._conflict_cache.get(key)
                 if cached is not None:
