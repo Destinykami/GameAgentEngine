@@ -42,6 +42,49 @@ def _extract_json(text: str) -> str:
     return t
 
 
+def _parse_hour(value: Any) -> int | None:
+    """从模型输出提取整点小时。容忍 int / 浮点整数 / "7" / "07:00" (取冒号前);
+    解析不出 (None、"早上"等纯文字) 返回 None, 由调用方丢弃整块 —— 不抛异常
+    (旧实现 int() 直接炸, 一个坏输出崩掉整个 World.step)。"""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        head = value.strip().split(":")[0]
+        if head.isdigit():
+            return int(head)
+    return None
+
+
+def _parse_blocks(items: Any, activity_key: str,
+                  lo: int = 0, hi: int = 24) -> list[tuple[int, int, str]]:
+    """把模型计划输出解析为合法时间块 (generate_plan / decompose_activity 共用)。
+
+    - 类型容错: "07:00" 这类救得回的救, 救不回的丢弃该块;
+    - 范围/顺序: lo <= start < end <= hi, 倒置块、超范围块丢弃;
+      日计划边界 (0, 24), 分解子任务边界 = 父块 (start, end);
+    - 缺键丢弃: 不再 .get("start", 8) 静默编时间, 宁可少一块不造一块;
+    - 全坏返回 [], 调用方按空计划处理 (诚实: "当前正忙"没有块可报)。
+    """
+    out: list[tuple[int, int, str]] = []
+    if not isinstance(items, list):
+        return out
+    for item in items:
+        if not isinstance(item, dict) or activity_key not in item:
+            continue
+        s = _parse_hour(item.get("start"))
+        e = _parse_hour(item.get("end"))
+        if s is None or e is None:
+            continue   # 解析不出 / 缺键: 整块丢弃
+        if not (lo <= s < e <= hi):
+            continue   # 倒置 / 超范围
+        out.append((s, e, str(item[activity_key])))
+    return out
+
+
 class RealLLM(LLMClient):
     """OpenAI 兼容 (SGLang) 真实模型客户端。"""
 
@@ -197,14 +240,8 @@ class RealLLM(LLMClient):
                   '例如 [{"start": 7, "end": 9, "activity": "起床"}]。')
         data = self._chat_json("你是一个日程规划器。", user,
                                think=False, temperature=0.3)
-        out: list[tuple[int, int, str]] = []
-        if isinstance(data, list):
-            for item in data:
-                if isinstance(item, dict) and "activity" in item:
-                    s = int(item.get("start", 8))
-                    e = int(item.get("end", s + 1))
-                    out.append((s, e, str(item["activity"])))
-        return out
+        # 类型容错 + 范围/顺序校验 (0 <= start < end <= 24), 坏块丢弃不崩
+        return _parse_blocks(data, "activity", 0, 24)
 
     # ------------------------------------------------------------ 活动分解
     def decompose_activity(self, activity: str, start: int, end: int) -> \
@@ -214,14 +251,8 @@ class RealLLM(LLMClient):
                 '输出 JSON 数组, 例如 [{"start": 13, "end": 14, "subtask": "构思"}]。')
         data = self._chat_json("你是一个任务分解器。", user,
                                think=False, temperature=0.0)
-        out: list[tuple[int, int, str]] = []
-        if isinstance(data, list):
-            for item in data:
-                if isinstance(item, dict) and "subtask" in item:
-                    s = int(item.get("start", start))
-                    e = int(item.get("end", start + 1))
-                    out.append((s, e, str(item["subtask"])))
-        return out
+        # 子任务时间必须落在父块 (start, end) 内: 模型常漂回默认 8 点, 越界即丢
+        return _parse_blocks(data, "subtask", start, end)
 
     # ------------------------------------------------------------ 事件价值判断
     def score_event(self, event: str, persona_traits: dict[str, float],
