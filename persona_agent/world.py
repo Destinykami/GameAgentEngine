@@ -251,13 +251,34 @@ class World:
         return s
 
     def decide_agent(self, agent: Entity, memory_context: str = "") -> dict:
-        """agent 决策下一步: LLM 战略判断 (非全知, 只看自己感知+记忆+目标)。"""
+        """agent 决策下一步: LLM 战略判断 (非全知, 只看自己感知+记忆+目标)。
+
+        R1: 对 NPC agent, 把对视距内、有关系记忆 (观察/反思) 的实体的信任度显式
+        拼进 perception 喂给 decide_action。信任已由 talk/attack/help 更新 (E16),
+        但决策接口此前只能靠 LLM 从记忆文本猜信任, 无因果接线 —— 现在信任值直接
+        进决策输入, 稳定区分"可信/不可信"的交互对象。无関係记忆的不列 (避免陌生
+        人 trust 0 灌水)。不改 decide_action 方法签名, 信任随上下文文本进输入。
+        """
         llm = self._agent_llms.get(agent.name)
         if llm is None:
             return {"action": "wait", "reason": "无 LLM"}
         perception = self.agent_perception(agent)
         if memory_context:
             perception += " | 自己的记忆: " + memory_context
+        npc = self._npcs.get(agent.name)
+        if npc is not None:
+            trust_bits: list[str] = []
+            for other in self.entities.values():
+                if other is agent or other.dead:
+                    continue
+                if distance(agent, other) > self.perception_radius:
+                    continue   # 视距外
+                if not npc.store.all_valid(player_id=other.name):
+                    continue   # 无关系记忆, 不列 (陌生人 trust 0 无信息量)
+                trust = npc.decider.relationship_trust(other.name)
+                trust_bits.append(f"{other.name} {trust:+.2f}")
+            if trust_bits:
+                perception += " | 对视距内对象的信任度: " + ", ".join(trust_bits)
         return llm.decide_action(agent.name, agent.goal,
                                  self._agent_personas.get(agent.name, {}),
                                  perception, agent.history, self.agent_state(agent))

@@ -112,6 +112,53 @@ def test_multi_npc_trust_isolation(tmp_path):
     w.close()
 
 
+def _cap_llm():
+    """捕获 decide_action 收到的 perception, 供断言信任度是否进决策输入。"""
+    class Cap(_StubLLM):
+        def __init__(self):
+            super().__init__()
+            self.perceptions = []
+        def decide_action(self, name, goal, traits, perception, history, state):
+            self.perceptions.append(perception)
+            return {"action": "wait", "reason": "cap"}
+    return Cap()
+
+
+def test_decide_agent_feeds_trust_to_decision(tmp_path):
+    """R1: NPC 的自治决策显式接收对视距内对象的信任度 —— 帮过的玩家 +1.00,
+    骗过的玩家 -1.00, 稳定区分可信/不可信 (不再靠 LLM 从记忆文本猜)。无关系记忆
+    的对象不列 (陌生人 trust 0 无信息量)。"""
+    llm = _cap_llm()
+    w = _world(tmp_path)
+    traits = {"social": 0.8, "goal_oriented": 0.3}
+    w.add_npc("桃音", traits, llm=llm, data_dir=str(tmp_path), location="治疗堂")
+    w._agent_llms["桃音"] = llm
+    w._agent_personas["桃音"] = traits
+    # 正信任: 旅行者帮过桃音
+    w.npc("桃音").observe("旅行者 帮 桃音 修了炉子", 0.0, player_id="旅行者")
+    w.add_player("旅行者", "治疗堂")          # 同区域, 视距内
+    w.decide_agent(w.get("桃音"))
+    trust_seg = [s for s in llm.perceptions[0].split(" | ") if "信任度" in s]
+    assert trust_seg and "旅行者 +1.00" in trust_seg[0], \
+        f"正信任玩家应 +1.00 进决策 perception, 实际: {llm.perceptions[0]!r}"
+    w.close()
+
+    # 负信任: 另一世界里旅行者骗过桃音 → -1.00
+    llm2 = _cap_llm()
+    w2 = _world(tmp_path)
+    w2.add_npc("刚郎", {"social": 0.3, "goal_oriented": 0.8},
+               llm=llm2, data_dir=str(tmp_path), location="锻造坊")
+    w2._agent_llms["刚郎"] = llm2
+    w2._agent_personas["刚郎"] = {"social": 0.3, "goal_oriented": 0.8}
+    w2.npc("刚郎").observe("旅行者 骗了 刚郎 并 偷 走了他的豆子", 0.0, player_id="旅行者")
+    w2.add_player("旅行者", "锻造坊")
+    w2.decide_agent(w2.get("刚郎"))
+    trust_seg2 = [s for s in llm2.perceptions[0].split(" | ") if "信任度" in s]
+    assert trust_seg2 and "旅行者 -1.00" in trust_seg2[0], \
+        f"负信任玩家应 -1.00 进决策 perception, 实际: {llm2.perceptions[0]!r}"
+    w2.close()
+
+
 def test_execute_action_wires_npc_memory_and_reflection(tmp_path):
     """E16: 自治世界的社交动作 (talk/attack/help) 进目标 NPC 的记忆/信任/反思层,
     不再只写 Entity.history。talk 有回话 (真对话); attack/help 只观察 (NPC 的
