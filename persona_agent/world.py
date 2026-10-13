@@ -514,23 +514,51 @@ class World:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.execute(
-            "CREATE TABLE IF NOT EXISTS entity "
-            "(name TEXT PRIMARY KEY, kind TEXT, location TEXT, x REAL, y REAL)")
+            "CREATE TABLE IF NOT EXISTS entity ("
+            "name TEXT PRIMARY KEY, kind TEXT, location TEXT, x REAL, y REAL,"
+            " health INTEGER DEFAULT 100, attack INTEGER DEFAULT 10,"
+            " defense INTEGER DEFAULT 0, goal TEXT DEFAULT '',"
+            " dead INTEGER DEFAULT 0, role TEXT DEFAULT '',"
+            " history TEXT DEFAULT '[]', reasons TEXT DEFAULT '[]')")
+        # 旧库迁移 (M9): M9 之前建的 world.db 只有 name/kind/location/x/y 五列,
+        # 实体物理状态 (血/攻防/目标/死亡/角色/历史/理由) 从未落库, 恢复即全丢。
+        # 按 Entity 默认值补列 —— 旧库本就没存过这些状态, 默认值是唯一合理兜底。
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(entity)")}
+        for col, ddl in (
+                ("health", "INTEGER DEFAULT 100"),
+                ("attack", "INTEGER DEFAULT 10"),
+                ("defense", "INTEGER DEFAULT 0"),
+                ("goal", "TEXT DEFAULT ''"),
+                ("dead", "INTEGER DEFAULT 0"),
+                ("role", "TEXT DEFAULT ''"),
+                ("history", "TEXT DEFAULT '[]'"),
+                ("reasons", "TEXT DEFAULT '[]'")):
+            if col not in cols:
+                self._conn.execute(f"ALTER TABLE entity ADD COLUMN {col} {ddl}")
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")
 
     def save(self) -> None:
-        """把世界状态 (实体位置 + 时钟) 写入 world.db。"""
+        """把世界状态 (实体全量状态 + 时钟) 写入 world.db。
+
+        实体不止位置: 血/攻防/目标/死亡/角色/历史/理由一并落库 (M9) ——
+        跨进程恢复后将军的血量、旅行者的攻与已积累的理由、角色的特殊判定
+        都不该丢, 否则自治弧线从一半重头再来。
+        """
         if self._conn is None:
             raise RuntimeError("该世界是内存世界, 无法持久化 (构造时请传 path)")
         with self._lock, self._conn:
             self._conn.execute("DELETE FROM entity")
             for ent in self.entities.values():
                 self._conn.execute(
-                    "INSERT INTO entity (name, kind, location, x, y) "
-                    "VALUES (?, ?, ?, ?, ?)",
+                    "INSERT INTO entity (name, kind, location, x, y,"
+                    " health, attack, defense, goal, dead, role, history,"
+                    " reasons) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (ent.name, ent.kind, ent.location.name,
-                     ent.location.x, ent.location.y))
+                     ent.location.x, ent.location.y,
+                     ent.health, ent.attack, ent.defense, ent.goal,
+                     1 if ent.dead else 0, ent.role,
+                     json.dumps(ent.history), json.dumps(ent.reasons)))
             self._conn.execute(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('clock', ?)",
                 (json.dumps(self.clock),))
@@ -540,21 +568,33 @@ class World:
                 (json.dumps(self._npc_data_dirs),))
 
     def load(self, llm=None, embedder=None) -> None:
-        """从 world.db 恢复世界状态 (实体位置 + 时钟 + NPC 注册表)。
+        """从 world.db 恢复世界状态 (实体全量状态 + 时钟 + NPC 注册表)。
 
         传入 llm/embedder 时, 同时按注册表重新实例化各 NPC (从各自独立 db
-        恢复其全部记忆流与面)。不传则只恢复位置与时钟 (NPC 需另行 add_npc)。
+        恢复其全部记忆流与面)。不传则只恢复实体与位置时钟 (NPC 需另行 add_npc)。
+        实体的血/攻防/目标/死亡/角色/历史/理由一并恢复 (M9), 跨进程续跑不失态。
         """
         if self._conn is None:
             raise RuntimeError("该世界是内存世界, 无法加载")
         with self._lock:
-            for name, kind, loc_name, x, y in self._conn.execute(
-                    "SELECT name, kind, location, x, y FROM entity"):
+            for row in self._conn.execute(
+                    "SELECT name, kind, location, x, y, health, attack, defense,"
+                    " goal, dead, role, history, reasons FROM entity"):
+                (name, kind, loc_name, x, y, health, attack, defense,
+                 goal, dead, role, history, reasons) = row
                 loc = self.locations.get(loc_name)
                 if loc is None:   # 区域表漂移兜底: 按存下的坐标重建
                     loc = Location(loc_name, x, y)
                     self.locations[loc_name] = loc
-                self.entities[name] = Entity(kind, name, loc)
+                self.entities[name] = Entity(
+                    kind=kind, name=name, location=loc,
+                    health=health if health is not None else 100,
+                    attack=attack if attack is not None else 10,
+                    defense=defense if defense is not None else 0,
+                    goal=goal or "", dead=bool(dead),
+                    role=role or "",
+                    history=json.loads(history) if history else [],
+                    reasons=json.loads(reasons) if reasons else [])
             row = self._conn.execute(
                 "SELECT value FROM meta WHERE key='clock'").fetchone()
             if row:
