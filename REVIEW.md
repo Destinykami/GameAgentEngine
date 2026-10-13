@@ -56,6 +56,48 @@
 | T3 | react 拿到的 plan 含真实活动 (非"日计划已生成") | H3 | 已修: tests/test_plan_react.py (4 用例: 当前块/无块兜底/重规划中断/显式参数优先) |
 | T4 | merge_observation 对 importance 的实际行为 (当前恰好传 1.0 掩盖死参数) | M6 | 已修: test_forgetting 新增重复观察走生产路径 (observe→去重合并) 断言 +1 非双重计分 + last_accessed 刷新, 及 30 次 merge 收敛到上限 10 |
 
+## 外部审查交叉核对 (第二轮)
+
+> 来源: 另一份独立审查, 读了三模块源码 + 离线实验 (stub LLM + 真实 gte-Qwen2
+> 向量端点) + 分析真实跑出的 `data/sim/*.db`、`data/auto_sim/*.db`。
+> 编号 E1–E16 为**外部编号**, 与本文件 H/M/L/T 编号是两套体系, 勿混。
+> 状态为本轮逐条复核后的现状: 仍存在 / 已修 (指向本文件对应修复) / 部分修 / 基本不成立。
+> 复核方法: 直接读当前源码 + 对 M1 复现实验 (单次衰减 vs 6h 高频清扫)。
+
+| ID | 外部级别 | 问题 | 位置 | 外部建议 | 现状 (本轮复核) |
+|---|---|---|---|---|---|
+| E1 | 高 | 遗忘衰减复合叠加: `new_imp = m.importance * 0.5**(age/hl)`, importance 是已降过的当前值、age 用固定锚点算全部年龄, 每清扫一次再乘满年龄因子 → 随清扫次数 n² 加速, 半衰期语义失效 | memory.py:398-434 (decay_and_forget) | 存 base_importance 或 decayed_at, 改对原始值/增量衰减 | **仍存在** (实测: 单次 48h 衰减=4.0 符合半衰期, 每 6h 清扫到 48h 直接触底 1.5; SWEEP_INTERVAL=6h 即生产节奏)。修法同 H1 幂等水位: 存 base_importance, `new_imp = base_importance * 0.5**(age/hl)`, 重扫不漂移 |
+| E2 | 中 | `player_id=None` 双重语义: `all_valid(None)`="返回所有玩家", 而文档语义是"世界/自我共享流 (player_id IS NULL)", 无 API 能只取 NULL 流 | memory.py:169-183 | 拆分"不过滤"与"共享流"两种语义 | **仍存在** (`all_valid(None)` 无过滤=全玩家; 无 NULL-only API)。下游 E8 (自我反思吞关系观察)、E13 (relationship_trust(None) 合判) 的根因 |
+| E3 | 中 | `merge_observation` 的 extra_importance 死参数被忽略 | memory.py, npc.py | 真用或删参数 | **已修** (=本文件 M6, 删死参数, merge 固定 +1) |
+| E4 | 低 | 检索无绝对相关性下限, min_score 无调用方传值, top-1 永远 ≈3.0, "答不上来"永不触发 | memory.py:194-286 | 用归一化前原始 cosine 做绝对门槛 | **已修** (=本文件 M7, 加 min_relevance 原始余弦下限, dialogue 传 0.1) |
+| E5 | 低 | `find_similar_observation` 依赖未排序 SELECT (`all_valid(...)[-recent_n:]` 靠 rowid 恰好有序) | memory.py:169-183, 332-352 | 加 `ORDER BY id` | **仍存在** (`all_valid` 无 ORDER BY) |
+| E6 | 高 | 0.95 去重阈值在真实数据几乎不生效: 同义复述稳定落 0.85–0.94, ≥0.95 仅 0.1%, 9 条观察产出 48 条反思 | reflection.py:21-23 (DEDUP_THRESHOLD) | 降阈值或改去重策略 | **仍存在** (DEDUP_THRESHOLD 仍 0.95, 未动) |
+| E7 | 高 | 合并观察仍累加 importance → 同一事实反复触发反思 (1 条观察零新信息, 6 步产出 6 条反思) | npc.py:90-115 (observe merge 分支) | merge 分支不累加 importance (或只 +0.2) | **仍存在** (merge_observation 已只 +1 = M6, 但同一分支 `_importance_accum += importance` 仍累加 score_importance 原始分 8–10, 重放照样顶反思触发器; 是 E6 那张 48:9 表的生成机制) |
+| E8 | 高 | 自我反思吃掉关系观察: `reflect_self` 用 `all_valid(None, observation)`=全玩家观察, 产出 player_id=None 反思 (对所有玩家可见), 违反"自我/面解耦" | reflection.py:64-98 | 拆分共享流语义 (随 E2) | **仍存在** (= E2 的直接下游, reflect_self 仍 `all_valid(None)`) |
+| E9 | 中 | 冲突衰减重复叠加 (同一对每次 check_conflicts 再砍半) | reflection.py | 幂等处置 | **已修** (=本文件 H1, 幂等目标水位) |
+| E10 | 中 | 关系反思 fallback 硬编码 "Klaus" | reflection.py | 注入 NPC 名 | **已修** (=本文件 M1, `self._npc_name or "NPC"`) |
+| E11 | 中 | 反思去重成本 O(已有反思数) 次重复编码, 绕过 _vec_cache | reflection.py (_save) | 缓存向量 | **已修** (=本文件 L1, 走 store.vector() 缓存) |
+| E12 | 高 | `_current_plan` 存占位符非计划内容, 反应缓存键恒定, 计划层与反应层那根线断了 | npc.py:164-235 | _current_plan 设为真实时间块 | **已修** (=本文件 H3, `_current_activity(now)` 按小时取真实活动块, 缓存键随真实计划变) |
+| E13 | 中 | 重规划不淘汰旧计划, plan 记忆无限增殖 (真实库 plan 占 80–95%) | planning.py:61-96 | 新计划时 invalidate 旧 plan + 加 date 字段 | **已修** (=本文件 M4+H4, make_daily_plan 与 replan_from_now 都失效旧计划)。注: 失效是 valid=0 不删除, 库里无效行仍累积 (纯存储债, 不参与检索/反思) |
+| E14 | 中 | 重规划不继承世界背景 (make_daily_plan 喂近期观察, replan 只喂中断锚定 context) | planning.py:74-77 | replan 也喂近期观察世界背景 | **部分修** (context 不再空, 但传的是"中断时刻+只生成剩余时间"的锚定上下文, 没喂 make_daily_plan 那样的近期观察世界背景, 重规划仍不在眼狩令背景下生成) |
+| E15 | 中 | 分解子任务与顶层块重复, 子任务时间不 clamp 到 [start,end] (模型给 03-04 照存) | planning.py:40-58 | clamp 子任务时间 + 去重 | **部分修** (重复主来源已挡: 跳 1 小时块 + 精确相等兜底 = 本文件 L3; 但 LLM 按小时切分父活动仍存多条, 且子任务时间仍无 clamp) |
+| E16 | 架构 | 旗舰 world_auto_sim 绕开记忆/反思层: 自治对话/动作只写 Entity.history/reasons, 不进 npc.store, react/speak/reflect_relationship/trust 自治循环一次未调, 劝说弧线靠脚本计数器+reasons | world.py:261-338 (execute_action), 340-406 (step_autonomous) | execute_action 的 talk/attack/help 对目标走 observe/perceive_action, 让 trust/反思参与判定; 或文档明确这条 demo 只用世界层 | **仍存在** (execute_action 的 talk/attack/help 只调 agent.record()/target.record() 写 Entity.history + add_reason() 写 reasons, 从不对目标 observe; 自治循环只调 generate_daily_plan/decide_agent/execute_action/perceive/maybe_reflect_self, 无 react/speak/reflect_relationship/trust。本文件 M5 只加了"被打断就重规划"(计划层), 没接记忆/信任到决策线) |
+
+> 注: 外部 P5 ("计划被打断"观察 importance 写死 5.0 会触发反思) 复核后**基本不成立** ——
+> `planning._save_obs` 直接 `store.add`, 绕过 `npc.observe()`, 不进 `_importance_accum`,
+> 不会凭固定分触发反思; 仅剩"importance 硬编码 5.0 而非 score_importance"的轻微卫生点。
+> 未单列编号。
+
+### 仍存在项的修复顺序建议
+
+1. **E1 复合衰减** (高): 存 base_importance, 幂等衰减 `base * 0.5**(age/hl)`, 同 H1 思路; 加多清扫回归测试
+2. **E2 + E8 player_id=None 歧义** (高): 拆"不过滤"与"共享流 (NULL)"语义, reflect_self 只取 NULL 流; 连带 E13 的 relationship_trust(None) 合判
+3. **E7 合并观察累加** (高): merge 分支不累加 (或只 +0.2) importance 到反思触发器
+4. **E6 去重阈值** (高): 降 DEDUP_THRESHOLD 或改去重策略 (需真实向量复测定阈值)
+5. **E5 未排序 SELECT** (低): all_valid 加 ORDER BY id
+6. **E14/E15 重规划世界背景 + 子任务 clamp** (中): 补齐
+7. **E16 自治世界记忆/信任接线** (架构): 单独讨论方案 (动 execute_action 让目标 NPC 感知, 接入 trust/反思判定)
+
 ## 修复顺序建议
 
 1. H1 + H2 (反思置信度: 幂等 + 接入下游, 博客 2.2.5 的设计意图)
