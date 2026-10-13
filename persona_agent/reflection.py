@@ -71,7 +71,11 @@ class ReflectionEngine:
         if not recent:
             return []
         texts = [m.content for m in recent]
-        questions = self._llm.reflection_questions(texts)
+        # 过滤空白/非字符串问题 (L9, 与 M1 同族): [""] 这类"假问题"非空列表,
+        # 旧判空拦不住, 空查询 (零向量) 会流进证据检索与洞察生成。自我反思有意
+        # 不设兜底 (低价值路径允许静默跳过, 与关系反思的保面兜底不对称) —— 只补过滤。
+        questions = [q for q in self._llm.reflection_questions(texts)
+                     if isinstance(q, str) and q.strip()]
 
         new_ids: list[int] = []
         for q in questions:

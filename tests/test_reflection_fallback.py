@@ -87,3 +87,16 @@ def test_normal_question_not_fallback():
     engine.reflect_relationship(store, "Bram", now=2.0)
     assert store.queries[-1] == "Bram 是不是常来店里?"
     assert not any("的关系如何?" in q for q in store.queries)
+
+
+def test_reflect_self_blank_question_filtered(tmp_path):
+    """L9: 自我反思拿到 [''] 假问题时过滤掉, 空查询不流入证据检索, 静默跳过
+    (无兜底 —— 与关系反思的保面兜底不对称是有意设计)。"""
+    from persona_agent import MemoryRecord
+    store = QueryCapturingStore(HashEmbedder())
+    store.add(MemoryRecord(content="Klaus 把咖啡豆撒了一地", timestamp=0.0,
+                           type="observation", importance=5.0))
+    engine = ReflectionEngine(FallbackStubLLM([""]), None)
+    result = engine.reflect_self(store, now=1.0)
+    assert result == [], "空白问题过滤后无问题可问, 静默跳过"
+    assert store.queries == [], "空查询不得流入证据检索 (零向量)"
