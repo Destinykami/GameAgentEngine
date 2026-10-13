@@ -81,7 +81,7 @@
 | E13 | 中 | 重规划不淘汰旧计划, plan 记忆无限增殖 (真实库 plan 占 80–95%) | planning.py:61-96 | 新计划时 invalidate 旧 plan + 加 date 字段 | **已修** (=本文件 M4+H4, make_daily_plan 与 replan_from_now 都失效旧计划)。注: 失效是 valid=0 不删除, 库里无效行仍累积 (纯存储债, 不参与检索/反思) |
 | E14 | 中 | 重规划不继承世界背景 (make_daily_plan 喂近期观察, replan 只喂中断锚定 context) | planning.py (replan_from_now) | replan 也喂近期观察世界背景 | **已修**: replan_from_now 加 context 参数携带世界背景 (近期观察), npc.replan 取 `all_valid(observation)[-10:]` 传入 (同 generate_daily_plan); 世界背景在前 + 中断锚定指令在后, 被打断后仍在世界背景下重排 (持眼者逢眼狩令仍规划躲避)。回归: test_replan 新增"重规划 context 含世界背景+中断锚定" |
 | E15 | 中 | 分解子任务与顶层块重复, 子任务时间不 clamp 到 [start,end] (模型给 03-04 照存) | planning.py (make_daily_plan) | clamp 子任务时间 + 去重 | **已修** (clamp 部分): make_daily_plan 把子任务时间 clamp 到父块 [start,end] —— 越出父块的裁到边界, 整段在外的丢弃。这是计划层的独立兜底 (防御纵深): RealLLM 的 parse 层会丢弃越界子任务, 但 stub/自定义 LLM 绕过 parse, 且 parse 是"整段丢弃"而非"裁到边界保留在界部分"。重复主来源仍由 L3 (跳 1 小时块 + 精确相等) 挡, 按小时切分多条是设计内的分解粒度。回归: test_plan_parsing 新增"越界子任务 clamp 到父块" |
-| E16 | 架构 | 旗舰 world_auto_sim 绕开记忆/反思层: 自治对话/动作只写 Entity.history/reasons, 不进 npc.store, react/speak/reflect_relationship/trust 自治循环一次未调, 劝说弧线靠脚本计数器+reasons | world.py:261-338 (execute_action), 340-406 (step_autonomous) | execute_action 的 talk/attack/help 对目标走 observe/perceive_action, 让 trust/反思参与判定; 或文档明确这条 demo 只用世界层 | **仍存在** (execute_action 的 talk/attack/help 只调 agent.record()/target.record() 写 Entity.history + add_reason() 写 reasons, 从不对目标 observe; 自治循环只调 generate_daily_plan/decide_agent/execute_action/perceive/maybe_reflect_self, 无 react/speak/reflect_relationship/trust。本文件 M5 只加了"被打断就重规划"(计划层), 没接记忆/信任到决策线) |
+| E16 | 架构 | 旗舰 world_auto_sim 绕开记忆/反思层: 自治对话/动作只写 Entity.history/reasons, 不进 npc.store, react/speak/reflect_relationship/trust 自治循环一次未调, 劝说弧线靠脚本计数器+reasons | world.py (execute_action, step_autonomous) | execute_action 的 talk/attack/help 对目标走 observe/perceive_action, 让 trust/反思参与判定; 或文档明确这条 demo 只用世界层 | **已修** (全量接线, 本地模型成本可忽略): 新增 `_observe_target_social` —— talk/attack/help 作用于 NPC 时, 目标 NPC `perceive_action` 把动作 observe 进自己记忆流 (关系观察, player_id=行动者), 登记 `_step_social`; talk 额外 `speak` 回话 (真对话); step_autonomous 步末消费 `_step_social`, 对交互对象跑 `reflect_relationship` (门控同 speak: full 档+新观察才跑, 防反思增殖/信任漂移), 信任度随新观察惰性更新, 参与其后续 decide_agent 判定。NPC 对挨打的"反应"由其下一步 decide_agent 行动承担 (不冗余调 react)。回归: test_world 新增"社交动作进 NPC 记忆/反思+回话+步末清空" |
 
 > 注: 外部 P5 ("计划被打断"观察 importance 写死 5.0 会触发反思) 复核后**基本不成立** ——
 > `planning._save_obs` 直接 `store.add`, 绕过 `npc.observe()`, 不进 `_importance_accum`,
@@ -96,7 +96,9 @@
 4. **E6 去重阈值** (高): 降 DEDUP_THRESHOLD 或改去重策略 (需真实向量复测定阈值)
 5. **E5 未排序 SELECT** (低): all_valid 加 ORDER BY id
 6. **E14/E15 重规划世界背景 + 子任务 clamp** (中): 补齐
-7. **E16 自治世界记忆/信任接线** (架构): 单独讨论方案 (动 execute_action 让目标 NPC 感知, 接入 trust/反思判定)
+7. **E16 自治世界记忆/信任接线** (架构): 已修 —— 全量接线 (execute_action 的 talk/attack/help 让目标 NPC perceive_action 观察+speak 回话, step_autonomous 消费 _step_social 跑 reflect_relationship, 信任惰性更新参与判定)
+
+> **E 系列全部 16 条已处置完**: E1/E2/E8/E7/E6/E5/E14/E15/E16 已修, E3/E4/E9/E10/E11/E12/E13 对应内部 M/H/L 已修 (见上表)。
 
 ## 修复顺序建议
 

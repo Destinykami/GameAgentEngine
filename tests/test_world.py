@@ -112,6 +112,41 @@ def test_multi_npc_trust_isolation(tmp_path):
     w.close()
 
 
+def test_execute_action_wires_npc_memory_and_reflection(tmp_path):
+    """E16: 自治世界的社交动作 (talk/attack/help) 进目标 NPC 的记忆/信任/反思层,
+    不再只写 Entity.history。talk 有回话 (真对话); attack/help 只观察 (NPC 的
+    反应由其下一步 decide_agent 行动承担)。step_autonomous 消费 _step_social 跑
+    关系反思, 步末清空。信任度随新观察惰性更新。"""
+    w = _world(tmp_path)
+    llm = _StubLLM()
+    traits = {"social": 0.8, "goal_oriented": 0.3}
+    w.add_npc("桃音", traits, llm=llm, data_dir=str(tmp_path), location="治疗堂")
+    w._agent_llms["桃音"] = llm          # 让 decide_agent 能决策 (自治循环)
+    w._agent_personas["桃音"] = traits
+    w.add_agent_player("旅行者", "治疗堂", "帮助持眼者", llm=llm)   # 同区域 → full 档
+    w.clock = 10.0
+
+    # talk: 观察进记忆流 + 回话 (真对话)
+    out = w.execute_action(w.get("旅行者"),
+                           {"action": "talk", "target": "桃音", "utterance": "帮帮我"})
+    assert "← 桃音" in out, "talk 应有 NPC 回话 (真对话)"
+    obs = w.npc("桃音").store.all_valid(player_id="旅行者", types=["observation"])
+    assert any("帮帮我" in o.content for o in obs), "talk 应进 NPC 关系观察"
+
+    # attack: 观察进记忆流, 无回话 (NPC 不'回话'挨打, 反应由下一步行动承担)
+    w.execute_action(w.get("旅行者"), {"action": "attack", "target": "桃音"})
+    obs = w.npc("桃音").store.all_valid(player_id="旅行者", types=["observation"])
+    assert any("攻击" in o.content for o in obs), "attack 应进 NPC 关系观察"
+
+    # 社交动作登记进 _step_social; step_autonomous 消费它跑关系反思, 步末清空
+    assert w._step_social, "社交动作应登记 _step_social 待反思"
+    w.step_autonomous(now=10.5)
+    refs = w.npc("桃音").store.all_valid(player_id="旅行者", types=["reflection"])
+    assert len(refs) >= 1, "step_autonomous 应对社交对象跑关系反思"
+    assert w._step_social == [], "步末 _step_social 应清空"
+    w.close()
+
+
 # ---------------------------------------------------------------- 阶段 2: 空间感知 → 观察
 def _world_with_npc_player(tmp_path):
     w = _world(tmp_path)

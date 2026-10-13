@@ -134,6 +134,10 @@ class World:
         self._conn: sqlite3.Connection | None = None
         self._lock = threading.RLock()
         self._last_plan_day = -1   # 已生成过日计划的天 (0-based); step 每天早晨自动规划
+        # E16: 本步发生的社交交互 (目标 NPC, 行动者名)。execute_action 的
+        # talk/attack/help 对目标 NPC observe 后登记进来, step_autonomous 统一
+        # 消费 (跑关系反思), 步末清空。让自治世界的社交动作进 NPC 记忆/信任/反思层。
+        self._step_social: list[tuple["NPC", str]] = []
         if path is not None:
             self._open(path)
 
@@ -258,6 +262,19 @@ class World:
                                  self._agent_personas.get(agent.name, {}),
                                  perception, agent.history, self.agent_state(agent))
 
+    def _observe_target_social(self, target: Entity, agent: Entity,
+                               action_desc: str) -> "NPC | None":
+        """E16: 社交动作 (talk/attack/help) 作用于 NPC 时, 目标 NPC 在自己的记忆流
+        observe 这件事 (关系观察, player_id = 行动者名), 并把 (目标 NPC, 行动者)
+        登记进 _step_social 供 step_autonomous 统一跑关系反思。返回目标 NPC
+        (目标不是 NPC 则 None)。信任度随之惰性更新 (新观察改变关系记忆签名)。"""
+        npc = self._npcs.get(target.name)
+        if npc is None:
+            return None
+        npc.perceive_action(agent.name, action_desc, self.clock)
+        self._step_social.append((npc, agent.name))
+        return npc
+
     def execute_action(self, agent: Entity, action: dict) -> str:
         """执行动作并应用影响, 返回发生了什么 (供打印/记录)。非全知: 只影响直接相关方。"""
         a = action.get("action", "wait")
@@ -274,6 +291,13 @@ class World:
             agent.record(f"对 {target.name} 说: {line}")
             target.record(f"{agent.name} 对TA说: {line}")
             out = f"{agent.name} 对 {target.name} 说: {line}"
+            # E16: 目标 NPC 观察这句对话进自己记忆流 (关系观察), 并回话 (真对话)。
+            # speak 内部门控: full 档且出现新观察才重跑关系反思, 再走对话检索+回复。
+            npc = self._observe_target_social(target, agent, f"对TA说: {line}")
+            if npc is not None:
+                reply = npc.speak(agent.name, line, self.clock)
+                if reply:
+                    out += f" ← {target.name}: {reply}"
             # 理由 (仅玩家积累): 学者取证 / 医者证言 / 铁匠经济之弊
             if agent.kind == "player":
                 if "scholar" in target.role:
@@ -298,6 +322,11 @@ class World:
             target.record(f"{agent.name} 攻击了TA, 受到 {dmg} 伤害")
             extra = f" → {target.name} 阵亡!" if target.dead else ""
             out = f"{agent.name} 攻击 {target.name}, 造成 {dmg} 伤害{extra}"
+            # E16: 目标 NPC 观察这次攻击进自己记忆流 (关系观察) —— 挨打的"反应"
+            # 由其下一步 decide_agent 行动承担 (逃跑/反击), 不在此"回话"。
+            self._observe_target_social(
+                target, agent,
+                f"攻击了TA, 造成 {dmg} 伤害" + ("(致TA阵亡)" if target.dead else ""))
             # 执行官收缴持眼者 → 同地点的目击玩家积累一条理由 (亲眼所见)
             if "enforcer" in agent.role and "vision_holder" in target.role:
                 for witness in self.entities.values():
@@ -328,6 +357,10 @@ class World:
             agent.record(f"{'帮助' if a == 'help' else '替'} {target.name}")
             target.record(f"{agent.name} {'帮了TA' if a == 'help' else '替TA藏匿'}")
             out = f"{agent.name} {'帮助' if a == 'help' else '替'} {target.name}"
+            # E16: 目标 NPC 观察这次帮助/藏匿进自己记忆流 (关系观察, 信任度随之
+            # 惰性上升)。NPC 的"反应"同样由其下一步 decide_agent 行动承担。
+            self._observe_target_social(
+                target, agent, "帮助了TA" if a == "help" else "替TA藏匿")
             # 帮持眼者护住神之眼 = 一条反眼狩令的理由 (仅玩家积累)
             if a == "help" and agent.kind == "player" and "vision_holder" in target.role:
                 if agent.add_reason(f"助 {target.name} 藏好神之眼, 令其免遭收缴",
@@ -401,6 +434,20 @@ class World:
             self.perceive(name, now)
             if npc._tier != "idle":
                 npc.maybe_reflect_self(now)
+        # 4. E16: 社交交互过关系反思层 —— 本步有社交动作 (talk/attack/help) 的
+        # 目标 NPC, 对交互对象跑关系反思 (信任度随之惰性更新, 参与其后续判定)。
+        # 门控同 speak: 仅 full 档且出现新观察才重跑, 避免反思无限增殖/信任漂移。
+        # talk 已在 execute_action 里经 speak 反思过, 此处再跑被 _reflected_obs 门控
+        # 拦下 (幂等); attack/help 没走 speak, 靠这里补上关系反思。
+        for npc, actor in self._step_social:
+            if self.entities[npc.name].dead or npc._tier != "full":
+                continue
+            obs_count = len(npc.store.all_valid(player_id=actor,
+                                                types=["observation"]))
+            if obs_count > npc._reflected_obs.get(actor, 0):
+                npc.reflect_relationship(actor, self.clock)
+                npc._reflected_obs[actor] = obs_count
+        self._step_social.clear()
         if self._conn is not None:
             self.save()
         return events, decisions
