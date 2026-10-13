@@ -1,6 +1,6 @@
 """LLM 层: LLMClient 抽象接口 + LLMContext 上下文。
 
-框架让 LLM 承担十类推理, 全部抽象成接口方法:
+框架让 LLM 承担十一类推理, 全部抽象成接口方法:
 - complete(ctx)                       对话/反应回复
 - score_importance(text, player_id)   记忆重要性打分 (1-10)
 - reflection_questions(recent)        生成反思用的 3 个高层问题

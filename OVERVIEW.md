@@ -37,9 +37,9 @@ NPC 框架**：纯 Python 标准库 + SQLite，真实 LLM（SGLang 部署的
 | LLM 层 | `llm.py` / `llm_real.py` | 9 方法抽象接口 + 唯一 RealLLM 实现（OpenAI 兼容） |
 | 向量层 | `embeddings.py` / `embeddings_real.py` | HashEmbedder（回退）+ RealEmbedder（gte-Qwen2）+ make_embedder |
 
-## 三、LLM 推理栈——九类推理全是 LLM 判断
+## 三、LLM 推理栈——十一类推理全是 LLM 判断
 
-`LLMClient` 抽象出 9 个方法，**过去靠关键词死表的地方现在全部交给 LLM 语义
+`LLMClient` 抽象出 11 个方法，**过去靠关键词死表的地方现在全部交给 LLM 语义
 判断**，每个都配成本闸门：
 
 | 推理 | 方法 | 输出 | 成本闸门 |
@@ -53,6 +53,8 @@ NPC 框架**：纯 Python 标准库 + SQLite，真实 LLM（SGLang 部署的
 | **事件价值** | `score_event` | 社交/目标/打断 各 0-10 | 按 `(事件, 计划)` 缓存 |
 | **关系信任** | `judge_trust` | -1..1 | 按关系记忆签名 `(条数, 最新时间戳)` 缓存 |
 | **冲突强度** | `judge_conflict` | 0-10 矛盾强度 | 按 `(反思内容, 观察内容)` 缓存 |
+| 动作感知 | `perceive_action` | NPC 自己视角的玩家动作描述 | 走 NPC 观察/记忆流 |
+| 动作决策 | `decide_action` | 下一步动作 (非全知) | 语义决策缓存 |
 
 后三个（事件价值/信任/冲突）是从"关键词词表"升级成"LLM 判断"的。收益实测：
 
