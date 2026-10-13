@@ -33,7 +33,7 @@
 | ID | 严重度 | 问题 | 位置 | 修法 | 状态 |
 |---|---|---|---|---|---|
 | M6 | M | `merge_observation(mem_id, now, extra_importance)` 的 extra_importance 是死参数: 函数体硬编码 +1.0, npc.observe 传入的 LLM 重要性分被丢弃 (仅用于反思门控累积); 测试恰好传 1.0 掩盖 | memory.py:303-318, npc.py:98-104 | 真的用它 (封顶 10) 或删掉参数 | 已修: 删掉死参数, 语义显式固定为固定 +1 重复强化 (封顶 10) —— 事件重要性首次入库已计入, 重复合并再加全量是双重计分; docstring 写明理由, npc.observe 不再传 importance |
-| M7 | M | 检索副作用把"当候选"等同于"被回忆": retrieve() 对 top_k 每条都 _mark_accessed 刷新遗忘锚点, 反思证据检索 (10×3 问) 静默给观察续命; 世界层每步 perceive→observe→去重合并, 玩家逗留期间 last_accessed 每步刷新、感知记忆永不衰减; 叠加 min_score=0.0 + 按候选集 min-max 归一化 (单条候选必得 3.0, 小存储必返回满 top_k 含无关记忆) | memory.py:222-223, memory.py:362-364, memory.py:202-208 | 明确"进 top_k 即视为回忆"写入文档, 或只在对话实际引用时刷新; 加相关性下限 | 待修 |
+| M7 | M | 检索副作用把"当候选"等同于"被回忆": retrieve() 对 top_k 每条都 _mark_accessed 刷新遗忘锚点, 反思证据检索 (10×3 问) 静默给观察续命; 世界层每步 perceive→observe→去重合并, 玩家逗留期间 last_accessed 每步刷新、感知记忆永不衰减; 叠加 min_score=0.0 + 按候选集 min-max 归一化 (单条候选必得 3.0, 小存储必返回满 top_k 含无关记忆) | memory.py:222-223, memory.py:362-364, memory.py:202-208 | 明确"进 top_k 即视为回忆"写入文档, 或只在对话实际引用时刷新; 加相关性下限 | 已修: ①retrieve 加 mark_accessed 开关 —— 反思两处证据检索传 False (候选≠回忆, 被引用的观察另有证据保护兜底), 对话保持 True 并文档化"进 top_k 即视为回忆"; ②加 min_relevance 下限 (默认 0 向后兼容), dialogue 传 RELEVANCE_FLOOR=0.1 挡零重叠灌水。世界层 perceive→merge 每步刷新属 by-design (重复=强化, merge 文档已写明), 不改 |
 | L4 | L | `_vec_cache` 无上限且不跨进程, RealEmbedder 下恢复大世界后首波检索 O(n) 次网络嵌入 (HashEmbedder 无感) | memory.py:79-80, memory.py:140-146 | 注释写明冷启动行为; 量大后再议 | 待修 |
 | L5 | L | `find_similar_observation` 只看同玩家最近 50 条, 窗口外的重放会重复入库 | memory.py:281-301 | 可接受, 或扩大窗口 | 待修 |
 | L6 | L | retrieve 是读操作却写库 (UPDATE last_accessed), 调试/审查调用会改变衰减时钟; 与 M7 同源 | memory.py:237-242 | 随 M7 一并处理 | 待修 |

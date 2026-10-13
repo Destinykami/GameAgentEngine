@@ -12,6 +12,12 @@ from __future__ import annotations
 from .llm import LLMClient, LLMContext
 from .memory import MemoryStore
 
+# 对话检索的相关性下限 (M7): 原始余弦低于此值的记忆不进 prompt。min-max 归一化 +
+# min_score=0.0 会让小存储必返回满 top_k 含无关记忆, 无关记忆塞进 prompt 既费
+# token 又诱导 LLM 拿不相干的事作答。0.1 是保守值 —— 只挡"零词面/零语义重叠"的
+# 记忆, 不误伤弱相关。
+RELEVANCE_FLOOR = 0.1
+
 
 class DialogueManager:
     def __init__(self, llm: LLMClient, store: MemoryStore,
@@ -26,8 +32,11 @@ class DialogueManager:
         """对玩家的一句发言作出回应。"""
         # 查询 = 玩家话语 + 玩家身份, 使 relevance 偏向与该玩家相关的记忆
         query = f"{utterance} (对话者: {player_id})"
+        # 对话 = 真回忆: mark_accessed 保持默认 True (进 top_k 即刷新遗忘锚点);
+        # min_relevance 挡掉零重叠的无关记忆 (M7)。
         memories = self._store.retrieve(
-            query=query, now=now, top_k=top_k, include_player=player_id)
+            query=query, now=now, top_k=top_k, include_player=player_id,
+            min_relevance=RELEVANCE_FLOOR)
         # 记忆流是第三人称叙述, 必须显式告诉模型: 记忆里的名字就是你自己,
         # 开口时改用"我", 否则模型会把 NPC 自己当成第三方复述 (自指 bug)。
         ctx = LLMContext(

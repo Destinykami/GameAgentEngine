@@ -64,9 +64,13 @@ class ReflectionEngine:
 
         new_ids: list[int] = []
         for q in questions:
+            # mark_accessed=False: 证据检索只是"考虑候选", 不是"被回忆" —— 刷新
+            # 遗忘锚点会让反思静默给 top_k 里没被引用的观察续命 (M7)。真正被引用
+            # 为证据的观察由"被有效反思引用即保护"单独兜底, 不依赖此副作用。
             evidence = store.retrieve(query=q, now=now,
                                       player_id=None, top_k=10,
-                                      types=["observation"])
+                                      types=["observation"],
+                                      mark_accessed=False)
             ev_pairs = [(e["id"], e["content"]) for e in evidence]
             if not ev_pairs:
                 continue
@@ -100,9 +104,11 @@ class ReflectionEngine:
         new_ids: list[int] = []
         for q in questions:
             # 证据只用真实观察, 不用其他反思 → 切断"反思引用反思"的级联。
+            # mark_accessed=False: 同 reflect_self, 候选证据不刷新遗忘锚点 (M7)。
             evidence = store.retrieve(query=q, now=now, player_id=player_id,
                                       top_k=10, include_player=player_id,
-                                      types=["observation"])
+                                      types=["observation"],
+                                      mark_accessed=False)
             ev_pairs = [(e["id"], e["content"]) for e in evidence]
             if not ev_pairs:
                 continue

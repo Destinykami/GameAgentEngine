@@ -186,7 +186,9 @@ class MemoryStore:
                  top_k: int = 8,
                  include_player: str | None = None,
                  min_score: float = 0.0,
-                 types: Sequence[str] | None = None) -> list[dict]:
+                 types: Sequence[str] | None = None,
+                 mark_accessed: bool = True,
+                 min_relevance: float = 0.0) -> list[dict]:
         """三维检索。
 
         - query: 查询文本 (应已含玩家身份, 使 relevance 偏向该玩家)。
@@ -195,6 +197,15 @@ class MemoryStore:
         - include_player: 在评分上额外给"属于该玩家"的记忆加权 (千人千面)。
         - types: 限定记忆类型 (如 ["observation"]), 用于让反思只以真实观察为证据,
           切断"反思引用反思"的级联。
+        - mark_accessed: 是否把进 top_k 的记忆刷新 last_accessed (遗忘锚点)。
+          对话 (NPC 真正拿记忆开口) 用默认 True —— 进 top_k 即"被回忆", 抗遗忘;
+          反思证据检索传 False —— 候选证据只是"被考虑", 真正被引用的观察已由
+          "被反思引用即保护"单独兜底, 不该把 top_k 里没被引用的也一并续命
+          (M7: 反思 10×3 问静默给无关观察续命)。
+        - min_relevance: 原始余弦相关性下限, 低于它的候选直接剔除 (归一化前)。
+          min-max 归一化会把"小存储里最不差的那条"抬成满分, min_score=0.0 又
+          全收, 于是小库必返回满 top_k 含无关记忆; 一个绝对相关性下限挡住这种
+          灌水 (M7)。默认 0.0 不过滤, 行为与旧版一致。
         """
         q_vec = self._embedder.embed([query])[0]
         cands = self.all_valid(player_id=player_id, types=types)
@@ -202,13 +213,23 @@ class MemoryStore:
             return []
 
         # 计算原始分数
-        raw = []
         recs = [c.last_accessed if c.last_accessed is not None else c.timestamp
                 for c in cands]
         deltas = [max(0.0, now - t) for t in recs]
         recency = [RECENCY_DECAY ** d for d in deltas]
         importance = [c.importance / 10.0 for c in cands]
         relevance = [cosine_similarity(self._vec(c), q_vec) for c in cands]
+
+        # 相关性下限 (M7): 归一化前按原始余弦剔除无关候选, 挡住 min-max 把
+        # "小存储里最不差的那条"抬成满分塞进 top_k 的灌水。
+        if min_relevance > 0.0:
+            keep = [s >= min_relevance for s in relevance]
+            cands = [c for c, k in zip(cands, keep) if k]
+            recency = [r for r, k in zip(recency, keep) if k]
+            importance = [i for i, k in zip(importance, keep) if k]
+            relevance = [s for s, k in zip(relevance, keep) if k]
+            if not cands:
+                return []
 
         # Min-Max 归一化
         def norm(vals: list[float]) -> list[float]:
@@ -218,6 +239,7 @@ class MemoryStore:
             return [(v - lo) / (hi - lo) for v in vals]
 
         r_norm, i_norm, s_norm = norm(recency), norm(importance), norm(relevance)
+        raw = []
         for c, r, i, s in zip(cands, r_norm, i_norm, s_norm):
             score = (ALPHA_RECENCY * r + ALPHA_IMPORTANCE * i +
                      ALPHA_RELEVANCE * s)
@@ -236,8 +258,10 @@ class MemoryStore:
         for score, c in raw[:top_k]:
             if score < min_score:
                 continue
-            # 更新 last_accessed (recency 的语义: 距上次检索的时间)
-            self._mark_accessed(c.id, now)
+            # 更新 last_accessed (recency 的语义: 距上次检索的时间); 反思证据检索
+            # 传 mark_accessed=False 关闭 —— 候选 ≠ 回忆 (M7)。
+            if mark_accessed:
+                self._mark_accessed(c.id, now)
             results.append({
                 "id": c.id,
                 "type": c.type,
