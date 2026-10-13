@@ -150,3 +150,51 @@ def test_merge_reinforcement_caps_at_ten(tmp_path):
     for i in range(30):   # 5.0 + 30 → 远超上限, 应收敛到 10
         new = npc.store.merge_observation(obs_id, now=10.0 + i)
     assert new == pytest.approx(10.0), "importance 上限 10"
+
+
+def _obs_store(importance: float = 8.0):
+    from persona_agent.memory import MemoryStore
+    from persona_agent.embeddings import HashEmbedder
+    s = MemoryStore(HashEmbedder())
+    s.add(MemoryRecord(content="测试观察", timestamp=0.0,
+                       type="observation", importance=importance))
+    return s
+
+
+def test_decay_idempotent_not_compound(tmp_path):
+    """E1: 衰减是幂等水位 (base * 0.5**(age/hl)), 不是对已衰减值再乘满年龄因子。
+    单次 48h 衰减与每 6h 高频清扫到 48h 必须一致 —— 旧实现后者触底 (复合加速)。"""
+    single = _obs_store(8.0)
+    single.decay_and_forget(now=48.0)
+    swept = _obs_store(8.0)
+    for t in range(6, 49, 6):          # SWEEP_INTERVAL=6h 的生产节奏
+        swept.decay_and_forget(now=float(t))
+    assert single.all_valid()[0].importance == pytest.approx(4.0), \
+        "单次半衰期: 8.0 * 0.5^(48/48) = 4.0"
+    assert swept.all_valid()[0].importance == pytest.approx(4.0), \
+        "高频清扫不得复合加速 (旧实现触底 1.5, 半衰期语义失效)"
+
+
+def test_decay_rescan_no_drift(tmp_path):
+    """E1: 同一时刻重扫不漂移 (幂等) —— 重算从基线出发, 结果与扫几次无关。"""
+    s = _obs_store(8.0)
+    s.decay_and_forget(now=30.0)
+    v1 = s.all_valid()[0].importance
+    s.decay_and_forget(now=30.0)        # 原样重扫
+    v2 = s.all_valid()[0].importance
+    assert v1 == pytest.approx(v2), "重扫不得漂移 (旧实现每次再乘一遍因子)"
+
+
+def test_merge_raises_decay_baseline(tmp_path):
+    """E1: merge 提升 importance 时同步抬高衰减基线 —— 衰减从提升后的值起,
+    不把合并的 +1 增益抹掉。"""
+    s = _obs_store(8.0)
+    mid = s.all_valid()[0].id
+    s.merge_observation(mid, now=0.0)   # +1 → 9.0, 基线抬到 9.0
+    rec = s.all_valid()[0]
+    assert rec.importance == pytest.approx(9.0)
+    assert rec.base_importance == pytest.approx(9.0), "基线应随 merge 抬高"
+    s.decay_and_forget(now=24.0)        # 24h 后 (hl=48h): 9.0 * 0.5^0.5 ≈ 6.36
+    got = s.all_valid()[0].importance
+    assert got == pytest.approx(9.0 * (0.5 ** 0.5)), \
+        f"应从基线 9.0 衰减 (得 6.36), 实际 {got:.4f} (抹掉增益会是 8.0*0.707=5.66)"

@@ -66,7 +66,7 @@
 
 | ID | 外部级别 | 问题 | 位置 | 外部建议 | 现状 (本轮复核) |
 |---|---|---|---|---|---|
-| E1 | 高 | 遗忘衰减复合叠加: `new_imp = m.importance * 0.5**(age/hl)`, importance 是已降过的当前值、age 用固定锚点算全部年龄, 每清扫一次再乘满年龄因子 → 随清扫次数 n² 加速, 半衰期语义失效 | memory.py:398-434 (decay_and_forget) | 存 base_importance 或 decayed_at, 改对原始值/增量衰减 | **仍存在** (实测: 单次 48h 衰减=4.0 符合半衰期, 每 6h 清扫到 48h 直接触底 1.5; SWEEP_INTERVAL=6h 即生产节奏)。修法同 H1 幂等水位: 存 base_importance, `new_imp = base_importance * 0.5**(age/hl)`, 重扫不漂移 |
+| E1 | 高 | 遗忘衰减复合叠加: `new_imp = m.importance * 0.5**(age/hl)`, importance 是已降过的当前值、age 用固定锚点算全部年龄, 每清扫一次再乘满年龄因子 → 随清扫次数 n² 加速, 半衰期语义失效 | memory.py (decay_and_forget) | 存 base_importance 或 decayed_at, 改对原始值/增量衰减 | **已修** (同 H1 幂等水位): 新增 base_importance 列 (旧库 PRAGMA+ALTER 迁移, 逐行 UPDATE 基线=当前 importance), 衰减改对基线幂等重算 `base_importance * 0.5**(age/hl)`, 只降不升守卫保留; merge 提升 importance 时同步抬高基线 (增益不被抹掉), 回忆刷新 last_accessed 仍抗遗忘 (锚点后移)。实测: 单次 48h=4.0 且每 6h 清扫到 48h 也=4.0 (旧实现触底 1.5), 重扫不漂移。回归: test_forgetting 新增 3 用例 (幂等非复合/重扫不漂移/merge 抬基线) |
 | E2 | 中 | `player_id=None` 双重语义: `all_valid(None)`="返回所有玩家", 而文档语义是"世界/自我共享流 (player_id IS NULL)", 无 API 能只取 NULL 流 | memory.py:169-183 | 拆分"不过滤"与"共享流"两种语义 | **仍存在** (`all_valid(None)` 无过滤=全玩家; 无 NULL-only API)。下游 E8 (自我反思吞关系观察)、E13 (relationship_trust(None) 合判) 的根因 |
 | E3 | 中 | `merge_observation` 的 extra_importance 死参数被忽略 | memory.py, npc.py | 真用或删参数 | **已修** (=本文件 M6, 删死参数, merge 固定 +1) |
 | E4 | 低 | 检索无绝对相关性下限, min_score 无调用方传值, top-1 永远 ≈3.0, "答不上来"永不触发 | memory.py:194-286 | 用归一化前原始 cosine 做绝对门槛 | **已修** (=本文件 M7, 加 min_relevance 原始余弦下限, dialogue 传 0.1) |

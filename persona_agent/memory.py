@@ -63,6 +63,11 @@ class MemoryRecord:
     evidence: list[int] = field(default_factory=list)
     confidence: float = 1.0            # 当前置信度 (反思会被冲突衰减)
     base_confidence: float = 1.0       # 创建时的初始置信度 (幂等衰减的重算基准)
+    # 衰减的起始基线 (E1 幂等水位, 同 base_confidence 思路): 重要性从这条基线按
+    # 0.5**(age/hl) 重算, 重扫不漂移不复合。默认 None → add() 回退到 importance,
+    # 所以只设 importance 的调用方 (observe/_save_plan/测试) 自动正确; merge 提升
+    # importance 时会同步抬高这条基线 (合并是真实重要性事件, 衰减不能把增益抹掉)。
+    base_importance: float | None = None
     valid: bool = True
     last_accessed: float | None = None
     id: int | None = None              # 由数据库分配
@@ -99,7 +104,8 @@ class MemoryStore:
                     confidence REAL DEFAULT 1.0,
                     valid INTEGER DEFAULT 1,
                     last_accessed REAL,
-                    base_confidence REAL DEFAULT 1.0
+                    base_confidence REAL DEFAULT 1.0,
+                    base_importance REAL
                 )
                 """
             )
@@ -109,6 +115,17 @@ class MemoryStore:
             if "base_confidence" not in cols:
                 self._conn.execute(
                     "ALTER TABLE memory ADD COLUMN base_confidence REAL DEFAULT 1.0"
+                )
+            # 旧库迁移 (E1): base_importance 是衰减基线, 必须逐行 = 当前 importance
+            # (不能用常量缺省 —— 各行 importance 不同)。旧行从当前值起继续衰减,
+            # 一次性重置基线, 可接受。
+            if "base_importance" not in cols:
+                self._conn.execute(
+                    "ALTER TABLE memory ADD COLUMN base_importance REAL"
+                )
+                self._conn.execute(
+                    "UPDATE memory SET base_importance = importance "
+                    "WHERE base_importance IS NULL"
                 )
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_player ON memory(player_id)"
@@ -124,14 +141,18 @@ class MemoryStore:
     # ------------------------------------------------------------------ 写入
     def add(self, rec: MemoryRecord) -> int:
         """写入一条记忆, 返回分配的 id。"""
+        # 衰减基线: 未显式设定时回退到 importance (E1) —— 只设 importance 的
+        # 调用方 (observe/_save_plan/_save_obs/测试) 自动把基线设为初始重要性。
+        base_imp = (rec.base_importance if rec.base_importance is not None
+                    else rec.importance)
         with self._lock, self._conn:
             cur = self._conn.execute(
                 """
                 INSERT INTO memory
                     (type, content, timestamp, importance, player_id,
                      evidence, confidence, valid, last_accessed,
-                     base_confidence)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     base_confidence, base_importance)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     rec.type,
@@ -144,6 +165,7 @@ class MemoryStore:
                     1 if rec.valid else 0,
                     rec.last_accessed,
                     rec.base_confidence,
+                    base_imp,
                 ),
             )
             new_id = int(cur.lastrowid)
@@ -187,7 +209,7 @@ class MemoryStore:
             id=row[0], type=row[1], content=row[2], timestamp=row[3],
             importance=row[4], player_id=row[5], evidence=json.loads(row[6]),
             confidence=row[7], valid=bool(row[8]), last_accessed=row[9],
-            base_confidence=row[10],
+            base_confidence=row[10], base_importance=row[11],
         )
 
     # ------------------------------------------------------------------ 检索
@@ -365,6 +387,10 @@ class MemoryStore:
         的背叛重复一次就从 5 直接顶满 10)。旧版此函数有个 extra_importance
         参数但函数体硬编码 +1 从不读取 (M6 死参数), 调用方传的值被静默丢弃,
         现已删除, 语义在此显式固定。返回新 importance。
+
+        合并同时抬高 base_importance 到提升后的值 (E1): 合并是真实的重要性事件,
+        衰减基线必须跟上, 否则 decay_and_forget 会从旧基线重算、把这次 +1 增益
+        抹掉。刷新 last_accessed 还把遗忘锚点推到 now (重复发生 = 记忆强化)。
         """
         with self._lock:
             row = self._conn.execute(
@@ -375,8 +401,9 @@ class MemoryStore:
             new_imp = min(10.0, row[0] + 1.0)
             with self._conn:
                 self._conn.execute(
-                    "UPDATE memory SET last_accessed = ?, importance = ? "
-                    "WHERE id = ?", (now, new_imp, mem_id))
+                    "UPDATE memory SET last_accessed = ?, importance = ?, "
+                    "base_importance = ? WHERE id = ?",
+                    (now, new_imp, new_imp, mem_id))
             return new_imp
 
     def all_invalid(self) -> list[MemoryRecord]:
@@ -389,7 +416,7 @@ class MemoryStore:
             ).fetchall()
         cols = ("id", "type", "content", "timestamp", "importance", "player_id",
                 "evidence", "confidence", "valid", "last_accessed",
-                "base_confidence")
+                "base_confidence", "base_importance")
         return [MemoryRecord(**{**dict(zip(cols, r)),
                                 "evidence": json.loads(r[6] or "[]")})
                 for r in rows]
@@ -399,13 +426,17 @@ class MemoryStore:
                          half_lives: dict[str, float] | None = None
                          ) -> list[int]:
         """时间遗忘 (部分衰减降权, 不删除): 把每条未受保护记忆的 importance
-        乘以衰减因子, 渐近降到 MIN_IMPORTANCE 为止, 返回被降权的 id。
+        降到衰减水位, 渐近到 MIN_IMPORTANCE 为止, 返回被降权的 id。
 
-        importance *= 0.5 ** (age / half_life), 其中
+        importance = base_importance * 0.5 ** (age / half_life)  (E1 幂等水位),
           age = now - max(timestamp, last_accessed or timestamp)
-                (被回忆过 / merge 刷新的记忆衰减更慢, 抗遗忘)
+                (被回忆过 / merge 刷新的记忆锚点后移、衰减更慢, 抗遗忘)
+        base_importance 是衰减的起始基线 (插入时 = 初始 importance, merge 提升
+        时同步抬高), **不被衰减本身修改**。每次清扫都从基线重算 —— 重扫不漂移、
+        不复合。旧实现是 `m.importance * factor`, 对已被降过的当前值再乘满年龄
+        因子, 随清扫次数超线性加速 (6h 节奏 48h 触底), 半衰期语义失效。
         记忆**保留** (valid 恒 1), 只降 importance —— 检索 importance 维随之
-        跌出前排, 但仍可被检索, 被回忆又能升回。这是"降权"不是"抹除"。
+        跌出前排, 但仍可被检索。这是"降权"不是"抹除"。
         保护: 被有效反思引用为证据的观察不降权 —— 它已固化为高阶认知,
         降了它会削弱反思的证据链。保护集按当前有效反思快照计算。
         """
@@ -427,8 +458,12 @@ class MemoryStore:
                          else m.timestamp)
             age = max(0.0, now - anchor)
             factor = 0.5 ** (age / hl.get(m.type, 48.0))
-            new_imp = max(MIN_IMPORTANCE, m.importance * factor)
-            if new_imp < m.importance - 1e-9:   # importance 实际下调
+            # E1: 从基线重算 (幂等), 不再乘已衰减的当前值。基线缺失 (极端旧行)
+            # 回退到当前 importance, 至少不比旧行为更糟。
+            base = m.base_importance if m.base_importance is not None \
+                else m.importance
+            new_imp = max(MIN_IMPORTANCE, base * factor)
+            if new_imp < m.importance - 1e-9:   # importance 实际下调 (只降不升)
                 self._set_importance(m.id, new_imp)
                 downweighted.append(m.id)
         return downweighted
