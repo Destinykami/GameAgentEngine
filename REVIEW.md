@@ -67,13 +67,13 @@
 | ID | 外部级别 | 问题 | 位置 | 外部建议 | 现状 (本轮复核) |
 |---|---|---|---|---|---|
 | E1 | 高 | 遗忘衰减复合叠加: `new_imp = m.importance * 0.5**(age/hl)`, importance 是已降过的当前值、age 用固定锚点算全部年龄, 每清扫一次再乘满年龄因子 → 随清扫次数 n² 加速, 半衰期语义失效 | memory.py (decay_and_forget) | 存 base_importance 或 decayed_at, 改对原始值/增量衰减 | **已修** (同 H1 幂等水位): 新增 base_importance 列 (旧库 PRAGMA+ALTER 迁移, 逐行 UPDATE 基线=当前 importance), 衰减改对基线幂等重算 `base_importance * 0.5**(age/hl)`, 只降不升守卫保留; merge 提升 importance 时同步抬高基线 (增益不被抹掉), 回忆刷新 last_accessed 仍抗遗忘 (锚点后移)。实测: 单次 48h=4.0 且每 6h 清扫到 48h 也=4.0 (旧实现触底 1.5), 重扫不漂移。回归: test_forgetting 新增 3 用例 (幂等非复合/重扫不漂移/merge 抬基线) |
-| E2 | 中 | `player_id=None` 双重语义: `all_valid(None)`="返回所有玩家", 而文档语义是"世界/自我共享流 (player_id IS NULL)", 无 API 能只取 NULL 流 | memory.py:169-183 | 拆分"不过滤"与"共享流"两种语义 | **仍存在** (`all_valid(None)` 无过滤=全玩家; 无 NULL-only API)。下游 E8 (自我反思吞关系观察)、E13 (relationship_trust(None) 合判) 的根因 |
+| E2 | 中 | `player_id=None` 双重语义: `all_valid(None)`="返回所有玩家", 而文档语义是"世界/自我共享流 (player_id IS NULL)", 无 API 能只取 NULL 流 | memory.py (all_valid/retrieve) | 拆分"不过滤"与"共享流"两种语义 | **已修**: all_valid/retrieve 加 `shared` 参数 —— `shared=True` 选 `player_id IS NULL` (共享流), `player_id=None` 仍是"不过滤" (衰减/计划/近期上下文照旧); relationship_trust(None) 直接返回中性 0.0 (世界事件无关系, 不再合判全玩家记忆)。下游 E8 随之修复 |
 | E3 | 中 | `merge_observation` 的 extra_importance 死参数被忽略 | memory.py, npc.py | 真用或删参数 | **已修** (=本文件 M6, 删死参数, merge 固定 +1) |
 | E4 | 低 | 检索无绝对相关性下限, min_score 无调用方传值, top-1 永远 ≈3.0, "答不上来"永不触发 | memory.py:194-286 | 用归一化前原始 cosine 做绝对门槛 | **已修** (=本文件 M7, 加 min_relevance 原始余弦下限, dialogue 传 0.1) |
 | E5 | 低 | `find_similar_observation` 依赖未排序 SELECT (`all_valid(...)[-recent_n:]` 靠 rowid 恰好有序) | memory.py:169-183, 332-352 | 加 `ORDER BY id` | **仍存在** (`all_valid` 无 ORDER BY) |
 | E6 | 高 | 0.95 去重阈值在真实数据几乎不生效: 同义复述稳定落 0.85–0.94, ≥0.95 仅 0.1%, 9 条观察产出 48 条反思 | reflection.py:21-23 (DEDUP_THRESHOLD) | 降阈值或改去重策略 | **仍存在** (DEDUP_THRESHOLD 仍 0.95, 未动) |
 | E7 | 高 | 合并观察仍累加 importance → 同一事实反复触发反思 (1 条观察零新信息, 6 步产出 6 条反思) | npc.py:90-115 (observe merge 分支) | merge 分支不累加 importance (或只 +0.2) | **仍存在** (merge_observation 已只 +1 = M6, 但同一分支 `_importance_accum += importance` 仍累加 score_importance 原始分 8–10, 重放照样顶反思触发器; 是 E6 那张 48:9 表的生成机制) |
-| E8 | 高 | 自我反思吃掉关系观察: `reflect_self` 用 `all_valid(None, observation)`=全玩家观察, 产出 player_id=None 反思 (对所有玩家可见), 违反"自我/面解耦" | reflection.py:64-98 | 拆分共享流语义 (随 E2) | **仍存在** (= E2 的直接下游, reflect_self 仍 `all_valid(None)`) |
+| E8 | 高 | 自我反思吃掉关系观察: `reflect_self` 用 `all_valid(None, observation)`=全玩家观察, 产出 player_id=None 反思 (对所有玩家可见), 违反"自我/面解耦" | reflection.py (reflect_self) | 拆分共享流语义 (随 E2) | **已修** (随 E2): reflect_self 的观察源与证据检索都改 `shared=True` (只取 NULL 流), 自我反思只基于世界/自我观察, 不再吞某玩家的关系观察 (那是关系反思的料)。回归: tests/test_shared_stream (证据指向共享观察 id, 非关系观察) |
 | E9 | 中 | 冲突衰减重复叠加 (同一对每次 check_conflicts 再砍半) | reflection.py | 幂等处置 | **已修** (=本文件 H1, 幂等目标水位) |
 | E10 | 中 | 关系反思 fallback 硬编码 "Klaus" | reflection.py | 注入 NPC 名 | **已修** (=本文件 M1, `self._npc_name or "NPC"`) |
 | E11 | 中 | 反思去重成本 O(已有反思数) 次重复编码, 绕过 _vec_cache | reflection.py (_save) | 缓存向量 | **已修** (=本文件 L1, 走 store.vector() 缓存) |

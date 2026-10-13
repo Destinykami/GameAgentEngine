@@ -66,7 +66,11 @@ class ReflectionEngine:
         """从最近的自我/世界记忆生成自我反思, 返回新记忆 id。"""
         # 只用真实观察生成问题与证据: 若把反思也纳入, 反思会拿别的反思当证据,
         # 一代代复述放大自己 (级联失控)。观察是唯一的"事实"来源。
-        recent = store.all_valid(player_id=None, types=["observation"])
+        # E8: 只取共享流 (player_id IS NULL, 世界/自我观察) —— 自我反思回答"我
+        # 是谁", 不该吃进某玩家的关系观察 (那是关系反思的料, 会产出"旅行者对我
+        # 做了什么"的伪自我反思, 违反自我/面解耦)。旧实现 all_valid(None) 拿全
+        # 玩家流, 正是这个污染 (E2 下游)。
+        recent = store.all_valid(shared=True, types=["observation"])
         recent = recent[-recent_n:]
         if not recent:
             return []
@@ -83,7 +87,7 @@ class ReflectionEngine:
             # 遗忘锚点会让反思静默给 top_k 里没被引用的观察续命 (M7)。真正被引用
             # 为证据的观察由"被有效反思引用即保护"单独兜底, 不依赖此副作用。
             evidence = store.retrieve(query=q, now=now,
-                                      player_id=None, top_k=10,
+                                      shared=True, top_k=10,
                                       types=["observation"],
                                       mark_accessed=False)
             ev_pairs = [(e["id"], e["content"]) for e in evidence]

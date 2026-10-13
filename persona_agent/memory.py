@@ -189,11 +189,21 @@ class MemoryStore:
         return self._vec(rec)
 
     def all_valid(self, player_id: str | None = None,
-                  types: Sequence[str] | None = None) -> list[MemoryRecord]:
-        """取全部有效记忆 (可按玩家/类型过滤), 用于反思与展示。"""
+                  types: Sequence[str] | None = None,
+                  shared: bool = False) -> list[MemoryRecord]:
+        """取全部有效记忆 (可按玩家/类型过滤), 用于反思与展示。
+
+        E2 语义拆分: `player_id=None` 是"不过滤" (返回所有玩家+共享流, 供衰减/
+        计划查询/近期上下文); `shared=True` 是"只取共享流" (player_id IS NULL,
+        世界/自我记忆)。二者不再混用 —— 自我反思要的是共享流 (我是谁), 不是
+        全玩家关系观察 (谁对我做了什么), 旧实现用 None 拿全玩家流, 自我反思被
+        关系观察污染 (E8)。
+        """
         sql = "SELECT * FROM memory WHERE valid = 1"
         args: list = []
-        if player_id is not None:
+        if shared:
+            sql += " AND player_id IS NULL"
+        elif player_id is not None:
             sql += " AND player_id = ?"
             args.append(player_id)
         if types:
@@ -220,12 +230,15 @@ class MemoryStore:
                  min_score: float = 0.0,
                  types: Sequence[str] | None = None,
                  mark_accessed: bool = True,
-                 min_relevance: float = 0.0) -> list[dict]:
+                 min_relevance: float = 0.0,
+                 shared: bool = False) -> list[dict]:
         """三维检索。
 
         - query: 查询文本 (应已含玩家身份, 使 relevance 偏向该玩家)。
         - now: 当前游戏内时间。
         - player_id: 限定只检索某玩家的关系流 (可选)。
+        - shared: 只检索共享流 (player_id IS NULL, 世界/自我记忆), 同 all_valid
+          (E2)。自我反思的证据检索用它, 不把某玩家的关系观察当成自我证据。
         - include_player: 在评分上额外给"属于该玩家"的记忆加权 (千人千面)。
         - types: 限定记忆类型 (如 ["observation"]), 用于让反思只以真实观察为证据,
           切断"反思引用反思"的级联。
@@ -240,7 +253,7 @@ class MemoryStore:
           灌水 (M7)。默认 0.0 不过滤, 行为与旧版一致。
         """
         q_vec = self._embedder.embed([query])[0]
-        cands = self.all_valid(player_id=player_id, types=types)
+        cands = self.all_valid(player_id=player_id, types=types, shared=shared)
         if not cands:
             return []
 

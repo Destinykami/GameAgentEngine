@@ -55,7 +55,13 @@ class ReactionDecider:
         关系记忆不变时命中缓存 (签名 = 条数+最新时间戳), 零 LLM 成本。
         置信度不进签名: 衰减只发生在 check_conflicts, 而它必由新观察触发
         (speak 门控), 新观察已改签名 —— 所以签名未变 ⟹ 置信度未变, 缓存安全。
+
+        E2: player_id=None 是"无玩家" (世界事件, 如火灾), 不存在"对 None 的信任
+        度" —— 旧实现 all_valid(None) 拿全玩家流, 把不同玩家的关系记忆合在一起
+        判出一个伪信任度还写进缓存。直接返回中性 0.0。
         """
+        if player_id is None:
+            return 0.0
         rel = self._store.all_valid(player_id=player_id)
         if not rel:
             return 0.0
