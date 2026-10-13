@@ -296,8 +296,30 @@ class World:
         self._step_social.append((npc, agent.name))
         return npc
 
+    @staticmethod
+    def _norm_action(action) -> dict:
+        """R7: 动作输入在入口做 schema 校验/降级, 防非法值流进对话/LLM prompt 链。
+
+        - 非 dict 动作 → 降级为 wait (不崩)。
+        - utterance 为 None → 降级空串 (旧实现 get('utterance','') 在显式传 None 时
+          返回 None, f-string 强转成字符串"None" —— 不崩但语义垃圾, 喂给对话检索/LLM)。
+        - utterance 非字符串 (如数字) → 强转字符串 (保留信息, 不丢弃)。
+        返回规整后的新 dict, 不改调用方的。action/target/dest 的合法性由下游
+        is_alive / locations 检查兜底, 这里只管类型。
+        """
+        if not isinstance(action, dict):
+            return {"action": "wait"}
+        norm = dict(action)
+        utterance = norm.get("utterance")
+        if utterance is None:
+            norm["utterance"] = ""
+        elif not isinstance(utterance, str):
+            norm["utterance"] = str(utterance)
+        return norm
+
     def execute_action(self, agent: Entity, action: dict) -> str:
         """执行动作并应用影响, 返回发生了什么 (供打印/记录)。非全知: 只影响直接相关方。"""
+        action = self._norm_action(action)   # R7: 入口 schema 校验/降级
         a = action.get("action", "wait")
         target = self.get(action.get("target", "")) if action.get("target") else None
         if a == "move":

@@ -123,6 +123,8 @@
 | R1 | 高 | 自治决策无显式信任输入: decide_agent 只喂人格/感知/历史/记忆文本, trust_toward 与关系反思没进 decide_action, NPC 信任更新了决策接口仍靠 LLM 从文本猜 | world.py (decide_agent) | **已修**: decide_agent 对 NPC agent 计算对视距内、有关系记忆 (观察/反思) 的实体的 trust, 拼进 perception 喂 decide_action (不改 LLM 签名, 信任随上下文进输入); 无关系记忆的不列 (陌生人 trust 0 无信息量)。实测: 帮过的玩家 +1.00 / 骗过的 -1.00 都进决策 perception。回归: test_world 新增正负信任对照 |
 | R4+R5 | 中 | _step_social 语义不健壮: 消费是裸 for 循环, reflect_relationship 抛异常则 clear() 不执行 → 下步重复反思+重复 LLM 调用; 且只调 execute_action 不推进自治步则反思永不触发, 接口契约不明 | world.py (step_autonomous _step_social 循环) | **已修**: 消费抽成 `flush_social(now)` —— 外层 try/finally 异常也清空 (下步不重复处理旧事件), 内层 try/except 单次交互失败不阻塞其余; step_autonomous 调它, 同时对外暴露供只调 execute_action 的调用方显式 flush (契约明确)。回归: test_world 新增"异常仍清空不重复"+"显式 flush 不推进自治步也反思" |
 | R6 | 中 | 社交动作非原子: attack 先 take_damage+record (物理/历史已改) 后才调可失败的 perceive_action (LLM/embedding), 失败留下"血已扣但 NPC 没观察到、反思队列没登记"的撕裂态; talk 同理 | world.py (execute_action attack/talk) | **已修**: 重排为"可失败的认知事件生成在前、最终状态提交在后" —— attack 先算 dmg+预判死亡、目标 NPC observe (可失败), 成功才 take_damage+record, 失败中止动作 (不扣血/不记历史, 无撕裂); talk 先 observe+speak, 成功才提交历史/理由/锻刀。非 NPC 目标无认知事件, 直接提交。回归: test_world 新增"认知失败不扣血"+"非 NPC 目标直接扣血" |
-| R7 | 低 | utterance 无类型校验: 显式传 None 时 get("utterance","") 返回 None, f-string 强转成字符串"None" (不崩但语义垃圾), 应在动作入口做 schema 校验 | world.py (execute_action talk) | 待修 |
+| R7 | 低 | utterance 无类型校验: 显式传 None 时 get("utterance","") 返回 None, f-string 强转成字符串"None" (不崩但语义垃圾), 应在动作入口做 schema 校验 | world.py (execute_action 入口) | **已修**: execute_action 入口加 `_norm_action` —— 非 dict 动作降级 wait, utterance=None 降级空串 (不流进对话/LLM 链成字面"None"), 非字符串强转字符串; action/target/dest 合法性由下游 is_alive/locations 兜底。回归: test_world 新增"非法输入降级" |
 
 **本轮修复顺序**: R2+R3 计划校验 → R1 信任接入决策 → R4+R5 _step_social flush 语义 → R6 动作原子性 → R7 输入 schema 校验。
+
+> **第三轮 R 系列全部 7 条已修** (R1-R7 各一个 commit, 均推送)。

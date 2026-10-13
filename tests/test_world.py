@@ -112,6 +112,35 @@ def test_multi_npc_trust_isolation(tmp_path):
     w.close()
 
 
+def test_execute_action_normalizes_invalid_input(tmp_path):
+    """R7: 动作输入 schema 校验/降级 —— utterance=None 降级空串 (不流进对话/LLM 链
+    成字面"None"), 非字符串强转字符串, 非 dict 动作降级 wait。"""
+    llm = _StubLLM()
+    w = _world(tmp_path)
+    w.add_npc("桃音", {"social": 0.8, "goal_oriented": 0.3},
+              llm=llm, data_dir=str(tmp_path), location="治疗堂")
+    w._agent_llms["桃音"] = llm
+    w._agent_personas["桃音"] = {"social": 0.8, "goal_oriented": 0.3}
+    w.add_agent_player("旅行者", "治疗堂", "x", llm=llm)
+
+    # utterance=None → 空串, 观察/对话里无字面 "None"
+    out = w.execute_action(w.get("旅行者"),
+                           {"action": "talk", "target": "桃音", "utterance": None})
+    assert "None" not in out, f"utterance=None 不应出现字面 'None', 实际: {out!r}"
+    obs = w.npc("桃音").store.all_valid(player_id="旅行者", types=["observation"])
+    assert all("None" not in o.content for o in obs), "观察内容不应含字面 'None'"
+
+    # utterance=123 (数字) → 强转 "123"
+    out = w.execute_action(w.get("旅行者"),
+                           {"action": "talk", "target": "桃音", "utterance": 123})
+    assert "123" in out, f"数字 utterance 应强转字符串, 实际: {out!r}"
+
+    # 非 dict 动作 → 降级 wait (不崩)
+    out = w.execute_action(w.get("旅行者"), "garbage")
+    assert "观望" in out, f"非 dict 动作应降级 wait, 实际: {out!r}"
+    w.close()
+
+
 def test_attack_atomic_on_cognition_failure(tmp_path):
     """R6: 社交动作原子性 —— attack 先做可失败的认知事件生成 (NPC observe), 成功才
     提交物理状态 (扣血) + 历史。认知失败 → 动作中止, 不扣血/不记历史/不留撕裂。
