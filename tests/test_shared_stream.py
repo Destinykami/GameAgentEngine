@@ -73,3 +73,18 @@ def test_relationship_trust_isolated_per_player():
     assert dec.relationship_trust("Aria") == pytest.approx(1.0)
     assert dec.relationship_trust("Bram") == pytest.approx(-1.0)
     assert dec.relationship_trust("Isabella") == 0.0, "无记忆的玩家 = 中性 0"
+
+
+def test_all_valid_ordered_by_id(tmp_path):
+    """E5: all_valid 显式 ORDER BY id (插入序=时间序) —— 多处 `[-n:]` 取"最近 n 条"
+    (find_similar_observation 去重窗口/反思近期观察/世界记忆上下文) 不再靠 SQLite
+    恰好按 rowid 返回的隐性依赖。失效后剩余仍有序。"""
+    s = MemoryStore(HashEmbedder())
+    for i in range(5):
+        s.add(MemoryRecord(content=f"obs {i}", timestamp=float(i),
+                           type="observation", importance=5.0))
+    ids = [r.id for r in s.all_valid()]
+    assert ids == sorted(ids), f"应按 id 升序, 实际 {ids}"
+    assert [r.id for r in s.all_valid()[-2:]] == ids[-2:], "[-2:] 应取最近两条"
+    s.invalidate(ids[0])
+    assert [r.id for r in s.all_valid()] == ids[1:], "失效后剩余仍按 id 有序"

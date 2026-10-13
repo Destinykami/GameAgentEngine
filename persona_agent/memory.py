@@ -199,6 +199,10 @@ class MemoryStore:
         世界/自我记忆)。二者不再混用 —— 自我反思要的是共享流 (我是谁), 不是
         全玩家关系观察 (谁对我做了什么), 旧实现用 None 拿全玩家流, 自我反思被
         关系观察污染 (E8)。
+
+        E5: `ORDER BY id` —— id 自增即插入序 (= 时间序)。多处用 `[-n:]` 取"最近
+        n 条" (find_similar_observation 去重窗口、反思近期观察、世界记忆上下文),
+        旧实现无 ORDER BY, 靠 SQLite 恰好按 rowid 返回, 是隐性依赖, 加显式排序。
         """
         sql = "SELECT * FROM memory WHERE valid = 1"
         args: list = []
@@ -211,6 +215,7 @@ class MemoryStore:
             placeholders = ",".join("?" for _ in types)
             sql += f" AND type IN ({placeholders})"
             args.extend(types)
+        sql += " ORDER BY id"
         with self._lock:
             rows = self._conn.execute(sql, args).fetchall()
         return [self._row_to_rec(r) for r in rows]
