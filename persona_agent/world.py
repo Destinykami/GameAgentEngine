@@ -455,23 +455,40 @@ class World:
             self.perceive(name, now)
             if npc._tier != "idle":
                 npc.maybe_reflect_self(now)
-        # 4. E16: 社交交互过关系反思层 —— 本步有社交动作 (talk/attack/help) 的
-        # 目标 NPC, 对交互对象跑关系反思 (信任度随之惰性更新, 参与其后续判定)。
-        # 门控同 speak: 仅 full 档且出现新观察才重跑, 避免反思无限增殖/信任漂移。
-        # talk 已在 execute_action 里经 speak 反思过, 此处再跑被 _reflected_obs 门控
-        # 拦下 (幂等); attack/help 没走 speak, 靠这里补上关系反思。
-        for npc, actor in self._step_social:
-            if self.entities[npc.name].dead or npc._tier != "full":
-                continue
-            obs_count = len(npc.store.all_valid(player_id=actor,
-                                                types=["observation"]))
-            if obs_count > npc._reflected_obs.get(actor, 0):
-                npc.reflect_relationship(actor, self.clock)
-                npc._reflected_obs[actor] = obs_count
-        self._step_social.clear()
+        # 4. E16/R4/R5: 社交交互过关系反思层 —— 消费 _step_social (flush_social
+        # 带 try/finally, 异常也清空不重复处理)。信任度随之惰性更新, 参与后续判定。
+        self.flush_social(now)
         if self._conn is not None:
             self.save()
         return events, decisions
+
+    def flush_social(self, now: float) -> None:
+        """消费本步社交交互 (_step_social), 对目标 NPC 跑关系反思 (E16)。
+
+        R4: 外层 try/finally —— 即便 reflect_relationship 抛异常 (LLM/DB 失败),
+        也必清空 _step_social, 下步不重复处理旧社交事件 (重复反思 + 重复 LLM 调用)。
+        内层 try/except —— 单次交互的反思失败不阻塞其余交互。
+        R5: 对外暴露 —— 只调 execute_action 不推进自治步的调用方, 可显式 flush 触发
+        关系反思, 契约明确 (不靠"之后恰好调 step_autonomous"才反思)。
+
+        门控同 speak: 仅 full 档且出现新观察才重跑, 避免反思无限增殖/信任漂移。
+        talk 已在 execute_action 里经 speak 反思过, 此处再跑被 _reflected_obs 门控
+        拦下 (幂等); attack/help 没走 speak, 靠这里补上关系反思。
+        """
+        try:
+            for npc, actor in self._step_social:
+                try:
+                    if self.entities[npc.name].dead or npc._tier != "full":
+                        continue
+                    obs_count = len(npc.store.all_valid(player_id=actor,
+                                                        types=["observation"]))
+                    if obs_count > npc._reflected_obs.get(actor, 0):
+                        npc.reflect_relationship(actor, now)
+                        npc._reflected_obs[actor] = obs_count
+                except Exception:
+                    continue   # 单次交互反思失败不阻塞其余 (R4)
+        finally:
+            self._step_social.clear()   # R4: 异常也清空, 不留下步重复处理
 
     # ------------------------------------------------------------- 距离调度
     def tier_of(self, npc_name: str) -> str:

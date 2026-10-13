@@ -112,6 +112,53 @@ def test_multi_npc_trust_isolation(tmp_path):
     w.close()
 
 
+def test_flush_social_clears_on_exception(tmp_path):
+    """R4: reflect_relationship 抛异常 (LLM/DB 失败) 时 _step_social 仍清空 ——
+    下步不重复处理旧社交事件 (重复反思 + 重复 LLM 调用)。单次失败不阻塞其余。"""
+    llm = _StubLLM()
+    w = _world(tmp_path)
+    traits = {"social": 0.8, "goal_oriented": 0.3}
+    w.add_npc("桃音", traits, llm=llm, data_dir=str(tmp_path), location="治疗堂")
+    w._agent_llms["桃音"] = llm
+    w._agent_personas["桃音"] = traits
+    w.add_agent_player("旅行者", "治疗堂", "x", llm=llm)
+    calls = {"n": 0}
+
+    def boom(player_id, now):
+        calls["n"] += 1
+        raise RuntimeError("LLM 挂了")
+
+    w.npc("桃音").reflect_relationship = boom
+    w.execute_action(w.get("旅行者"), {"action": "help", "target": "桃音"})
+    assert w._step_social, "社交动作应登记"
+    w.flush_social(w.clock)          # 抛异常被内层 catch
+    assert w._step_social == [], "异常后 _step_social 仍应清空 (R4)"
+    assert calls["n"] == 1, "只调一次 reflect, 不因异常重复"
+    # 重新登记 + 再 flush: 恰好再调一次, 不是重复旧事件
+    w.execute_action(w.get("旅行者"), {"action": "help", "target": "桃音"})
+    w.flush_social(w.clock)
+    assert calls["n"] == 2, "再登记再 flush 恰好 +1 次, 不重复处理旧事件"
+    w.close()
+
+
+def test_flush_social_explicit_without_step(tmp_path):
+    """R5: 只调 execute_action 不推进自治步, 显式 flush_social 也触发关系反思
+    (契约明确, 不靠'之后恰好调 step_autonomous'才反思)。"""
+    llm = _StubLLM()
+    w = _world(tmp_path)
+    w.add_npc("桃音", {"social": 0.8, "goal_oriented": 0.3},
+              llm=llm, data_dir=str(tmp_path), location="治疗堂")
+    w._agent_llms["桃音"] = llm
+    w._agent_personas["桃音"] = {"social": 0.8, "goal_oriented": 0.3}
+    w.add_agent_player("旅行者", "治疗堂", "x", llm=llm)
+    w.execute_action(w.get("旅行者"), {"action": "help", "target": "桃音"})
+    assert w._step_social, "社交动作应登记"
+    w.flush_social(w.clock)   # 显式 flush, 不走 step_autonomous
+    refs = w.npc("桃音").store.all_valid(player_id="旅行者", types=["reflection"])
+    assert len(refs) >= 1, "显式 flush 应触发关系反思 (不推进自治步也生效)"
+    w.close()
+
+
 def _cap_llm():
     """捕获 decide_action 收到的 perception, 供断言信任度是否进决策输入。"""
     class Cap(_StubLLM):
