@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Sequence
 
 from .llm import LLMClient
@@ -47,17 +48,40 @@ class PlanningEngine:
     # ------------------------------------------------------------- 重规划
     def replan_from_now(self, store: MemoryStore, persona_traits: dict,
                         now: float, interruption: str) -> tuple[list[int], list[tuple[int, int, str]]]:
-        """从当前时刻起重规划: 记下中断原因, 重新生成后续计划, 返回 (计划 id, 块)。"""
+        """从当前时刻起重规划: 记下中断原因, 只生成当前时刻之后的计划, 返回 (计划 id, 块)。
+
+        锚定当前时刻 (LLM 尽力 + 规则兜底, 同框架"LLM 战略 + 规则执行"分工):
+        - context 告知 LLM 当前时刻, 只要求生成剩余时间的块;
+        - 规则层再 clamp: 整块在过去的丢弃, 跨越锚点的块起点抬到锚点 (小时粒度)。
+          LLM 不听话 (回全天计划) 也会被裁掉过去的部分, 保证"从当前时刻起"。
+        旧计划失效: 重规划前把库里所有有效 plan 记忆标记失效 —— 新计划取代旧计划,
+        新旧不应同流共存 (否则检索把过期计划当当前安排)。日计划的跨日清理另见 M4。
+        """
         # 记录中断事件为一条观察
         self._save_obs(store, now, f"计划被打断: {interruption}")
-        # 重新生成剩余时间的计划 (Mock: 以 now 为起点生成简化日计划)
-        blocks = self._llm.generate_plan(persona_traits, "", "replan")
-        ids: list[int] = []
+        hour = now % 24
+        context = (f"计划在 {int(hour):02d}:{int((hour % 1) * 60):02d} 被打断, "
+                   f"只生成从当前时刻到当天结束的计划, 不要重排已经过去的时间。")
+        blocks = self._llm.generate_plan(persona_traits, "", "replan", context=context)
+        # 规则层锚定: 锚点 = 下一个整点 (当前小时内的剩余不足 1 小时, 不排块)
+        anchor = math.ceil(hour - 1e-9)
+        clamped: list[tuple[int, int, str]] = []
         for start, end, activity in blocks:
+            if end <= anchor:
+                continue   # 整块在过去
+            if start < anchor:
+                start = anchor   # 跨越锚点: 只保留锚点之后的部分
+            clamped.append((start, end, activity))
+        # 旧计划失效 (先收集再存新块, 别把刚存的新块也失效了)
+        old_ids = [m.id for m in store.all_valid(types=["plan"])]
+        ids: list[int] = []
+        for start, end, activity in clamped:
             ids.append(self._save_plan(store, now,
                                        f"[重规划]{start:02d}-{end:02d} {activity}",
                                        player_id=None))
-        return ids, blocks
+        for old_id in old_ids:
+            store.invalidate(old_id)
+        return ids, clamped
 
     # --------------------------------------------------------------- 内部
     @staticmethod

@@ -20,7 +20,7 @@
 | ID | 严重度 | 问题 | 位置 | 修法 | 状态 |
 |---|---|---|---|---|---|
 | H3 | H | 计划产物没传给反应层: `generate_daily_plan` 生成真实计划块后只设 `_current_plan = "日计划已生成"`, `react()`→`score_event` 拿这句空话判 v_goal/c_interrupt, 效用函数目标分量被废 | npc.py:193, npc.py:164, llm_real.py:230 | `_current_plan` 设为当天真实时间块 (或按当前时刻取进行中的块) | 已修: `make_daily_plan`/`replan_from_now` 返回计划块, NPC 存 `_plan_blocks`, `react` 按 `now%24` 取进行中的块; 显式参数 > 当前块 > 重规划中断覆盖 |
-| H4 | H | `replan_from_now` 名不副实: 调 `generate_plan(..., "", "replan")` 生成全天计划 (含"07-09 起床"块), 原样打 `[重规划]` 前缀、timestamp=now 入库, 不锚定当前时刻; 旧计划记忆不失效, 新旧两套计划同流共存可被检索 | planning.py:46-58 | prompt 给当前时刻、只生成 now 之后的块并 clamp; 重规划时失效旧 plan 记忆 | 待修 |
+| H4 | H | `replan_from_now` 名不副实: 调 `generate_plan(..., "", "replan")` 生成全天计划 (含"07-09 起床"块), 原样打 `[重规划]` 前缀、timestamp=now 入库, 不锚定当前时刻; 旧计划记忆不失效, 新旧两套计划同流共存可被检索 | planning.py:46-58 | prompt 给当前时刻、只生成 now 之后的块并 clamp; 重规划时失效旧 plan 记忆 | 已修: context 告知中断时刻 (LLM 尽力) + 规则层锚点 clamp (整点取整, 过去块丢弃/跨锚块抬起点); 重规划前全部有效 plan 记忆失效 (先收集后存新块) |
 | M3 | M | 计划输出零校验: `int(item.get("start", 8))` 遇 "07:00"/"早上" 直接 ValueError 打崩 `World.step`; 重叠/乱序/超 24 的块原样入库; 空计划仍宣称"日计划已生成" | llm_real.py:200-207, llm_real.py:217-224, planning.py:29-43 | 解析时 clamp/丢弃非法块, 全败返回空并让上层跳过 | 待修 |
 | M4 | M | plan 记忆只降权不失效: 每天 5-8 块+子任务入库, 衰减到 1.5 触底后永留库里, 30 天模拟堆几百条过期计划污染小存储检索 | memory.py:49-53, planning.py:61-66 | 新一天计划生成时 invalidate 旧 plan, 或 GC 触底的旧计划 | 待修 |
 | M5 | M | 世界模拟从不触发 replan: `step`/`step_autonomous` 只早晨生成日计划, agent 被攻击/状态突变后不重规划, "反应后重规划"只存在于 game_loop.py 手动脚本, 计划在整个 sim 里静态 | world.py:441-470, world.py:336-379 | execute_action 造成状态突变后调 npc.replan; 或文档降级承诺 | 待修 |
@@ -51,7 +51,7 @@
 | ID | 锁定目标 | 对应修复 | 状态 |
 |---|---|---|---|
 | T1 | 置信度衰减幂等: 同一 (ref, obs) 对检查两次, confidence 只降一次 | H1 | 待修 |
-| T2 | replan 锚定: 重规划块时间 ≥ now, 旧计划被失效 | H4 | 待修 |
+| T2 | replan 锚定: 重规划块时间 ≥ now, 旧计划被失效 | H4 | 已修: tests/test_replan.py (4 用例: 裁过去块/旧计划失效/深夜无块/整点不误伤) |
 | T3 | react 拿到的 plan 含真实活动 (非"日计划已生成") | H3 | 已修: tests/test_plan_react.py (4 用例: 当前块/无块兜底/重规划中断/显式参数优先) |
 | T4 | merge_observation 对 importance 的实际行为 (当前恰好传 1.0 掩盖死参数) | M6 | 待修 |
 
