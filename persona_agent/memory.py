@@ -337,6 +337,11 @@ class MemoryStore:
 
         只在观察层做 (反思去重在 reflection.py), 且限定同一玩家流 ——
         跨玩家"相似"是不同关系, 不该合并。
+
+        L5: 去重窗口只覆盖同玩家最近 recent_n (50) 条。窗口外的重放 (同一事件
+        隔了 50+ 条别的观察后再次发生) 会重复入库 —— 轻微灌水, 可接受。不扩大
+        窗口: 每次 observe 的去重是 O(窗口) 余弦, 窗口越大每次观察越贵, 而窗口
+        外重放是低频边缘情况, 不值得用高频路径的成本去兜。
         """
         cands = self.all_valid(player_id=player_id,
                                types=["observation"])[-recent_n:]
