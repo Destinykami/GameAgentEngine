@@ -26,7 +26,7 @@
 | M4 | M | plan 记忆只降权不失效: 每天 5-8 块+子任务入库, 衰减到 1.5 触底后永留库里, 30 天模拟堆几百条过期计划污染小存储检索 | memory.py:49-53, planning.py:61-66 | 新一天计划生成时 invalidate 旧 plan, 或 GC 触底的旧计划 | 已修: make_daily_plan 存新块前收集全部有效 plan id, 存完再失效 (同 H4 模式); 空计划也照旧失效 —— 计划是前瞻性的, 跨日后即垃圾, 不适用观察性记忆的"降权不删" |
 | M5 | M | 世界模拟从不触发 replan: `step`/`step_autonomous` 只早晨生成日计划, agent 被攻击/状态突变后不重规划, "反应后重规划"只存在于 game_loop.py 手动脚本, 计划在整个 sim 里静态 | world.py:441-470, world.py:336-379 | execute_action 造成状态突变后调 npc.replan; 或文档降级承诺 | 已修: INTERRUPT_ACTIONS (attack/counterattack/flee/help/hide) 执行后行动者 replan (继承 H4 锚定+旧计划失效), 挨打未死的受害者也 replan, "想 XX"未发生结果不触发; 日计划循环跳过死者 (死 NPC 不再每天烧 LLM 规划, 生命止于死亡) |
 | L2 | L | `previous_day=f"第{day}天"` 是 0-based 天数标签 (day=1 是第二天却叫"第1天") 而非前一天活动叙事, prompt 语义落空; 计划记忆就在库里可直接取 | world.py:458, world.py:350 | 取最近一天的 plan 记忆做 previous_day, 标签改为真实日期 | 已修: generate_daily_plan 取库里昨日计划记忆 (M4 失效前仍 valid) 拼成"前一天活动: …"叙事, 首日/无计划时退回调用方标签, 计划从此基于真实昨日活动 |
-| L3 | L | 分解回声防护是精确字符串相等, LLM 换措辞即漏防 (1 小时块主情况已由 cb7ffc5 处理) | planning.py:40-41 | 可留作双保险, 或改语义比较 | 待修 |
+| L3 | L | 分解回声防护是精确字符串相等, LLM 换措辞即漏防 (1 小时块主情况已由 cb7ffc5 处理) | planning.py:40-41 | 可留作双保险, 或改语义比较 | 已修 (文档): 注释写明这是双保险 —— 主防护是跳过 1 小时块, 精确相等只拦原样回声的漏网, 换措辞近重复可接受 (轻微冗余非正确性问题), 不为 cosmetic 去重引入语义比较成本 |
 
 ## 记忆 (memory.py)
 

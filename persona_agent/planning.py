@@ -46,8 +46,12 @@ class PlanningEngine:
             if end - start > 1:
                 for s, e, sub in self._llm.decompose_activity(activity, start, end):
                     sub_content = f"{s:02d}-{e:02d} {sub}"
+                    # L3: 回声防护是双保险。主防护是上面的"跳过 1 小时块" (回声主
+                    # 来源); 这里精确相等只拦"原样回声"的漏网, LLM 换措辞的近重复
+                    # 会漏过, 后果是多一条近重复子任务 (轻微冗余, 非正确性问题)。
+                    # 不为这种 cosmetic 去重引入语义比较的嵌入成本, 留作兜底即可。
                     if sub_content == f"{start:02d}-{end:02d} {activity}":
-                        continue   # 保险: 子任务与顶层块完全相同则跳过
+                        continue
                     self._save_plan(store, now, sub_content, player_id=None)
         for old_id in old_ids:
             store.invalidate(old_id)
