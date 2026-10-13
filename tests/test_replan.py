@@ -81,3 +81,31 @@ def test_replan_anchor_exact_hour_keeps_block(tmp_path):
         npc.store, npc.persona_traits, now=9.0, interruption="Bram 的委托")
     assert (9, 12, "备货咖啡豆") in blocks, "整点锚定不应误伤从该整点开始的块"
     assert (7, 9, "起床整理") not in blocks
+
+
+class CaptureContextLLM(_StubLLM):
+    """记录 generate_plan 每次收到的 context (验证重规划是否带世界背景)。"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.contexts: list[str] = []
+
+    def generate_plan(self, persona_traits, previous_day, date, context=""):
+        self.contexts.append(context)
+        return list(DAY_BLOCKS)
+
+
+def test_replan_context_includes_world_background(tmp_path):
+    """E14: 重规划也带世界背景 (近期观察) —— 被打断后仍要在眼狩令等背景下重排
+    剩余日程, 而非'岁月静好'。context 应同时含世界背景 + 中断锚定指令。"""
+    from persona_agent import MemoryRecord
+    llm = CaptureContextLLM()
+    npc = NPC.create("Klaus", dict(TRAITS), llm=llm, data_dir=str(tmp_path))
+    npc.store.add(MemoryRecord(content="眼狩令全城生效, 持神之眼者被搜捕",
+                               timestamp=1.0, type="observation", importance=9.0))
+    npc.generate_daily_plan(previous_day="第0天", date="第1天", now=8.0)
+    llm.contexts.clear()
+    npc.replan(now=14.0, interruption="被执行官袭击")
+    ctx = llm.contexts[-1]
+    assert "眼狩令" in ctx, f"世界背景 (近期观察) 应进重规划 context, 实际: {ctx!r}"
+    assert "被打断" in ctx, "中断锚定指令应保留"

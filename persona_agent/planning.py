@@ -59,7 +59,8 @@ class PlanningEngine:
 
     # ------------------------------------------------------------- 重规划
     def replan_from_now(self, store: MemoryStore, persona_traits: dict,
-                        now: float, interruption: str) -> tuple[list[int], list[tuple[int, int, str]]]:
+                        now: float, interruption: str,
+                        context: str = "") -> tuple[list[int], list[tuple[int, int, str]]]:
         """从当前时刻起重规划: 记下中断原因, 只生成当前时刻之后的计划, 返回 (计划 id, 块)。
 
         锚定当前时刻 (LLM 尽力 + 规则兜底, 同框架"LLM 战略 + 规则执行"分工):
@@ -68,12 +69,17 @@ class PlanningEngine:
           LLM 不听话 (回全天计划) 也会被裁掉过去的部分, 保证"从当前时刻起"。
         旧计划失效: 重规划前把库里所有有效 plan 记忆标记失效 —— 新计划取代旧计划,
         新旧不应同流共存 (否则检索把过期计划当当前安排)。日计划的跨日清理另见 M4。
+
+        E14: context 参数携带世界背景 (近期观察), 同 make_daily_plan —— 重规划也要
+        在世界背景下生成 (持眼者逢眼狩令, 被打断后仍要规划躲避), 而非"岁月静好"。
+        世界背景在前, 中断锚定指令在后。
         """
         # 记录中断事件为一条观察
         self._save_obs(store, now, f"计划被打断: {interruption}")
         hour = now % 24
-        context = (f"计划在 {int(hour):02d}:{int((hour % 1) * 60):02d} 被打断, "
-                   f"只生成从当前时刻到当天结束的计划, 不要重排已经过去的时间。")
+        anchor_ctx = (f"计划在 {int(hour):02d}:{int((hour % 1) * 60):02d} 被打断, "
+                      f"只生成从当前时刻到当天结束的计划, 不要重排已经过去的时间。")
+        context = f"{context} {anchor_ctx}".strip() if context else anchor_ctx
         blocks = self._llm.generate_plan(persona_traits, "", "replan", context=context)
         # 规则层锚定: 锚点 = 下一个整点 (当前小时内的剩余不足 1 小时, 不排块)
         anchor = math.ceil(hour - 1e-9)

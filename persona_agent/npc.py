@@ -218,8 +218,13 @@ class NPC:
     def replan(self, now: float, interruption: str) -> list[int]:
         """反应后从当前时刻重规划后续。"""
         self._advance(now)
+        # E14: 重规划也带世界背景 (近期观察), 同 generate_daily_plan —— 被打断后
+        # 仍要在眼狩令等世界背景下重排剩余日程, 而非"岁月静好"。
+        recent = [m.content for m in self.store.all_valid(
+            types=["observation"])[-10:]]
+        context = " | ".join(recent) if recent else ""
         ids, blocks = self.planner.replan_from_now(self.store, self.persona_traits,
-                                                   now, interruption)
+                                                   now, interruption, context=context)
         self._plan_blocks = blocks       # 重规划后的新块接管"当前正忙"
         self._current_plan = interruption   # 中断原因作兜底覆盖 (新块未覆盖此刻时生效)
         return ids
