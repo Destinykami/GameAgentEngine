@@ -216,13 +216,20 @@ class RealLLM(LLMClient):
                   '输出 JSON 数组, 例如 [{"insight": "...", "evidence": [1, 3]}]。')
         data = self._chat_json("你是一个从证据归纳 Insight 的推理器。", user,
                                think=False, temperature=0.0)
+        valid_ids = {int(i) for i, _ in evidence}      # 传入证据的真实记忆 id
+        all_ids = [int(i) for i, _ in evidence]
         out: list[tuple[str, list[int]]] = []
         if isinstance(data, list):
             for item in data:
                 if isinstance(item, dict) and "insight" in item:
                     ev = item.get("evidence", [])
-                    ev_ids = [int(x) for x in ev if str(x).lstrip("-").isdigit()]
-                    out.append((str(item["insight"]), ev_ids))
+                    raw = [int(x) for x in ev if str(x).lstrip("-").isdigit()]
+                    cited = [x for x in raw if x in valid_ids]   # 只留真实存在的编号
+                    if not cited:
+                        # 模型回纯顺序号 (1,2,3) 或幻影编号: 一条洞察总得有据可查,
+                        # 全引传入证据 (宁宽勿断链), 而非入库一堆不存在的 id。
+                        cited = list(all_ids)
+                    out.append((str(item["insight"]), cited))
         return out[:n]
 
     # ------------------------------------------------------------- 日计划生成
