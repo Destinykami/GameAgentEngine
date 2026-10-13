@@ -84,6 +84,27 @@ def test_decompose_subtasks_confined_to_parent():
     assert out == [(9, 10, "构思")]
 
 
+def test_make_daily_plan_clamps_subtasks_to_parent(tmp_path):
+    """E15: make_daily_plan 把越出父块的子任务 clamp 到 [start,end] (整段在外丢弃)。
+    用自定义 LLM 的 decompose_activity 直接回越界子任务 (绕过 RealLLM 的 parse 层
+    drop), 验证计划层有独立的 clamp 兜底 (防御纵深, 不依赖 LLM 后端的 parse)。
+    _StubLLM.generate_plan 回 [(7,9,"stub-activity")] 这个 2 小时块 (会被分解)。"""
+    class OverRangeLLM(_StubLLM):
+        def decompose_activity(self, activity, start, end):
+            # 三个子任务: 整段在父块前 (丢弃) / 越出父块尾 (clamp 到父块尾) / 正常
+            return [(start - 2, start - 1, "块前"),
+                    (end - 1, end + 2, "越尾"),
+                    (start, start + 1, "正常")]
+    npc = NPC.create("Klaus", dict(TRAITS), llm=OverRangeLLM(), data_dir=str(tmp_path))
+    npc.generate_daily_plan(previous_day="", date="第一天", now=7.0)
+    plans = [m.content for m in npc.store.all_valid(types=["plan"])]
+    assert "07-09 stub-activity" in plans, "父块本身应入库"
+    assert "08-09 越尾" in plans, \
+        f"越出父块尾的子任务应 clamp 到父块尾 08-09, 实际: {plans}"
+    assert "07-08 正常" in plans, "父块内的子任务原样保留"
+    assert not any("块前" in p for p in plans), "整段在父块前的子任务应丢弃"
+
+
 def test_all_bad_plan_empty_store(tmp_path):
     """集成: 全坏计划 → make_daily_plan 零入库, NPC 无计划块 (诚实的"没计划")。"""
     class NoPlanLLM(_StubLLM):

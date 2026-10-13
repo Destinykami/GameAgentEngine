@@ -45,7 +45,16 @@ class PlanningEngine:
             # 把原活动原样回声成"子任务"造成重复, 故跳过。
             if end - start > 1:
                 for s, e, sub in self._llm.decompose_activity(activity, start, end):
-                    sub_content = f"{s:02d}-{e:02d} {sub}"
+                    # E15: 子任务时间 clamp 到父块 [start,end] —— LLM 分解可能返回
+                    # 越出父块的时间 (09-11 块回个 03-04 子任务), 原样入库会把子任务
+                    # 排到它根本不属于的时段。裁到父块边界; 裁完为空 (整段在父块外)
+                    # 丢弃。这是计划层的独立兜底 (防御纵深): RealLLM 的 parse 层会
+                    # 丢弃越界子任务, 但 stub/自定义 LLM 绕过 parse, 且 parse 是"整段
+                    # 丢弃"而非"裁到边界保留在界部分", 这里统一 clamp。
+                    s2, e2 = max(s, start), min(e, end)
+                    if e2 <= s2:
+                        continue
+                    sub_content = f"{s2:02d}-{e2:02d} {sub}"
                     # L3: 回声防护是双保险。主防护是上面的"跳过 1 小时块" (回声主
                     # 来源); 这里精确相等只拦"原样回声"的漏网, LLM 换措辞的近重复
                     # 会漏过, 后果是多一条近重复子任务 (轻微冗余, 非正确性问题)。
