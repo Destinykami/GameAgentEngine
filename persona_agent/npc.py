@@ -103,8 +103,12 @@ class NPC:
             # 合并 = 固定 +1 强化 (重复计数), 不传 importance —— 事件重要性已
             # 在首次入库时计入, 重复合并再加全量是双重计分 (M6 死参数已删)。
             self.store.merge_observation(dup.id, now)
-            if self._tier != "idle":
-                self._importance_accum += importance
+            # E7: 合并的重复是零新信息, 不累积到反思触发器。反思该由**新信息**
+            # 驱动, 不是旧信息的反复强化 —— 世界层每步 perceive→observe→去重合并
+            # 重放位置观察, 若 merge 分支仍累加原始 importance (世界感知常 8-10),
+            # 零新信息几步就顶满反思阈值, 产出"1 条观察、6 步 6 条反思"的膨胀
+            # (E6 那张 48:9 反思表的直接生成机制)。强化已由 merge 的 +1 importance
+            # 承担 (抬高显著度, 检索排名上升), 那是显著度信号, 不是反思信号。
             return dup.id
         rec = MemoryRecord(content=content, timestamp=now, type="observation",
                            player_id=player_id, importance=importance)

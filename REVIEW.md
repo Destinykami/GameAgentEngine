@@ -72,7 +72,7 @@
 | E4 | 低 | 检索无绝对相关性下限, min_score 无调用方传值, top-1 永远 ≈3.0, "答不上来"永不触发 | memory.py:194-286 | 用归一化前原始 cosine 做绝对门槛 | **已修** (=本文件 M7, 加 min_relevance 原始余弦下限, dialogue 传 0.1) |
 | E5 | 低 | `find_similar_observation` 依赖未排序 SELECT (`all_valid(...)[-recent_n:]` 靠 rowid 恰好有序) | memory.py:169-183, 332-352 | 加 `ORDER BY id` | **仍存在** (`all_valid` 无 ORDER BY) |
 | E6 | 高 | 0.95 去重阈值在真实数据几乎不生效: 同义复述稳定落 0.85–0.94, ≥0.95 仅 0.1%, 9 条观察产出 48 条反思 | reflection.py:21-23 (DEDUP_THRESHOLD) | 降阈值或改去重策略 | **仍存在** (DEDUP_THRESHOLD 仍 0.95, 未动) |
-| E7 | 高 | 合并观察仍累加 importance → 同一事实反复触发反思 (1 条观察零新信息, 6 步产出 6 条反思) | npc.py:90-115 (observe merge 分支) | merge 分支不累加 importance (或只 +0.2) | **仍存在** (merge_observation 已只 +1 = M6, 但同一分支 `_importance_accum += importance` 仍累加 score_importance 原始分 8–10, 重放照样顶反思触发器; 是 E6 那张 48:9 表的生成机制) |
+| E7 | 高 | 合并观察仍累加 importance → 同一事实反复触发反思 (1 条观察零新信息, 6 步产出 6 条反思) | npc.py (observe merge 分支) | merge 分支不累加 importance (或只 +0.2) | **已修**: merge 分支不再累积到 `_importance_accum` —— 合并的重复是零新信息, 反思该由新信息驱动, 不是旧信息的反复强化; 强化已由 merge 的 +1 importance 承担 (显著度信号, 检索排名上升), 不是反思信号。新观察照常累积。实测: 同一条观察重放 6 次累积=5.0 (旧实现 30.0), 换新观察 +5 照常。回归: test_forgetting 新增"merge 不累积反思触发器"用例 |
 | E8 | 高 | 自我反思吃掉关系观察: `reflect_self` 用 `all_valid(None, observation)`=全玩家观察, 产出 player_id=None 反思 (对所有玩家可见), 违反"自我/面解耦" | reflection.py (reflect_self) | 拆分共享流语义 (随 E2) | **已修** (随 E2): reflect_self 的观察源与证据检索都改 `shared=True` (只取 NULL 流), 自我反思只基于世界/自我观察, 不再吞某玩家的关系观察 (那是关系反思的料)。回归: tests/test_shared_stream (证据指向共享观察 id, 非关系观察) |
 | E9 | 中 | 冲突衰减重复叠加 (同一对每次 check_conflicts 再砍半) | reflection.py | 幂等处置 | **已修** (=本文件 H1, 幂等目标水位) |
 | E10 | 中 | 关系反思 fallback 硬编码 "Klaus" | reflection.py | 注入 NPC 名 | **已修** (=本文件 M1, `self._npc_name or "NPC"`) |

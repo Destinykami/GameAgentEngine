@@ -198,3 +198,21 @@ def test_merge_raises_decay_baseline(tmp_path):
     got = s.all_valid()[0].importance
     assert got == pytest.approx(9.0 * (0.5 ** 0.5)), \
         f"应从基线 9.0 衰减 (得 6.36), 实际 {got:.4f} (抹掉增益会是 8.0*0.707=5.66)"
+
+
+def test_merge_does_not_accumulate_reflection_trigger(tmp_path):
+    """E7: merge 合并的重复是零新信息, 不累积到反思触发器 —— 反思由新信息驱动,
+    不是旧信息的反复强化。世界层每步 perceive→observe→去重合并重放位置观察,
+    若 merge 分支仍累加原始 importance (世界感知常 8-10), 零新信息几步就顶满
+    反思阈值, 产出"1 条观察、6 步 6 条反思"的膨胀 (E6 48:9 表的生成机制)。
+    新观察是新信息, 照常累积。"""
+    npc = _make(tmp_path)
+    # 同一条观察重放 6 次: 首次新入库 (+5), 后 5 次近义合并 (+0)
+    for i in range(6):
+        npc.observe("旅行者 出现在 治疗堂, 靠近 桃音", float(i))
+    assert npc._importance_accum == pytest.approx(5.0), \
+        f"重放 6 次只应累积首次新观察 (5.0), 实际 {npc._importance_accum} (旧实现=30.0)"
+    assert len(npc.store.all_valid(types=["observation"])) == 1, "近义观察应合并成 1 条"
+    # 一条全新观察 = 新信息, 照常累积 +5
+    npc.observe("执行官 在 市场 收缴神之眼", 10.0)
+    assert npc._importance_accum == pytest.approx(10.0), "新观察照常累积"
