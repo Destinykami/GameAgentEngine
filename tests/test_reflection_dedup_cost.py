@@ -62,3 +62,48 @@ def test_save_dedup_uses_cached_vectors(tmp_path):
     engine.reflect_relationship(store, "Aria", now=12.0)
     assert embedder.calls == before2 + 2, \
         f"去重命中不入库, 应只多 2 次嵌入, 实际多 {embedder.calls - before2} 次"
+
+
+class FixedVectorEmbedder(Embedder):
+    """按内容返回预设单位向量, 精确控制余弦相似度 (HashEmbedder 无法卡阈值边界)。"""
+
+    def __init__(self, vectors: dict[str, list[float]]) -> None:
+        self._vectors = vectors
+        self._dim = len(next(iter(vectors.values())))
+
+    @property
+    def dim(self) -> int:
+        return self._dim
+
+    def embed(self, texts):
+        return [self._vectors[t] for t in texts]
+
+
+def _unit_at(cosine: float) -> list[float]:
+    """与 [1,0] 余弦为 cosine 的单位向量 [cosine, sqrt(1-cosine^2)]。"""
+    return [cosine, (1.0 - cosine * cosine) ** 0.5]
+
+
+def test_dedup_threshold_boundary_0_92(tmp_path):
+    """E6: 去重阈值 0.92 —— 相似度 0.93 的同义复述被去重 (旧阈值 0.95 会放行入库),
+    相似度 0.90 的独立洞察保留 (不过度去重)。用预设向量精确卡阈值两侧。"""
+    base = [1.0, 0.0]
+    emb = FixedVectorEmbedder({
+        "认知 A": base,
+        "认知 B (0.93 近重复)": _unit_at(0.93),
+        "认知 C (0.90 独立)": _unit_at(0.90),
+    })
+    store = MemoryStore(emb)
+    store.add(MemoryRecord(content="认知 A", timestamp=0.0, type="reflection",
+                           player_id="Aria", confidence=0.6))
+    engine = ReflectionEngine(_StubLLM(), emb)   # 默认 DEDUP_THRESHOLD=0.92
+
+    # 0.93 >= 0.92 → 去重 (旧 0.95 阈值下 0.93 会入库, 这正是 E6 的失效场景)
+    dup_id = engine._save(store, now=1.0, content="认知 B (0.93 近重复)",
+                          evidence=[], player_id="Aria", confidence=0.6)
+    assert dup_id is None, "相似度 0.93 >= 0.92 应去重 (旧阈值 0.95 会放行)"
+
+    # 0.90 < 0.92 → 保留 (独立洞察, 不过度去重)
+    keep_id = engine._save(store, now=2.0, content="认知 C (0.90 独立)",
+                           evidence=[], player_id="Aria", confidence=0.6)
+    assert keep_id is not None, "相似度 0.90 < 0.92 应保留 (独立洞察)"
