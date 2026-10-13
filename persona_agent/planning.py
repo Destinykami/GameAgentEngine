@@ -21,10 +21,12 @@ class PlanningEngine:
     # ------------------------------------------------------------- 日计划
     def make_daily_plan(self, store: MemoryStore, persona_traits: dict,
                         previous_day: str, date: str, now: float,
-                        context: str = "") -> list[int]:
-        """生成日计划并逐层分解, 全部存为 plan 记忆, 返回顶层计划 id。
+                        context: str = "") -> tuple[list[int], list[tuple[int, int, str]]]:
+        """生成日计划并逐层分解, 全部存为 plan 记忆, 返回 (顶层计划 id, 顶层块)。
 
         context 是 NPC 近期记忆/世界事件, 让世界背景驱动计划 (而非只靠人格)。
+        顶层块 (start, end, activity) 一并返回, 供调用方判断"当前正忙"——
+        计划只存进记忆流是不够的: 反应决策不走检索, 需要直接拿到块。
         """
         top_blocks = self._llm.generate_plan(persona_traits, previous_day, date, context)
         top_ids: list[int] = []
@@ -40,12 +42,12 @@ class PlanningEngine:
                     if sub_content == f"{start:02d}-{end:02d} {activity}":
                         continue   # 保险: 子任务与顶层块完全相同则跳过
                     self._save_plan(store, now, sub_content, player_id=None)
-        return top_ids
+        return top_ids, top_blocks
 
     # ------------------------------------------------------------- 重规划
     def replan_from_now(self, store: MemoryStore, persona_traits: dict,
-                        now: float, interruption: str) -> list[int]:
-        """从当前时刻起重规划: 记下中断原因, 重新生成后续计划。"""
+                        now: float, interruption: str) -> tuple[list[int], list[tuple[int, int, str]]]:
+        """从当前时刻起重规划: 记下中断原因, 重新生成后续计划, 返回 (计划 id, 块)。"""
         # 记录中断事件为一条观察
         self._save_obs(store, now, f"计划被打断: {interruption}")
         # 重新生成剩余时间的计划 (Mock: 以 now 为起点生成简化日计划)
@@ -55,7 +57,7 @@ class PlanningEngine:
             ids.append(self._save_plan(store, now,
                                        f"[重规划]{start:02d}-{end:02d} {activity}",
                                        player_id=None))
-        return ids
+        return ids, blocks
 
     # --------------------------------------------------------------- 内部
     @staticmethod

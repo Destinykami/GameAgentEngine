@@ -49,7 +49,8 @@ class NPC:
 
         # 成本闸门状态
         self._importance_accum = 0.0
-        self._current_plan = ""
+        self._current_plan = ""        # 反应后重规划的中断原因覆盖 (如"处理火灾"), 优先于日计划块
+        self._plan_blocks: list[tuple[int, int, str]] = []   # 当日计划块 (start, end, activity)
         self._tier: str = "full"        # full | compressed | idle
         self._cache: dict[str, str] = {}
         # 每玩家"上次关系反思时的观察数": 用于门控, 避免每次对话都重跑反思
@@ -161,7 +162,13 @@ class NPC:
               current_plan: str | None = None) -> ReactionDecision:
         """决定是否响应事件。带语义缓存: 相似情境复用反应。"""
         self._advance(now)
-        plan = current_plan if current_plan is not None else self._current_plan
+        # 计划上下文: 显式参数 > 当前时刻正在进行的计划块 > 重规划中断覆盖。
+        # 不再用"日计划已生成"空话 —— score_event 需要知道 NPC 正忙什么才能
+        # 判断目标契合度与打断代价。
+        if current_plan is not None:
+            plan = current_plan
+        else:
+            plan = self._current_activity(now) or self._current_plan
         # 语义缓存: 按事件+玩家+关系档位缓存 (关系档位粗粒度, 避免过度失效)
         trust = self.decider.relationship_trust(player_id)
         trust_bucket = round(trust * 2) / 2   # -1..1 量化到 0.5
@@ -188,18 +195,34 @@ class NPC:
         recent = [m.content for m in self.store.all_valid(
             types=["observation"])[-10:]]
         context = " | ".join(recent) if recent else ""
-        ids = self.planner.make_daily_plan(self.store, self.persona_traits,
-                                           previous_day, date, now, context=context)
-        self._current_plan = "日计划已生成"
+        ids, blocks = self.planner.make_daily_plan(self.store, self.persona_traits,
+                                                   previous_day, date, now, context=context)
+        self._plan_blocks = blocks       # 存块, 供 react 按当前时刻取"正在进行的计划"
+        self._current_plan = ""          # 日计划接管"当前正忙", 清除重规划的中断覆盖
         return ids
 
     def replan(self, now: float, interruption: str) -> list[int]:
         """反应后从当前时刻重规划后续。"""
         self._advance(now)
-        ids = self.planner.replan_from_now(self.store, self.persona_traits,
-                                           now, interruption)
-        self._current_plan = interruption
+        ids, blocks = self.planner.replan_from_now(self.store, self.persona_traits,
+                                                   now, interruption)
+        self._plan_blocks = blocks       # 重规划后的新块接管"当前正忙"
+        self._current_plan = interruption   # 中断原因作兜底覆盖 (新块未覆盖此刻时生效)
         return ids
+
+    # ---------------------------------------------------------------- 当前计划
+    def _current_activity(self, now: float) -> str:
+        """当前时刻正在进行的计划活动 (按 now 的当天小时匹配计划块)。
+
+        计划块为 (start, end, activity), start/end 是当天小时; now 是单调递增的
+        游戏内小时, 当天小时 = now % 24。匹配不到 (计划未覆盖此刻) 返回 ""。
+        让 react 的 score_event 拿到"当前正忙的真实活动", 而非"日计划已生成"空话。
+        """
+        hour = now % 24
+        for start, end, activity in self._plan_blocks:
+            if start <= hour < end:
+                return activity
+        return ""
 
     # ---------------------------------------------------------------- 认知档位
     def set_tier(self, tier: str) -> None:
@@ -265,6 +288,8 @@ class NPC:
         npc._data_path = path
         npc._game_time = float(store.get_meta("game_time", 0.0))
         # _reflected_obs 留空: 加载后若某玩家有观察但未反思, speak 会补跑
+        # _plan_blocks 不持久化: 加载后当日计划块未知, react 的计划上下文退回空串
+        # (score_event 按"当前没有特别重要的计划"判断), 直到下一次 generate_daily_plan
         return npc
 
     def save(self) -> None:
