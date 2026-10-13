@@ -195,6 +195,13 @@ class NPC:
         只靠人格+前一天活动生成岁月静好的日程。
         """
         self._advance(now)
+        # L2: previous_day 应是前一天的**真实活动**, 而非 0-based 天数标签
+        # ("第1天"其实是第二天, 对 LLM 无意义)。库里的昨日计划记忆就是"昨天干
+        # 了什么" (新一天计划经 M4 失效替换前它们仍 valid)。首日无计划时退回
+        # 调用方传入的标签。
+        plans = self.store.all_valid(types=["plan"])
+        if plans:
+            previous_day = "前一天活动: " + " | ".join(p.content for p in plans)
         recent = [m.content for m in self.store.all_valid(
             types=["observation"])[-10:]]
         context = " | ".join(recent) if recent else ""
