@@ -309,16 +309,25 @@ class World:
             return f"{agent.name} 想移动到不存在的 {dest}, 未动"
         if a == "talk" and target and target.is_alive():
             line = action.get("utterance", "")
+            # R6: 原子性 —— 可失败的认知事件生成在前 (observe + speak, LLM/embedding
+            # 可能失败), 成功才提交历史/理由/锻刀 (最终状态)。失败则中止动作 (不写
+            # 历史/不积理由/不锻刀), 不留"历史已写但没观察到/没回话"的撕裂。目标不
+            # 是 NPC 则无认知事件, 直接提交。speak 内部门控: full 档且出现新观察才
+            # 重跑关系反思, 再走对话检索+回复。
+            reply = ""
+            if target.name in self._npcs:
+                try:
+                    npc = self._observe_target_social(target, agent, f"对TA说: {line}")
+                    if npc is not None:
+                        reply = npc.speak(agent.name, line, self.clock) or ""
+                except Exception:
+                    return (f"{agent.name} 想对 {target.name} 说话, "
+                            f"但认知事件生成失败, 动作中止")
             agent.record(f"对 {target.name} 说: {line}")
             target.record(f"{agent.name} 对TA说: {line}")
             out = f"{agent.name} 对 {target.name} 说: {line}"
-            # E16: 目标 NPC 观察这句对话进自己记忆流 (关系观察), 并回话 (真对话)。
-            # speak 内部门控: full 档且出现新观察才重跑关系反思, 再走对话检索+回复。
-            npc = self._observe_target_social(target, agent, f"对TA说: {line}")
-            if npc is not None:
-                reply = npc.speak(agent.name, line, self.clock)
-                if reply:
-                    out += f" ← {target.name}: {reply}"
+            if reply:
+                out += f" ← {target.name}: {reply}"
             # 理由 (仅玩家积累): 学者取证 / 医者证言 / 铁匠经济之弊
             if agent.kind == "player":
                 if "scholar" in target.role:
@@ -338,16 +347,25 @@ class World:
             return out
         if a == "attack" and target and target.is_alive():
             dmg = max(0, agent.attack - target.defense + random.randint(-2, 2))
+            will_die = target.health - dmg <= 0   # 预判死亡 (提交后 target.dead 才定)
+            # R6: 原子性 —— 可失败的认知事件生成在前, 成功才提交物理状态+历史。
+            # 目标 NPC 先 observe (LLM/embedding 可能失败), 成功才扣血, 避免"血已扣
+            # 但 NPC 没观察到、反思队列没登记"的撕裂。失败则中止 (不扣血/不记历史)。
+            # 挨打的"反应"由目标下一步 decide_agent 行动承担 (逃跑/反击), 不在此回话。
+            if target.name in self._npcs:
+                try:
+                    self._observe_target_social(
+                        target, agent,
+                        f"攻击了TA, 造成 {dmg} 伤害" + ("(致TA阵亡)" if will_die else ""))
+                except Exception:
+                    return (f"{agent.name} 想攻击 {target.name}, "
+                            f"但认知事件生成失败, 动作中止")
+            # 认知事件生成成功 (或目标非 NPC) → 提交物理状态 + 历史
             target.take_damage(dmg)
             agent.record(f"攻击 {target.name}, 造成 {dmg} 伤害")
             target.record(f"{agent.name} 攻击了TA, 受到 {dmg} 伤害")
             extra = f" → {target.name} 阵亡!" if target.dead else ""
             out = f"{agent.name} 攻击 {target.name}, 造成 {dmg} 伤害{extra}"
-            # E16: 目标 NPC 观察这次攻击进自己记忆流 (关系观察) —— 挨打的"反应"
-            # 由其下一步 decide_agent 行动承担 (逃跑/反击), 不在此"回话"。
-            self._observe_target_social(
-                target, agent,
-                f"攻击了TA, 造成 {dmg} 伤害" + ("(致TA阵亡)" if target.dead else ""))
             # 执行官收缴持眼者 → 同地点的目击玩家积累一条理由 (亲眼所见)
             if "enforcer" in agent.role and "vision_holder" in target.role:
                 for witness in self.entities.values():

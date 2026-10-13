@@ -112,6 +112,52 @@ def test_multi_npc_trust_isolation(tmp_path):
     w.close()
 
 
+def test_attack_atomic_on_cognition_failure(tmp_path):
+    """R6: 社交动作原子性 —— attack 先做可失败的认知事件生成 (NPC observe), 成功才
+    提交物理状态 (扣血) + 历史。认知失败 → 动作中止, 不扣血/不记历史/不留撕裂。
+    正常认知 → 扣血 + 观察入流。非 NPC 目标无认知事件, 直接扣血。"""
+    llm = _StubLLM()
+    w = _world(tmp_path)
+    traits = {"social": 0.8, "goal_oriented": 0.3}
+    w.add_npc("桃音", traits, llm=llm, data_dir=str(tmp_path), location="治疗堂")
+    w._agent_llms["桃音"] = llm
+    w._agent_personas["桃音"] = traits
+    w.add_agent_player("旅行者", "治疗堂", "x", llm=llm)
+    w.get("旅行者").attack = 50
+
+    # 正常: 扣血 + 观察入流
+    hp0 = w.get("桃音").health
+    out = w.execute_action(w.get("旅行者"), {"action": "attack", "target": "桃音"})
+    assert w.get("桃音").health < hp0, "正常 attack 应扣血"
+    assert len(w.npc("桃音").store.all_valid(player_id="旅行者",
+                     types=["observation"])) >= 1, "正常 attack 应有观察入流"
+
+    # 认知失败: 不扣血, 中止, 无观察 (原子性, 不留撕裂)
+    hp1 = w.get("桃音").health
+    def boom(*a, **k):
+        raise RuntimeError("LLM 挂了")
+    w.npc("桃音").perceive_action = boom
+    out = w.execute_action(w.get("旅行者"), {"action": "attack", "target": "桃音"})
+    assert "中止" in out, f"认知失败应中止动作, 实际: {out!r}"
+    assert w.get("桃音").health == hp1, "认知失败不应扣血 (原子性)"
+    w.close()
+
+
+def test_attack_non_npc_target_deals_damage(tmp_path):
+    """R6: 非 NPC 目标 (无认知事件) 直接扣血, 不经过可失败的认知生成。"""
+    llm = _StubLLM()
+    w = _world(tmp_path)
+    w.add_player("刚郎", "主城街道")          # 非 _npcs 的实体
+    w.get("刚郎").health = 100
+    w.add_agent_player("旅行者", "主城街道", "x", llm=llm)
+    w.get("旅行者").attack = 30
+    hp0 = w.get("刚郎").health
+    out = w.execute_action(w.get("旅行者"), {"action": "attack", "target": "刚郎"})
+    assert w.get("刚郎").health < hp0, "非 NPC 目标应直接扣血"
+    assert "中止" not in out, "非 NPC 目标无认知事件, 不应中止"
+    w.close()
+
+
 def test_flush_social_clears_on_exception(tmp_path):
     """R4: reflect_relationship 抛异常 (LLM/DB 失败) 时 _step_social 仍清空 ——
     下步不重复处理旧社交事件 (重复反思 + 重复 LLM 调用)。单次失败不阻塞其余。"""
