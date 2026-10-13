@@ -76,7 +76,12 @@ class MemoryStore:
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._lock = threading.Lock()
         self._init_schema()
-        # 缓存每条记忆的向量, 避免重复编码
+        # 缓存每条记忆的向量, 避免重复编码。
+        # L4: 此缓存是进程内、无上限、**不跨进程持久化**。HashEmbedder (确定性哈希,
+        # 纯内存) 下冷启动无感; 但 RealEmbedder (网络) 下从磁盘恢复一个大世界后,
+        # 首波检索要为每条记忆重新嵌入 (O(n) 次网络调用) —— 这是"向量不入库"的
+        # 有意取舍: 持久化向量要每条存几百维浮点, 库膨胀且与嵌入模型版本耦合。
+        # 量大 (上千记忆 + 频繁重启) 后再议持久化或 LRU 上限。
         self._vec_cache: dict[int, list[float]] = {}
 
     def _init_schema(self) -> None:
