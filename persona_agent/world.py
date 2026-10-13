@@ -109,6 +109,10 @@ class World:
     不传 path 则为内存世界 (不可持久化, 供离线骨架测试)。
     """
 
+    # 打断当日计划、触发重规划的动作 (M5): 战斗/逃跑/帮匿都是"日程被打破"的
+    # 重大状态变化。talk/move/wait 是日程内的日常行为, 不打断。
+    INTERRUPT_ACTIONS = ("attack", "counterattack", "flee", "help", "hide")
+
     def __init__(self, name: str, locations: list[Location],
                  path: str | None = None,
                  perception_radius: float = 1.5,
@@ -346,7 +350,9 @@ class World:
         # 每天早晨自动规划 (复用 step 的逻辑)
         day = int(self.clock // 24)
         if day != self._last_plan_day and self.clock % 24 >= 7.0:
-            for npc in self._npcs.values():
+            for name, npc in self._npcs.items():
+                if self.entities[name].dead:
+                    continue   # 死去的 NPC 不再规划 (生命止于死亡那一刻)
                 npc.generate_daily_plan(previous_day=f"第{day}天",
                                         date=f"第{day+1}天", now=self.clock)
             self._last_plan_day = day
@@ -366,7 +372,28 @@ class World:
         for name, agent in self.entities.items():
             if not agent.is_alive():
                 continue
-            events.append(self.execute_action(agent, decisions[name]))
+            outcome = self.execute_action(agent, decisions[name])
+            events.append(outcome)
+            # M5: 重大状态变化 (战斗/逃跑/帮匿) 打断当日计划 → 从当前时刻重规划。
+            # 模拟里此前只有每天早晨一次日计划, 计划整天静止 (被打了还在按计划
+            # "打铁"), 对话检索会引用与事实矛盾的旧计划。talk/move/wait 不打断
+            # 日程, 不重规划。重规划继承 H4: 旧计划失效 + 新块锚定当前时刻。
+            # "想 XX" 的未发生结果 (目标已死/无威胁可逃) 状态没变, 也不重规划。
+            a = decisions[name].get("action", "wait")
+            happened = outcome not in (f"{agent.name} 观望",
+                                       f"{agent.name} 想逃但无威胁")
+            if a in self.INTERRUPT_ACTIONS and happened:
+                npc = self._npcs.get(name)
+                if npc:
+                    npc.replan(now=self.clock, interruption=outcome)
+            # 挨打方 (未死) 的一天同样被打断 → 也重规划
+            if a in ("attack", "counterattack"):
+                tname = decisions[name].get("target", "")
+                t_npc = self._npcs.get(tname) if tname else None
+                if t_npc and self.entities.get(tname) is not None \
+                        and self.entities[tname].is_alive():
+                    t_npc.replan(now=self.clock,
+                                 interruption=f"被 {agent.name} 攻击了")
         # 3. 重感知 (行动改变了谁在哪/谁死了) + NPC 反思
         for name, npc in self._npcs.items():
             if self.entities[name].dead:
@@ -454,7 +481,9 @@ class World:
         # 每天早晨 (新的一天且已过 07:00): 全体 NPC 在世界背景下生成当日计划
         day = int(self.clock // 24)
         if day != self._last_plan_day and self.clock % 24 >= 7.0:
-            for npc in self._npcs.values():
+            for name, npc in self._npcs.items():
+                if self.entities[name].dead:
+                    continue   # 死去的 NPC 不再规划 (同 step_autonomous)
                 npc.generate_daily_plan(previous_day=f"第{day}天",
                                         date=f"第{day+1}天", now=self.clock)
             self._last_plan_day = day

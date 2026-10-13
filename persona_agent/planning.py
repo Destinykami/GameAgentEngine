@@ -30,6 +30,12 @@ class PlanningEngine:
         计划只存进记忆流是不够的: 反应决策不走检索, 需要直接拿到块。
         """
         top_blocks = self._llm.generate_plan(persona_traits, previous_day, date, context)
+        # M4: 新的一天计划**替换**旧的 —— 计划是前瞻性的, 跨日后昨日计划 (含分解
+        # 出的子任务) 纯属垃圾, 直接失效而非降权到地板留在流里: 30 天模拟会积
+        # 数百条旧计划污染小库检索。观察性记忆才"降权不删", 计划不是经历。
+        # 今日计划为空 (LLM 返回空, M3 空计划) 时也照旧失效 —— 新的一天开始了,
+        # 昨天的安排已不再是"现在正在做的事"。
+        old_ids = [m.id for m in store.all_valid(types=["plan"])]
         top_ids: list[int] = []
         for start, end, activity in top_blocks:
             top_id = self._save_plan(store, now, f"{start:02d}-{end:02d} {activity}",
@@ -43,6 +49,8 @@ class PlanningEngine:
                     if sub_content == f"{start:02d}-{end:02d} {activity}":
                         continue   # 保险: 子任务与顶层块完全相同则跳过
                     self._save_plan(store, now, sub_content, player_id=None)
+        for old_id in old_ids:
+            store.invalidate(old_id)
         return top_ids, top_blocks
 
     # ------------------------------------------------------------- 重规划
