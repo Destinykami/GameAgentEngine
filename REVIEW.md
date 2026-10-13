@@ -32,7 +32,7 @@
 
 | ID | 严重度 | 问题 | 位置 | 修法 | 状态 |
 |---|---|---|---|---|---|
-| M6 | M | `merge_observation(mem_id, now, extra_importance)` 的 extra_importance 是死参数: 函数体硬编码 +1.0, npc.observe 传入的 LLM 重要性分被丢弃 (仅用于反思门控累积); 测试恰好传 1.0 掩盖 | memory.py:303-318, npc.py:98-104 | 真的用它 (封顶 10) 或删掉参数 | 待修 |
+| M6 | M | `merge_observation(mem_id, now, extra_importance)` 的 extra_importance 是死参数: 函数体硬编码 +1.0, npc.observe 传入的 LLM 重要性分被丢弃 (仅用于反思门控累积); 测试恰好传 1.0 掩盖 | memory.py:303-318, npc.py:98-104 | 真的用它 (封顶 10) 或删掉参数 | 已修: 删掉死参数, 语义显式固定为固定 +1 重复强化 (封顶 10) —— 事件重要性首次入库已计入, 重复合并再加全量是双重计分; docstring 写明理由, npc.observe 不再传 importance |
 | M7 | M | 检索副作用把"当候选"等同于"被回忆": retrieve() 对 top_k 每条都 _mark_accessed 刷新遗忘锚点, 反思证据检索 (10×3 问) 静默给观察续命; 世界层每步 perceive→observe→去重合并, 玩家逗留期间 last_accessed 每步刷新、感知记忆永不衰减; 叠加 min_score=0.0 + 按候选集 min-max 归一化 (单条候选必得 3.0, 小存储必返回满 top_k 含无关记忆) | memory.py:222-223, memory.py:362-364, memory.py:202-208 | 明确"进 top_k 即视为回忆"写入文档, 或只在对话实际引用时刷新; 加相关性下限 | 待修 |
 | L4 | L | `_vec_cache` 无上限且不跨进程, RealEmbedder 下恢复大世界后首波检索 O(n) 次网络嵌入 (HashEmbedder 无感) | memory.py:79-80, memory.py:140-146 | 注释写明冷启动行为; 量大后再议 | 待修 |
 | L5 | L | `find_similar_observation` 只看同玩家最近 50 条, 窗口外的重放会重复入库 | memory.py:281-301 | 可接受, 或扩大窗口 | 待修 |
@@ -54,7 +54,7 @@
 | T1 | 置信度衰减幂等: 同一 (ref, obs) 对检查两次, confidence 只降一次 | H1 | 已修: tests/test_confidence.py (幂等重跑/新证据再折半/强矛盾失效不衰减/检索折减精确减半/信任三元组/对话标注) |
 | T2 | replan 锚定: 重规划块时间 ≥ now, 旧计划被失效 | H4 | 已修: tests/test_replan.py (4 用例: 裁过去块/旧计划失效/深夜无块/整点不误伤) |
 | T3 | react 拿到的 plan 含真实活动 (非"日计划已生成") | H3 | 已修: tests/test_plan_react.py (4 用例: 当前块/无块兜底/重规划中断/显式参数优先) |
-| T4 | merge_observation 对 importance 的实际行为 (当前恰好传 1.0 掩盖死参数) | M6 | 待修 |
+| T4 | merge_observation 对 importance 的实际行为 (当前恰好传 1.0 掩盖死参数) | M6 | 已修: test_forgetting 新增重复观察走生产路径 (observe→去重合并) 断言 +1 非双重计分 + last_accessed 刷新, 及 30 次 merge 收敛到上限 10 |
 
 ## 修复顺序建议
 

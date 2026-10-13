@@ -317,10 +317,16 @@ class MemoryStore:
                 best, best_s = c, s
         return best
 
-    def merge_observation(self, mem_id: int, now: float,
-                          extra_importance: float) -> float:
+    def merge_observation(self, mem_id: int, now: float) -> float:
         """合并重复观察: 刷新 last_accessed (重复发生 = 记忆强化, 抗遗忘),
-        并以 +1 上限 10 提升 importance (反复发生的事件更突出)。返回新值。"""
+        并以固定 +1 (上限 10) 提升 importance —— 反复发生的事件更突出。
+
+        强化是**固定 +1 的重复计数**, 不加新观察的完整 importance: 事件的重要
+        性在首次入库时已计入, 重复合并再加一次全量等于双重计分 (一条重要性 9
+        的背叛重复一次就从 5 直接顶满 10)。旧版此函数有个 extra_importance
+        参数但函数体硬编码 +1 从不读取 (M6 死参数), 调用方传的值被静默丢弃,
+        现已删除, 语义在此显式固定。返回新 importance。
+        """
         with self._lock:
             row = self._conn.execute(
                 "SELECT importance FROM memory WHERE id = ?", (mem_id,)

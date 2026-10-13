@@ -100,7 +100,9 @@ class NPC:
         importance = self.llm.score_importance(content, player_id)
         dup = self.store.find_similar_observation(content, player_id)
         if dup is not None:
-            self.store.merge_observation(dup.id, now, importance)
+            # 合并 = 固定 +1 强化 (重复计数), 不传 importance —— 事件重要性已
+            # 在首次入库时计入, 重复合并再加全量是双重计分 (M6 死参数已删)。
+            self.store.merge_observation(dup.id, now)
             if self._tier != "idle":
                 self._importance_accum += importance
             return dup.id

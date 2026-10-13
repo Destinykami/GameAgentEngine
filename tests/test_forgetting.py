@@ -83,8 +83,8 @@ def test_recalled_memory_decays_slower(tmp_path):
     npc = _make(tmp_path)
     recalled = npc.observe("Aria 帮 Fade 修了咖啡机", 0.0, player_id="Aria")
     never = npc.observe("Fade 擦桌子", 0.0)                # 对照: 从不被回忆
-    npc.store.merge_observation(recalled, now=240.0, extra_importance=1.0)
-    # merge 刷新 last_accessed=240, importance 5.0→6.0
+    npc.store.merge_observation(recalled, now=240.0)
+    # merge 刷新 last_accessed=240, importance 5.0→6.0 (固定 +1 强化)
     npc.forget(now=300.0)
     obs = _by_id(npc, "observation")
     # 被回忆: age=60h, factor=0.5^1.25≈0.42, 6.0*0.42≈2.52 → 高于下限
@@ -127,3 +127,26 @@ def test_auto_sweep_on_time_advance(tmp_path):
     obs = _by_id(npc, "observation")
     assert old in obs, "自动清扫应降权而非删除"
     assert obs[old].importance == pytest.approx(MIN_IMPORTANCE)
+
+
+def test_repeated_observation_merges_plus_one_not_double_count(tmp_path):
+    """重复观察走生产路径 (observe → 去重合并): 强化是固定 +1, 不是把新观察的
+    完整 importance 再加一遍 (事件重要性首次入库时已计入, 再加 = 双重计分)。"""
+    npc = _make(tmp_path)
+    first = npc.observe("Aria 帮 Fade 修了咖啡机", 0.0, player_id="Aria")
+    second = npc.observe("Aria 帮 Fade 修了咖啡机", 1.0, player_id="Aria")
+    assert second == first, "近义观察应合并进同一条记录"
+    obs = _by_id(npc, "observation")
+    assert len(obs) == 1, "合并不新增记录"
+    assert obs[first].importance == pytest.approx(6.0), \
+        "重复 = +1 强化 (5.0→6.0), 不是加全量 importance (5.0→10.0)"
+    assert obs[first].last_accessed == pytest.approx(1.0), "合并应刷新 last_accessed"
+
+
+def test_merge_reinforcement_caps_at_ten(tmp_path):
+    """合并强化有上限: 反复 merge 渐近到 10, 不无限增长。"""
+    npc = _make(tmp_path)
+    obs_id = npc.observe("Aria 帮 Fade 修了咖啡机", 0.0, player_id="Aria")
+    for i in range(30):   # 5.0 + 30 → 远超上限, 应收敛到 10
+        new = npc.store.merge_observation(obs_id, now=10.0 + i)
+    assert new == pytest.approx(10.0), "importance 上限 10"
