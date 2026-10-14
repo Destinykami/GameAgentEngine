@@ -42,7 +42,12 @@ export class PlaybackController {
 
   play(): void {
     if (this.playing) return;
-    if (this.index >= this.tl.steps.length - 1) this.index = 0;   // 播完再 play 从头
+    if (this.index >= this.tl.steps.length - 1) {
+      // 播完再 play 从头: 显式派发第 0 步 (否则场景仍显示结局, 第 0 步没立即应用,
+      // 下次定时回调直接进第 1 步, 第 0 步被跳过)。
+      this.index = 0;
+      this.emitStep(this.tl.steps[this.index]);
+    }
     this.playing = true;
     this.emitTransport();
     this.startTimer();

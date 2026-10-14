@@ -365,10 +365,23 @@ export class InazumaScene extends Phaser.Scene {
       const spr = reg.ensure(name, s);
       const prev = this.prevLoc.get(name) ?? null;
       if (this.patrol?.name === name) {
-        // 巡逻中: 只更新血/死, 不重定位 (重定位会打断往返 tween)。
-        reg.updateHealthDead(spr, s);
+        const locChanged = prev !== null && prev !== s.loc;
+        if (locChanged || s.dead) {
+          // 巡逻被打断 (逃跑到新地点 / 阵亡): 取消旧移动 + 同步状态 + 重定位,
+          // 否则角色留在旧地点 (面板已显示新地点, 地图却没动)。
+          spr.stopMove();
+          spr.setHealth(s.health);
+          spr.setDead(s.dead);
+          const a = anchorOf(s.loc);
+          spr.setPosition(a.x + offsetOf(name, s.loc), a.y);
+        } else {
+          // 同地点巡逻中: 只更新血/死, 不重定位 (重定位会打断往返 tween)。
+          reg.updateHealthDead(spr, s);
+        }
       } else if (bigJump) {
         spr.stopMove();
+        spr.setHealth(s.health);   // 大跳转同步血/死 (不能只重定位, 否则死人仍站着/活人仍带死亡标记)
+        spr.setDead(s.dead);
         const a = anchorOf(s.loc);
         spr.setPosition(a.x + offsetOf(name, s.loc), a.y);
       } else {
@@ -463,6 +476,9 @@ export class InazumaScene extends Phaser.Scene {
         if (target && ve.reply) {
           this.replyBubble.setAnchor(target.gameObject);
           this.replyBubble.show(ve.reply, "npc");
+        } else {
+          // 本条对话无回复 → 清掉上一段的旧回复, 防"新行动者台词 + 上一段回复"错配。
+          this.replyBubble.hide();
         }
         // 系统效果 → 浮动提示 (不塞进气泡正文, 计划 §4/§9.5)
         if (actor) {

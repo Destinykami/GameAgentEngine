@@ -435,6 +435,44 @@ const panelToggle = await page2.evaluate(async () => {
 check(panelToggle.collapsed === true && panelToggle.hCollapsed < panelToggle.h0,
   "面板点标题栏可折叠 (收起后高度 " + Math.round(panelToggle.hCollapsed) + " < " + Math.round(panelToggle.h0) + ", 让位地图)");
 check(panelToggle.h1 === panelToggle.h0, "面板再点展开 (高度恢复 " + Math.round(panelToggle.h1) + ")");
+// 审查防回归 — 回放正确性: 跨步跳转同步死活 / 大跳转气泡不被旧淡出关 / 重播立即显示第0步。
+const auditFix = await page2.evaluate(async () => {
+  const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
+  const rep = window.__REPLAY__;
+  const sleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
+  const readSprite = (name) => {
+    const spr = s.reg.get(name); if (!spr) return null;
+    const list = spr.gameObject.list;
+    const char = list.find((c) => c.type === "Sprite");
+    const marker = list.find((c) => c.type === "Text" && c.text === "✝");
+    return { alpha: char?.alpha, marker: marker?.visible };
+  };
+  const out = {};
+  // #1 大跳转同步死活: 桃音 step20 阵亡。seek 活步 → 大跳转死步, sprite 须同步死亡。
+  rep.controller.seek(5); await sleep2(60);
+  rep.controller.seek(25); await sleep2(60);
+  const p25 = readSprite("桃音");
+  out.f1 = { dead: rep.controller.current.states["桃音"].dead, ...p25,
+             ok: rep.controller.current.states["桃音"].dead === true && p25.alpha === 0.45 && p25.marker === true };
+  // #2 大跳转气泡不被旧淡出关: 两段不同对话, 跳后新气泡须保留。
+  const convIdx = [];
+  for (let i = 0; i < rep.timeline.steps.length; i++)
+    if (rep.timeline.steps[i].visual_events.find((v) => v.type === "conversation" && v.utterance)) convIdx.push(i);
+  const A = convIdx[0], B = convIdx[convIdx.length - 1];
+  rep.controller.seek(A); await sleep2(160);
+  const txtA = s.actorBubble.bubbleText();
+  rep.controller.seek(B); await sleep2(200);
+  out.f2 = { ok: txtA !== s.actorBubble.bubbleText() && s.actorBubble.isVisible() };
+  // #5 重播立即显示第 0 步: 末步 → play(), 面板须立即显示第 0 天。
+  rep.controller.seek(rep.controller.totalSteps - 1); await sleep2(60);
+  rep.controller.play(); await sleep2(50);
+  out.f5 = { ok: s.panel.header.text.includes("第 0 天") };
+  rep.controller.pause();
+  return out;
+});
+check(auditFix.f1.ok, "跨步大跳转同步死活 (桃音死→sprite 半透明+死亡标记, 不再死人仍站着)");
+check(auditFix.f2.ok, "大跳转到另一段对话 → 新气泡保留 (不被旧淡出 tween 关掉)");
+check(auditFix.f5.ok, "结局后重播 → 立即显示第 0 步 (不再跳过第 0 步)");
 await page2.screenshot({ path: resolve(SHOTS, "12_real_ending.png") });
 await page2.close();
 

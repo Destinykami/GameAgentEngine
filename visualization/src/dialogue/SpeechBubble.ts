@@ -76,6 +76,7 @@ export class SpeechBubble {
     this.bg.setPosition(0, 0);
     this.tail.setPosition(0, th / 2 + TAIL / 2 - 1);
     this.layout();
+    this.scene.tweens.killTweensOf(this.root);   // 取消旧 tween (大跳转 hide 后又 show, 旧淡出回调会关掉新气泡)
     this.root.setVisible(true);
     this.visible = true;
     this.root.alpha = 0;
@@ -106,6 +107,7 @@ export class SpeechBubble {
   hide(): void {
     if (!this.visible) return;
     this.visible = false;
+    this.scene.tweens.killTweensOf(this.root);   // 取消旧 tween (如正在淡入的 show), 再淡出
     this.scene.tweens.add({
       targets: this.root, alpha: 0, duration: 140, ease: "Sine.easeIn",
       onComplete: () => this.root.setVisible(false),
