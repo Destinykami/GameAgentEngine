@@ -272,7 +272,9 @@ export class InazumaScene extends Phaser.Scene {
       if (this.controls.handleClick(p.x, p.y)) return;   // 播放控制按钮 (场景级几何命中, 可靠)
       if (this.inScrubber(p.x, p.y)) { this.scrubber.onPointerDown(p.x); return; }   // 时间轴点选/拖拽
       if (this.panel.headerContainsPoint(p.x, p.y)) { this.panel.toggle(); return; }   // 点面板标题栏 → 折叠/展开
-      if (this.detailCard.isOpen() && this.detailCard.containsPoint(p.x, p.y)) return;   // 点在卡内, 交给卡自身
+      // 点卡右上角 × → 收起 (场景级几何命中, per-object setInteractive 此环境点不动)。
+      if (this.detailCard.closeAreaContainsPoint(p.x, p.y)) { this.detailCard.hide(); return; }
+      if (this.detailCard.isOpen() && this.detailCard.containsPoint(p.x, p.y)) return;   // 点在卡内, 不关
       const spr = this.spriteAt(p.x, p.y);
       if (spr) {
         const name = spr.name;
@@ -283,7 +285,7 @@ export class InazumaScene extends Phaser.Scene {
         if (!s.dead && !isInterrupted(name, this.controller.current.visual_events)) {
           actLabel = defaultActivity(name, s.loc)?.label ?? null;
         }
-        this.detailCard.show(name, s, actLabel);
+        this.detailCard.show(name, s, actLabel, spr.x, spr.y);   // 卡跟随 NPC 定位
         return;
       }
       this.detailCard.hide();   // 点空白 → 收起

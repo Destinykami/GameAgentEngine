@@ -4,10 +4,10 @@ import type { AgentSnapshot } from "../data/schema";
 
 // DetailCard: 点击实体弹出的详情卡 (只读)。
 // 显示 name / role / 血量 / 攻击 / 地点 / 生死, 旅行者额外显示已收集的证据理由。
-// 锚定固定屏幕位置 (避开右上状态面板与左下事件日志), 点空白处或关闭按钮隐藏。
+// 跟随被点 NPC 定位 (优先右侧, 放不下换左侧, 夹在屏幕内), 点空白处或右上角 × 隐藏。
+// × 用场景级几何命中 (此环境 per-object setInteractive 不可靠, 曾点不动)。
 const W = 252;
-const X = 300;
-const Y = 235;
+const GAP = 20;          // 卡与 NPC 的水平间隙
 const MAX_REASONS = 4;
 const REASON_WRAP = 224;
 // 布局行高/行距: 此环境 t.height 低估实际渲染行高 (~19px), 用 21px 固定行高 + 6px 行距,
@@ -22,7 +22,8 @@ export class DetailCard {
   private rows: Phaser.GameObjects.Text[] = [];
   private nameText!: Phaser.GameObjects.Text;
   private open = false;
-  private closeHit: Phaser.GameObjects.Zone;
+  private px = 0;        // 卡中心 (跟随 NPC 定位)
+  private py = 0;
   private lastName = "";
   private lastSnapshot: AgentSnapshot | null = null;
   private activityLabel: string | null = null;
@@ -35,34 +36,9 @@ export class DetailCard {
       fontFamily: "monospace", fontSize: "15px", color: "#ffd9a0", fontStyle: "bold",
     });
     this.root.add([this.bg, this.nameText]);
-    this.closeHit = scene.add.zone(W / 2 - 12, -12, 16, 16).setInteractive({ useHandCursor: true });
-    this.closeHit.on("pointerdown", () => this.hide());
-    this.root.add(this.closeHit);
-    this.rebuild();
   }
 
-  // 重建行文本并整体测量高度, 调整背景。
-  private rebuild(): void {
-    for (const t of this.rows) t.destroy();
-    this.rows = [];
-    // 背景垫底: 只 sendToBack 重排, 不要 remove (remove 会把 bg 从容器孤立 → 不渲染,
-    // 只剩文字浮在地图上)。bg 构造时已先于 nameText/rows 加入容器, sendToBack 沉底即可。
-    this.root.sendToBack(this.bg);
-    const h = this.measure();
-    this.bg.setSize(W, h).setOrigin(0.5);
-    this.root.setPosition(X, Y);
-  }
-
-  // 返回内容总高度 (标题 + 行)。
-  private measure(): number {
-    let y = -18;                          // 标题下方起点
-    for (const t of this.rows) {
-      y += t.height + 4;
-    }
-    return y + 26;
-  }
-
-  show(name: string, s: AgentSnapshot, activityLabel: string | null = null): void {
+  show(name: string, s: AgentSnapshot, activityLabel: string | null, nx: number, ny: number): void {
     this.lastName = name;
     this.lastSnapshot = s;
     this.activityLabel = activityLabel;
@@ -114,11 +90,23 @@ export class DetailCard {
     const h = nameH + 10 + linesH + 12;   // 名字 + 间隙 + 行 + 底部留白
     this.bg.setSize(W, h);
     this.nameText.setY(-h / 2 + nameH / 2 + 6);
-    this.closeHit.setY(-h / 2 + 10);
     let y = -h / 2 + nameH + 12;
     for (let i = 0; i < this.rows.length; i++) { this.rows[i].setY(y); y += rowHeights[i] + ROW_GAP; }
+    // 跟随 NPC 定位 (优先右侧, 放不下换左侧, 夹在屏幕内)。
+    this.positionNearNPC(nx, ny, h);
+    this.root.setPosition(this.px, this.py);
     this.root.setVisible(true);
     this.open = true;
+  }
+
+  // 卡定位到 NPC 旁边: 优先右侧, 右侧放不下 (超右缘) 换左侧; 垂直居中于 NPC, 夹在屏幕内。
+  private positionNearNPC(nx: number, ny: number, h: number): void {
+    const sw = this.scene.scale.width, sh = this.scene.scale.height;
+    let px = nx + GAP + W / 2;                    // 默认 NPC 右侧
+    if (px + W / 2 > sw - 8) px = nx - GAP - W / 2;   // 右侧放不下 → 左侧
+    px = Math.max(W / 2 + 8, Math.min(sw - W / 2 - 8, px));   // 水平夹取
+    const py = Math.max(h / 2 + 8, Math.min(sh - h / 2 - 8, ny));   // 垂直夹取
+    this.px = px; this.py = py;
   }
 
   hide(): void { this.root.setVisible(false); this.open = false; }
@@ -127,9 +115,16 @@ export class DetailCard {
   nameShown(): string { return this.lastName; }
   snapshotShown(): AgentSnapshot | null { return this.lastSnapshot; }
   activityShown(): string | null { return this.activityLabel; }
-  // 点在卡片外时由场景调用 hide。
+  // 卡在屏幕上的矩形 (供场景级命中: 点卡内不关, 点空白关)。
   containsPoint(px: number, py: number): boolean {
     if (!this.open) return false;
-    return Math.abs(px - X) <= W / 2 && Math.abs(py - Y) <= (this.bg.height / 2);
+    return Math.abs(px - this.px) <= W / 2 && Math.abs(py - this.py) <= (this.bg.height / 2);
+  }
+  // × 关闭区 (卡右上角) —— 场景级几何命中 (per-object setInteractive 此环境不可靠)。
+  closeAreaContainsPoint(px: number, py: number): boolean {
+    if (!this.open) return false;
+    const top = this.py - this.bg.height / 2;
+    return px >= this.px + W / 2 - 26 && px <= this.px + W / 2 - 2 &&
+           py >= top + 2 && py <= top + 22;
   }
 }

@@ -137,20 +137,31 @@ check(card.snap && card.snap.loc === "稻妻主城", "详情卡地点=稻妻主�
 check(card.snap && card.snap.health === 300, "详情卡血量=300 (实际 " + (card.snap?.health) + ")");
 check(card.snap && card.snap.kind === "player", "详情卡类型=player");
 await page.screenshot({ path: resolve(SHOTS, "05_detail_card.png") });
-// 点空白处收起
-const emptyPage = await gameToPage(page, 700, 300);
+// 点空白处收起 (卡跟随旅行者 ~601,330, (700,300) 落卡内 → 改点卡外安全位 (50,120))
+const emptyPage = await gameToPage(page, 50, 120);
 await page.mouse.click(emptyPage.px, emptyPage.py);
 await sleep(100);
 check(await page.evaluate(() => window.__REPLAY__.detailCard.isOpen() === false), "点空白 → 详情卡收起");
+// 点卡右上角 × → 收起 (场景级几何命中, per-object setInteractive 此环境点不动)
+const tv2 = await page.evaluate(() => {
+  const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
+  const tv = s.reg.get("旅行者");
+  s.detailCard.show("旅行者", window.__REPLAY__.controller.current.states["旅行者"], null, tv.x, tv.y);
+  return { cx: s.detailCard.root.x, top: s.detailCard.root.y - s.detailCard.bg.height / 2 };
+});
+const xPage = await gameToPage(page, tv2.cx + 126 - 14, tv2.top + 12);   // × 区 (卡右上角), 转页面坐标
+await page.mouse.click(xPage.px, xPage.py);
+await sleep(100);
+check(await page.evaluate(() => window.__REPLAY__.detailCard.isOpen() === false), "点 × → 详情卡收起");
 // 详情卡长理由不溢出: 手动换行 + 布局修正 (背景居中, 行从名字下方排), 所有行落在背景内。
 // 防回归: 长理由曾折行后顶出背景底边 (掉到卡外/压事件日志), 横向也顶出 252 卡宽。
 const cardFit = await page.evaluate(() => {
   const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
   const LONG_REASON = "目击执行官在稻妻主城当众收缴持眼者的神之眼, 持眼者被拖走时苦苦哀求却无人敢拦, 眼狩令的暴行昭然若揭。";
   s.detailCard.show("旅行者", { name: "旅行者", health: 300, attack: 20, loc: "稻妻主城", dead: false,
-    role: "traveler", kind: "player", reasons: [LONG_REASON, "帮助桃音藏好雷神之眼"] }, "游历");
+    role: "traveler", kind: "player", reasons: [LONG_REASON, "帮助桃音藏好雷神之眼"] }, "游历", 300, 300);
   const root = s.detailCard.root, bg = s.detailCard.bg;
-  const cx = 300, cy = 235;   // 卡中心
+  const cx = root.x, cy = root.y;   // 卡中心 (跟随定位)
   let maxRight = 0, maxBottom = 0;
   for (const ch of root.list) {
     if (ch.type !== "Text" || !ch.text.length) continue;
