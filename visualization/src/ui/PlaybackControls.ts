@@ -2,23 +2,30 @@ import Phaser from "phaser";
 import type { PlaybackController } from "../PlaybackController";
 
 // PlaybackControls (计划 §5.2): 播放/暂停、上一步/下一步、调速、进度。
-// 底部一排像素按钮 (圆角深色底 + 金色描边), onState 时刷新图标/速度/进度。
+// 底部一排像素按钮 (深色底 + 金色描边)。点选走**场景级 pointerdown 几何命中**
+// (handleClick), 不依赖 per-object setInteractive —— 与时间轴/详情卡一致的可靠路径
+// (独立游戏对象 input 在某些环境不稳定, 场景级 pointerdown 总是触发)。
+// onStep 时刷新进度; onTransport 时刷新播放图标/速度。
+const BTN_W = 30;
+const BTN_H = 26;
+
+interface Btn { cx: number; cy: number; cb: () => void }
+
 export class PlaybackControls {
   private controller: PlaybackController;
   private playBtn: Phaser.GameObjects.Text;
   private speedLabel: Phaser.GameObjects.Text;
   private progress: Phaser.GameObjects.Text;
+  private buttons: Btn[] = [];
 
   constructor(scene: Phaser.Scene, controller: PlaybackController, x: number, y: number) {
     this.controller = controller;
     const style = { fontFamily: "monospace", fontSize: "16px", color: "#e8e6e3" };
+    // 按钮只画视觉 (底 + 文本), 命中区存入 this.buttons 供场景级 handleClick 用。
     const btn = (label: string, dx: number, cb: () => void) => {
-      // 按钮底 (圆角深色 + 金色描边) + 文本
-      scene.add.rectangle(x + dx, y, 30, 26, 0x232329).setStrokeStyle(1, 0x4a4a5a).setDepth(1000);
-      const t = scene.add.text(x + dx, y, label, { ...style }).setOrigin(0.5)
-        .setInteractive({ useHandCursor: true })
-        .setDepth(1001)
-        .on("pointerdown", cb);
+      scene.add.rectangle(x + dx, y, BTN_W, BTN_H, 0x232329).setStrokeStyle(1, 0x4a4a5a).setDepth(1000);
+      const t = scene.add.text(x + dx, y, label, { ...style }).setOrigin(0.5).setDepth(1001);
+      this.buttons.push({ cx: x + dx, cy: y, cb });
       return t;
     };
     btn("⏮", -150, () => controller.prev());
@@ -34,6 +41,17 @@ export class PlaybackControls {
     // 进度随每步 (onStep) 刷新; 播放按钮/速度随运输态 (onTransport) 刷新。
     controller.subscribe(() => this.refresh(), () => this.refresh());
     this.refresh();
+  }
+
+  // 场景级 pointerdown 调用: 命中任一按钮则执行其回调并返回 true (场景据此不再当空白/时间轴处理)。
+  handleClick(px: number, py: number): boolean {
+    for (const b of this.buttons) {
+      if (Math.abs(px - b.cx) <= BTN_W / 2 && Math.abs(py - b.cy) <= BTN_H / 2) {
+        b.cb();
+        return true;
+      }
+    }
+    return false;
   }
 
   private refresh(): void {

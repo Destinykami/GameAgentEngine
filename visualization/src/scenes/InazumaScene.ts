@@ -156,6 +156,7 @@ export class InazumaScene extends Phaser.Scene {
     // 点选/详情卡: 全在场景级 pointerdown 用几何判定处理 (spriteAt 识别被点 sprite)。
     // 不用每个 sprite 的 onClick 闭包 —— 闭包捕获名字不可靠 (曾出现点谁都开旅行者卡)。
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
+      if (this.controls.handleClick(p.x, p.y)) return;   // 播放控制按钮 (场景级几何命中, 可靠)
       if (this.inScrubber(p.x, p.y)) { this.scrubber.onPointerDown(p.x); return; }   // 时间轴点选/拖拽
       if (this.detailCard.isOpen() && this.detailCard.containsPoint(p.x, p.y)) return;   // 点在卡内, 交给卡自身
       const spr = this.spriteAt(p.x, p.y);

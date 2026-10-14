@@ -40,7 +40,8 @@ export class DetailCard {
   private rebuild(): void {
     for (const t of this.rows) t.destroy();
     this.rows = [];
-    this.root.remove(this.bg);            // 移出再移回, 保证背景垫底
+    // 背景垫底: 只 sendToBack 重排, 不要 remove (remove 会把 bg 从容器孤立 → 不渲染,
+    // 只剩文字浮在地图上)。bg 构造时已先于 nameText/rows 加入容器, sendToBack 沉底即可。
     this.root.sendToBack(this.bg);
     const h = this.measure();
     this.bg.setSize(W, h).setOrigin(0.5);
