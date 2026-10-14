@@ -5,6 +5,7 @@
 //   M2: 对话气泡 (行动者台词 + 目标回复, 锚定/文本正确) / 点击实体详情卡 / 时间轴拖拽寻址
 //   M3: 像素角色播 idle/walk 动画 / y-sort 深度层级 (前景遮挡排序基础)
 //   Phase3: 视觉活动投影 (刚郎锻造/桃音治疗/小梅阅读/将军坐镇, 被攻击中断, 详情卡活动标签)
+//   M5: 真实 9/10 天旧格式样本回放 (中文 events 串回退解析, 31 步/day10 结局/全事件类型覆盖/不回归)
 // 游戏坐标→页面坐标: Phaser FIT 缩放, 用 canvas 的 getBoundingClientRect 映射。
 // 关键时刻截图到 e2e_shots/。
 import { chromium } from "playwright";
@@ -232,11 +233,74 @@ check(actInt.桃音 !== "heal_桃音", "step2 桃音被攻击 → 治疗中断 (
 check(actInt.刚郎 === "hammer_刚郎", "step2 刚郎未被攻击 → 继续锻造 (实际 " + actInt.刚郎 + ")");
 await page.evaluate(() => window.__REPLAY__.controller.seek(0));
 
-console.log("\n== 10. 无残留错误 ==");
-check(errors.length === 0, "全程无 console/page 错误" + (errors.length ? " (" + errors.join("; ") + ")" : ""));
+console.log("\n== 10. M5 真实样本回放 (旧格式: 中文 events 串 → 回退解析) ==");
+// 真实 9/10 天样本 (data/auto_sim/timeline.json → public/real_timeline.json) 无 visual_events/
+// schema_version。加载器归一化 (回退解析中文串填 visual_events) 后应完整可回放, 不回归。
+const page2 = await browser.newPage({ viewport: { width: 980, height: 560 } });
+const errors2 = [];
+page2.on("console", (m) => { if (m.type() === "error") errors2.push("console: " + m.text()); });
+page2.on("pageerror", (e) => errors2.push("pageerror: " + String(e)));
+await page2.goto(`http://localhost:${PORT}/?timeline=real_timeline.json`, { waitUntil: "load" });
+await page2.waitForFunction(() => window.__REPLAY__ && window.__REPLAY__.timeline, { timeout: 15000 });
+await sleep(400);
+const real = await page2.evaluate(() => window.__REPLAY__.timeline);
+check(Array.isArray(real.steps) && real.steps.length === 31, "真实样本 31 步 (实际 " + real.steps.length + ")");
+const realLast = real.steps[real.steps.length - 1];
+check(realLast.day === 10, "真实样本到最后 day=10 (实际 " + realLast.day + ")");
+check(realLast.decree_ended === true, "真实样本结局 decree_ended=true");
+check(realLast.persuade === 5, "真实样本结局 persuade=5 (实际 " + realLast.persuade + ")");
+check(realLast.note && realLast.note.includes("废止"), "真实样本 note 含'废止'眼狩令");
+// 事件类型覆盖: 回退解析后的 visual_events 应含 move/conversation/help/attack/flee + 死亡 + 结局
+const coverage = await page2.evaluate(() => {
+  const tl = window.__REPLAY__.timeline;
+  const types = new Set(); let death = false, deadState = false;
+  for (const s of tl.steps) {
+    for (const ve of s.visual_events) {
+      types.add(ve.type);
+      if (ve.type === "attack" && ve.target_dead) death = true;
+    }
+    for (const st of Object.values(s.states)) if (st.dead) deadState = true;
+  }
+  return { types: [...types], death, deadState };
+});
+for (const t of ["move", "conversation", "help", "attack", "flee"]) {
+  check(coverage.types.includes(t), "覆盖 " + t + " (实际类型: " + coverage.types.join("/") + ")");
+}
+check(coverage.death === true, "覆盖死亡 (有 attack target_dead=true)");
+check(coverage.deadState === true, "覆盖死亡 (有实体 dead=true, 桃音)");
+// UI 回放: seek 到对话步 → 气泡可见; seek 到桃音阵亡步 (step20) → dead=true
+const convStep = await page2.evaluate(() => {
+  const tl = window.__REPLAY__.timeline;
+  return tl.steps.findIndex((s) => s.visual_events.some((v) => v.type === "conversation"));
+});
+await page2.evaluate((i) => window.__REPLAY__.controller.seek(i), convStep);
+await sleep(400);
+const realBubble = await page2.evaluate(() => ({
+  a: window.__REPLAY__.bubbles.actor.isVisible(),
+  text: window.__REPLAY__.bubbles.actor.bubbleText(),
+}));
+check(realBubble.a === true && realBubble.text.length > 0, "真实样本对话气泡可见 (文本 " + realBubble.text.length + " 字)");
+await page2.screenshot({ path: resolve(SHOTS, "10_real_conv.png") });
+await page2.evaluate(() => window.__REPLAY__.controller.seek(20));
+await sleep(400);
+const realDeath = await page2.evaluate(() => ({
+  桃音: window.__REPLAY__.controller.current.states["桃音"],
+  atk: window.__REPLAY__.controller.current.visual_events.find((v) => v.type === "attack" && v.target === "桃音"),
+}));
+check(realDeath.桃音 && realDeath.桃音.dead === true, "真实样本 step20 桃音 dead=true");
+check(realDeath.atk && realDeath.atk.target_dead === true, "真实样本 step20 致死 attack target_dead=true");
+await page2.screenshot({ path: resolve(SHOTS, "11_real_death.png") });
+await page2.evaluate(() => window.__REPLAY__.controller.seek(window.__REPLAY__.controller.totalSteps - 1));
+await sleep(400);
+await page2.screenshot({ path: resolve(SHOTS, "12_real_ending.png") });
+await page2.close();
+
+console.log("\n== 11. 无残留错误 (stub + 真实样本两页) ==");
+check(errors.length === 0, "stub 页全程无 console/page 错误" + (errors.length ? " (" + errors.join("; ") + ")" : ""));
+check(errors2.length === 0, "真实样本页全程无 console/page 错误" + (errors2.length ? " (" + errors2.join("; ") + ")" : ""));
 
 await browser.close();
 preview.kill();
 console.log("\n截图已存: " + SHOTS);
 if (failures) { console.error("\nE2E FAIL — " + failures + " 项未通过"); process.exit(1); }
-console.log("\nE2E PASS — M1(移动/阵亡/结局) + M2(气泡/详情卡/时间轴拖拽) + M3(像素角色动画/y-sort遮挡) + Phase3(视觉活动投影/中断) 全部通过");
+console.log("\nE2E PASS — M1(移动/阵亡/结局) + M2(气泡/详情卡/时间轴拖拽) + M3(像素角色动画/y-sort遮挡) + Phase3(视觉活动投影/中断) + M5(真实样本旧格式回放/全事件覆盖/不回归) 全部通过");

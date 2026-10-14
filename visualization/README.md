@@ -16,6 +16,7 @@ visualization/
 ├── vite.config.ts          # base "./", 端口 5173
 ├── public/
 │   ├── stub_timeline.json  # 确定性 stub 时间线 (由 tools/gen_stub_timeline.py 生成)
+│   ├── real_timeline.json  # 真实 9/10 天旧格式样本 (data/auto_sim/timeline.json 拷贝, M5 回放)
 │   └── assets/             # 地图素材: tiny-town-tilemap.png (Kenney CC0) + TinyTown-LICENSE.txt
 ├── tools/
 │   ├── gen_stub_timeline.py   # 生成 stub 时间线 (复用真实引擎, 脚本化决策, 无 LLM)
@@ -23,7 +24,7 @@ visualization/
 │   └── e2e_playwright.mjs     # 无头 chromium 端到端验证
 └── src/
     ├── main.ts / config.ts    # Phaser 入口与全局显示约束 (960x540, pixelArt)
-    ├── data/                  # schema.ts, timelineLoader.ts, locationAnchors.ts
+    ├── data/                  # schema.ts, timelineLoader.ts (+ 旧格式归一化), legacyEvents.ts (回退解析), locationAnchors.ts
     ├── PlaybackController.ts  # 播放/暂停/上一步/下一步/调速 (纯逻辑, 可单测)
     ├── scenes/InazumaScene.ts # 单场景: 地图+实体+HUD+播放+M2交互, 消费 visual_events
     ├── entities/              # AgentSprite (像素角色动画/血条/名牌/移动/活动), AgentRegistry
@@ -81,6 +82,15 @@ npm run e2e
 - 详情卡显示活动标签（如"锻造武器 (视觉投影)"）
 - 活动中断：step2 桃音被攻击 → 治疗中断（实际回 idle）；刚郎未被攻击 → 继续锻造
 - 全程无残留错误
+
+**M5 真实样本回放（旧格式不回归）**
+- 真实 9/10 天样本 `public/real_timeline.json`（`data/auto_sim/timeline.json` 拷贝）是**旧格式**：
+  只有中文 `events` 串，无 `visual_events`/`schema_version`/`world`。加载器 `normalizeTimeline`
+  回退解析中文串（`legacyEvents.ts`）填 `visual_events` + 合成 world，再走统一校验。
+- 用 `?timeline=real_timeline.json` 加载，断言：31 步、day=10、`decree_ended=true`、`persuade=5`、
+  note 含"废止"；回退解析后 visual_events 覆盖 move/conversation/help/attack/flee + 致死
+  attack `target_dead` + dead 态（桃音）；对话气泡可见；step20 桃音 dead；**stub + 真实样本
+  两页全程无 console/page 错误**。
 
 截图落在 `e2e_shots/`。
 

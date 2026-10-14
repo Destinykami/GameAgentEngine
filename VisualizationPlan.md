@@ -973,12 +973,12 @@ persona_agent/
 
 ### M5：稳定性和扩展
 
-- [ ] 完整回放现有 9/10 天样本
-- [ ] 覆盖移动、对话、帮助、攻击、逃跑、死亡和结局
-- [ ] 验证旧回放不回归
+- [x] 完整回放现有 9/10 天样本（`data/auto_sim/timeline.json` → `public/real_timeline.json`, 31 步/day0-10, `?timeline=` 参数加载）
+- [x] 覆盖移动、对话、帮助、攻击、逃跑、死亡和结局（E2E 断言回退解析后 visual_events 含 move/conversation/help/attack/flee + 致死 attack target_dead + dead 态 + decree_ended 结局）
+- [x] 验证旧回放不回归（旧格式 timeline 无 visual_events/schema_version, 加载器 `normalizeTimeline` 回退解析中文 events 串填 visual_events + 合成 world, 统一校验; E2E 双页 stub+真实样本无 console/page 错误）
 - [x] 记录素材许可证和来源（Kenney "Tiny Town" CC0 公共领域, 许可证入库 `public/assets/TinyTown-LICENSE.txt`; 角色/活动道具为原创无第三方素材）
-- [ ] 评估实时 API 或 WebSocket 是否必要
-- [ ] 决定是否需要 Godot 或继续 Phaser
+- [x] 评估实时 API 或 WebSocket 是否必要（结论: **当前不需要**。回放器是已完成模拟的只读回放——数据是引擎产出的静态 timeline.json, 前端一次加载后本地播放, seek/拖拽全是客户端行为, 无实时流需求。架构已分离数据与渲染 (PlaybackController 消费 VisualEvent 流), 若未来要"实时观察运行中模拟", 加 SSE/WebSocket 适配器喂同一事件流即可, 成本低。故锁定静态加载, 不引入实时通道。）
+- [x] 决定是否需要 Godot 或继续 Phaser（结论: **继续 Phaser**。回放器是 2D 俯视地图 + 2D 精灵 + 2D UI, Phaser Canvas/WebGL 2D 渲染完全够用; Godot 强项 (3D/物理/ECS/复杂游戏循环) 此处用不上。前端与 TypeScript/Vite 一体、与引擎共享数据 schema, npm 一次构建即出网页; 引入 Godot 需独立工具链/构建/导出, 成本远超收益。M0-M5 已在 Phaser 上全部实现并 E2E 验证 (y-sort 遮挡/动画/气泡/时间轴寻址均解决), 无 Godot 才能解的技术债。仅当需要 3D 等距/复杂物理/大规模场景管理才考虑 Godot, 本项目无此需求。锁定 Phaser 3.x。）
 
 ---
 

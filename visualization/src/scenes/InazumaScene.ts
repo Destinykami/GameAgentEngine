@@ -66,7 +66,9 @@ export class InazumaScene extends Phaser.Scene {
       fontFamily: "monospace", fontSize: "16px", color: "#b08d57",
       align: "center", wordWrap: { width: 760 },
     }).setOrigin(0.5);
-    Promise.all([loadTimeline("stub_timeline.json"), loadImage("assets/tiny-town-tilemap.png")])
+    // 默认回放 stub 时间线; ?timeline=<file> 可回放其它样本 (如 real_timeline.json 旧格式真实样本, M5)。
+    const tlFile = new URLSearchParams(window.location.search).get("timeline") ?? "stub_timeline.json";
+    Promise.all([loadTimeline(tlFile), loadImage("assets/tiny-town-tilemap.png")])
       .then(([tl, ttImg]) => this.setup(tl, ttImg))
       .catch((e: unknown) => {
         this.loadingText.setText("加载失败:\n" + String(e) +

@@ -1,0 +1,2366 @@
+{
+  "reason_needed": 3,
+  "attack_needed": 20,
+  "persuade_n": 5,
+  "steps": [
+    {
+      "day": 0,
+      "moment": 7.0,
+      "clock": 7.0,
+      "events": [
+        "世界事件: 雷电将军颁布眼狩令, 全城神之眼一律收缴"
+      ],
+      "states": {
+        "桃音": {
+          "health": 80,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "眼狩署",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 300,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 0,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 1,
+      "moment": 9.0,
+      "clock": 9.0,
+      "events": [
+        "桃音 帮助 小梅",
+        "刚郎 观望",
+        "小梅 移动到 城外官道",
+        "执行官 移动到 稻妻主城",
+        "雷电将军 观望",
+        "旅行者 移动到 治疗堂"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 80,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 300,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 0,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 1,
+      "moment": 14.0,
+      "clock": 14.0,
+      "events": [
+        "桃音 对 旅行者 说: 旅行者，你的伤势恢复得如何？雷神之眼就在我身上，我会护住它。眼下眼狩令风头正紧，我们得找个稳妥的地方藏好，顺便帮小梅处理一下伤口。",
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 移动到 治疗堂",
+        "雷电将军 观望",
+        "旅行者 帮助 桃音 [旅行者积累理由, 现1条]"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 80,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 300,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴"
+          ],
+          "attack": 12,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 0,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 1,
+      "moment": 19.0,
+      "clock": 19.0,
+      "events": [
+        "桃音 对 旅行者 说: 旅行者，多谢你出手相助。雷神之眼就在我身上，我会护住它。眼下眼狩令风头正紧，我们得找个稳妥的地方藏好，顺便帮小梅处理一下伤口。",
+        "刚郎 对 旅行者 说: 旅行者，既然你在此处，想必对锻造有需求。我可为你打造利刃，但需确认你的身份与意图。",
+        "小梅 观望",
+        "执行官 攻击 旅行者, 造成 12 伤害",
+        "雷电将军 观望",
+        "旅行者 对 桃音 说: 桃音，雷神之眼已妥善藏好，多谢你。眼下眼狩令风头正紧，我想听听你亲历的收缴暴行，我需要这些实证去说服将军。 ← 桃音: 既然你帮了我，我便信你一次。那些收缴时的惨状，我会如实讲给你听，希望能助你说服将军。 [旅行者积累理由, 现2条]"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 80,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 288,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦"
+          ],
+          "attack": 12,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 0,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 2,
+      "moment": 9.0,
+      "clock": 33.0,
+      "events": [
+        "桃音 对 旅行者 说: 旅行者，既然雷神之眼已藏好，那便趁这片刻安宁，将那些持眼者的遭遇细细讲与我听。我见过太多因眼狩令而破碎的家庭，这些实证若能助你说服将军，便是我们最大的希望。",
+        "刚郎 对 旅行者 说: 旅行者，既然你在此处，想必对锻造有需求。我可为你打造利刃，但需确认你的身份与意图。",
+        "小梅 观望",
+        "执行官 攻击 旅行者, 造成 12 伤害",
+        "雷电将军 观望",
+        "旅行者 移动到 锻造坊"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 80,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 276,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦"
+          ],
+          "attack": 12,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 0,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 2,
+      "moment": 14.0,
+      "clock": 38.0,
+      "events": [
+        "桃音 对 旅行者 说: 旅行者，既然雷神之眼已藏好，那便趁这片刻安宁，将那些持眼者的遭遇细细讲与我听。我见过太多因眼狩令而破碎的家庭，这些实证若能助你说服将军，便是我们最大的希望。",
+        "刚郎 对 旅行者 说: 旅行者，既然你在此处，想必对锻造有需求。我可为你打造利刃，但需确认你的身份与意图。",
+        "小梅 观望",
+        "执行官 攻击 旅行者, 造成 13 伤害",
+        "雷电将军 观望",
+        "旅行者 对 刚郎 说: 刚郎，我需要你帮我锻造武器。我要提升实力，去见雷电将军。 ← 刚郎: 锻造坊的门开着，炉火正旺，材料我都有。说吧，要什么武器，我这就给你打。 [旅行者积累理由, 现3条] [刚郎锻好武器, 旅行者攻升至16]"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 80,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 263,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 16,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 0,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 2,
+      "moment": 19.0,
+      "clock": 43.0,
+      "events": [
+        "桃音 对 执行官 说: 执行官大人，雷神之眼已妥善藏匿，眼下风头正紧，还望您高抬贵手，莫要在此处大肆搜捕，以免惊扰了伤患。 ← 执行官: 藏匿得再好，也掩盖不了你身上的气息。既然求我高抬贵手，那就把话说清楚，你们到底在策划什么。",
+        "刚郎 对 旅行者 说: 去见雷电将军？哼，野心不小。既然你诚心求利刃，我便为你锻造。记住，这武器只为你斩敌，莫要用来谋反。",
+        "小梅 观望",
+        "执行官 攻击 旅行者, 造成 14 伤害",
+        "雷电将军 观望",
+        "旅行者 对 刚郎 说: 刚郎，我已备好材料，请为我锻造武器。我需要提升实力，去见雷电将军。 ← 刚郎: 材料既然备齐，就放那儿吧，我会处理好的。想见雷电将军，先把实力提上来再说。 [刚郎锻好武器, 旅行者攻升至20]"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 80,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 249,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 0,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 3,
+      "moment": 9.0,
+      "clock": 57.0,
+      "events": [
+        "桃音 对 执行官 说: 执行官大人，雷神之眼已妥善藏匿，眼下风头正紧，还望您高抬贵手，莫要在此处大肆搜捕，以免惊扰了伤患。 ← 执行官: 伤患的命比那几块石头重要，收起你的怜悯，只要他们保持绝对安静，我就不会踏进这扇门。",
+        "刚郎 对 旅行者 说: 材料已备齐？很好。既然你诚心求利刃，我便为你锻造。记住，这武器只为你斩敌，莫要用来谋反。",
+        "小梅 观望",
+        "执行官 攻击 旅行者, 造成 13 伤害",
+        "雷电将军 观望",
+        "旅行者 移动到 神樱庭"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 80,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 0,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 3,
+      "moment": 14.0,
+      "clock": 62.0,
+      "events": [
+        "桃音 对 执行官 说: 执行官大人，雷神之眼已妥善藏匿，眼下风头正紧，还望您高抬贵手，莫要在此处大肆搜捕，以免惊扰了伤患。 ← 执行官: 伤患的命比你的雷神之眼重要。\n\n滚。",
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 移动到 锻造坊",
+        "雷电将军 对 旅行者 说: 何人敢闯神樱庭？若无实证与实力，休想动摇我的意志。",
+        "旅行者 对 雷电将军 说: 将军，我已备齐实证：桃音藏眼避祸、持眼者离散之苦、刚郎见证生计断绝。且我已锻至攻20，愿以实力与诚意，恳请您废止眼狩令。 ← 雷电将军: 实证与实力，皆无法撼动永恒之理。你的诉求，我不予理会。"
+      ],
+      "note": "双关已过, 旅行者当面劝说, 将军沉吟'容我考虑' — 1/5",
+      "states": {
+        "桃音": {
+          "health": 80,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 1,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 3,
+      "moment": 19.0,
+      "clock": 67.0,
+      "events": [
+        "桃音 对 执行官 说: 执行官大人，雷神之眼已妥善藏匿，眼下风头正紧，还望您高抬贵手，莫要在此处大肆搜捕，以免惊扰了伤患。 ← 执行官: 藏匿得再巧妙，也逃不过我的眼睛。滚开，别妨碍我办事。",
+        "刚郎 对 执行官 说: 执行官大人，久仰大名。不知您今日前来，是需我为您锻造利刃，还是另有差遣？ ← 执行官: 刚郎，收起那些虚礼。你手里那套锻造活儿先搁一边，我这次来，是为了那把雷神之眼。",
+        "小梅 观望",
+        "执行官 移动到 治疗堂",
+        "雷电将军 对 旅行者 说: 实证虽备，实力亦足，然眼狩令乃永恒之基。容我考虑，勿再聒噪。",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 80,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 1,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 4,
+      "moment": 9.0,
+      "clock": 81.0,
+      "events": [
+        "桃音 对 执行官 说: 执行官大人，雷神之眼已妥善藏匿，眼下风头正紧，还望您高抬贵手，莫要在此处大肆搜捕，以免惊扰了伤患。 ← 执行官: 伤患的命比那颗石头要紧，搜捕的事我会收敛。只要别让我知道是你藏了它，我就当没看见。",
+        "刚郎 对 执行官 说: 执行官大人，久仰大名。不知您今日前来，是需我为您锻造利刃，还是另有差遣？ ← 执行官: 别急着动手。先带路去治疗堂，我要看看那些伤患的情况。",
+        "小梅 观望",
+        "执行官 观望",
+        "雷电将军 观望",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 80,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 1,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 4,
+      "moment": 14.0,
+      "clock": 86.0,
+      "events": [
+        "桃音 对 执行官 说: 执行官大人，雷神之眼已妥善藏匿，眼下风头正紧，还望您高抬贵手，莫要在此处大肆搜捕，以免惊扰了伤患。 ← 执行官: 雷神之眼藏得好，是省了我的功夫，不是求我放水的筹码。\n\n这里伤患众多，搜捕动静太大确实不妥。\n\n你且退下，莫要再靠近一步。",
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 攻击 桃音, 造成 16 伤害",
+        "雷电将军 观望",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 64,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 1,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 4,
+      "moment": 19.0,
+      "clock": 91.0,
+      "events": [
+        "桃音 逃离威胁, 逃到 城外官道",
+        "刚郎 对 执行官 说: 执行官大人，久仰大名。不知您今日前来，是需我为您锻造利刃，还是另有差遣？ ← 执行官: 不必多礼。你的锻造坊倒是个藏匿东西的好地方。",
+        "小梅 观望",
+        "执行官 攻击 桃音, 造成 17 伤害",
+        "雷电将军 观望",
+        "旅行者 对 雷电将军 说: 将军，您说容我考虑，那我便在此静候。这眼狩令剥夺的不仅是力量，更是稻妻子民对您的信任。桃音的恐惧、刚郎的叹息，皆是实证。若您今日仍执意维持，明日我便再来说服，直到您看见这永恒背后的裂痕。 ← 雷电将军: 你的实证与所谓攻击力，尚不足以撼动永恒的本质。\n\n既已静候，便在此刻见证这不可动摇的意志，无需明日再扰。"
+      ],
+      "note": "双关已过, 旅行者当面劝说, 将军沉吟'容我考虑' — 2/5",
+      "states": {
+        "桃音": {
+          "health": 47,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 2,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 5,
+      "moment": 9.0,
+      "clock": 105.0,
+      "events": [
+        "桃音 帮助 小梅",
+        "刚郎 观望",
+        "小梅 对 桃音 说: 桃音，你血气不稳，先退到安全处。我需确认你手中是否持有眼狩令的最新情报，若有，务必小心传递，切勿落入敌手。 ← 桃音: “放心吧小梅，我退到那边隐蔽处正好能观察动静，不会让你担心。”\n\n“情报我贴身收着，绝不给那些执行官可乘之机。”",
+        "执行官 攻击 刚郎, 造成 16 伤害",
+        "雷电将军 对 旅行者 说: 你的言辞虽如利刃，却未触及永恒的核心。眼狩令并非暴政，而是为了斩断这世间无常的锁链。你所谓的裂痕，不过是凡人因恐惧而生的妄念。既然你执意要在此静候，那便随你。但记住，若再敢以‘信任’二字轻慢神权，休怪我不念旧情，直接以雷霆将你轰出神樱庭。",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 47,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 84,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 2,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 5,
+      "moment": 14.0,
+      "clock": 110.0,
+      "events": [
+        "桃音 对 小梅 说: 小梅，我手中确实有眼狩署的最新布防图，但此刻官道风紧，不宜久留。你先退入神樱庭的密道暂避，我随后便去安全屋取情报，务必小心。 ← 小梅: 既然官道风紧，我就听你的，先退进神樱庭的密道里躲一躲。你在外面千万当心，去安全屋取情报时别留痕迹。",
+        "刚郎 观望",
+        "小梅 对 桃音 说: 桃音，你血气不稳，先退到安全处。我需确认你手中是否持有眼狩令的最新情报，若有，务必小心传递，切勿落入敌手。 ← 桃音: 收到，我这就撤。眼狩令的情报我手里确实有份，我会贴身藏好，绝不落入敌手。",
+        "执行官 攻击 桃音, 造成 17 伤害",
+        "雷电将军 观望",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 30,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 84,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 2,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 5,
+      "moment": 19.0,
+      "clock": 115.0,
+      "events": [
+        "桃音 逃离威胁, 逃到 稻妻主城",
+        "刚郎 观望",
+        "小梅 移动到 神樱庭",
+        "执行官 攻击 刚郎, 造成 13 伤害",
+        "雷电将军 观望",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 30,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 71,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 2,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 6,
+      "moment": 9.0,
+      "clock": 129.0,
+      "events": [
+        "桃音 逃离威胁, 逃到 城外官道",
+        "刚郎 逃离威胁, 逃到 城外官道",
+        "小梅 对 旅行者 说: 旅行者，此处乃神樱庭，雷电将军亦在。我需确认你手中是否持有眼狩令的最新情报，若有，务必小心传递，切勿落入敌手。",
+        "执行官 移动到 稻妻主城",
+        "雷电将军 观望",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 30,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 71,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 2,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 6,
+      "moment": 14.0,
+      "clock": 134.0,
+      "events": [
+        "桃音 移动到 治疗堂",
+        "刚郎 移动到 锻造坊",
+        "小梅 对 雷电将军 说: 将军大人，眼狩令虽旨在维持秩序，但典籍记载此举恐致民心离散。小梅愿以孤本为证，恳请大人三思，莫让风神之眼成为动荡之源。 ← 雷电将军: 小梅，孤本典籍虽珍贵，却不足以撼动我对“永恒”的决意。\n眼狩令并非为了动荡，而是为了斩断无常的锁链，你所谓的民心离散，不过是秩序重塑前短暂的阵痛。",
+        "执行官 移动到 眼狩署",
+        "雷电将军 观望",
+        "旅行者 对 雷电将军 说: 将军，小梅所言非虚。我已将桃音的恐惧、刚郎的叹息以及城中收缴暴行的实证整理成册。今日我再次恳请，请您审视这些‘裂痕’。若今日仍无定论，明日我将继续在此静候，直至您正视这永恒背后的代价。 ← 雷电将军: “永恒”不容瑕疵，你的静候改变不了我的决断。收起你的实证，退下。"
+      ],
+      "note": "双关已过, 旅行者当面劝说, 将军沉吟'容我考虑' — 3/5",
+      "states": {
+        "桃音": {
+          "health": 30,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 71,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "眼狩署",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 3,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 6,
+      "moment": 19.0,
+      "clock": 139.0,
+      "events": [
+        "桃音 帮助 刚郎",
+        "刚郎 观望",
+        "小梅 对 旅行者 说: 旅行者，将军就在眼前，切勿声张。我需确认你手中是否持有眼狩令的最新情报，若有，务必小心传递，切勿落入敌手。",
+        "执行官 移动到 治疗堂",
+        "雷电将军 对 旅行者 说: 实证已阅，言辞亦听。然永恒之重，非一日之寒可解。容我再思，若明日你仍持此‘裂痕’之说，且无新证，休怪雷霆无情。",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 30,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 71,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 3,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 7,
+      "moment": 9.0,
+      "clock": 153.0,
+      "events": [
+        "桃音 帮助 刚郎",
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 攻击 桃音, 造成 17 伤害",
+        "雷电将军 观望",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 13,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 71,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 3,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 7,
+      "moment": 14.0,
+      "clock": 158.0,
+      "events": [
+        "桃音 逃离威胁, 逃到 城外官道",
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 攻击 桃音, 造成 15 伤害 → 桃音 阵亡!",
+        "雷电将军 观望",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "城外官道",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 71,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 3,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 7,
+      "moment": 19.0,
+      "clock": 163.0,
+      "events": [
+        "刚郎 观望",
+        "小梅 对 雷电将军 说: 将军大人，小梅并非要抗命，只是这孤本典籍中记载的眼狩令之弊，关乎稻妻长远安宁。若将军肯赐下片刻，容小梅呈上孤本，或许能寻得两全之策，既护风神之眼，又安民心。 ← 雷电将军: 两全之策？长夜之理不容轻易动摇，你所谓的安宁不过是一时之扰。孤本已呈于前，若其中有能证伪永恒之谬误，本座自会过目；若无，便休要再提“赐下片刻”这种僭越之词。",
+        "执行官 移动到 锻造坊",
+        "雷电将军 观望",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "城外官道",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 71,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 3,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 8,
+      "moment": 9.0,
+      "clock": 177.0,
+      "events": [
+        "刚郎 对 执行官 说: 别动。我是刚郎，只卖货给可信的人。你刚才动手，现在想谈生意？先证明你的诚意。 ← 执行官: 我停下了动作。既然要谈，那就把雷神之眼的藏匿处和后续计划摊开来讲。",
+        "小梅 观望",
+        "执行官 攻击 刚郎, 造成 12 伤害",
+        "雷电将军 对 小梅 说: 孤本？哼，典籍不过是死物，岂能证得活人的心？你既执意呈上，便呈上来。若其中无实证眼狩令之弊，休怪我雷霆手段，将你与那‘裂痕’一并抹去。 ← 小梅: 既然将军只认死物，那我便呈上，哪怕只是灰烬，也足以灼穿您那冰冷的理智。至于“裂痕”，它从未消失，只是潜伏在您看不见的阴影里，等着您亲手将其撕裂。",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "城外官道",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 59,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 3,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 8,
+      "moment": 14.0,
+      "clock": 182.0,
+      "events": [
+        "刚郎 逃离威胁, 逃到 城外官道",
+        "小梅 对 雷电将军 说: 将军大人既肯赐下片刻，小梅便呈上孤本。此中记载并非空穴来风，乃实证眼狩令之弊。恳请大人过目，莫让雷霆手段误伤无辜，亦莫让风神之眼成为动荡之源。 ← 雷电将军: 实证？若此孤本真能证明眼狩令会动摇这恒常的根基，我会看。\n但请记住，我赐予你时间，并非因为我会动摇，而是为了审视这所谓的“弊”是否真能撼动永恒。",
+        "执行官 攻击 刚郎, 造成 12 伤害",
+        "雷电将军 观望",
+        "旅行者 对 雷电将军 说: 将军，昨日您言若无新证休怪雷霆无情。今日我带来了新的实证：小梅在神樱庭目睹了执行官对无辜持眼者的粗暴收缴，且刚郎今日又提及因眼狩令导致的铁匠营生进一步恶化。这些并非空口白话，而是永恒秩序下正在流血的现实。请您再审视这‘裂痕’，今日我仍在此静候。 ← 雷电将军: “永恒”并非静止的画像，而是需被不断修正的轨迹。既然裂痕已深至骨髓，我便不再视你为无理取闹的过客，而是审视这秩序的变数。"
+      ],
+      "note": "双关已过, 旅行者当面劝说, 将军沉吟'容我考虑' — 4/5",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "城外官道",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 47,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 4,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 8,
+      "moment": 19.0,
+      "clock": 187.0,
+      "events": [
+        "刚郎 移动到 锻造坊",
+        "小梅 观望",
+        "执行官 移动到 眼狩署",
+        "雷电将军 对 旅行者 说: 刚郎的营生恶化？小梅的目击？哼，不过是永恒基石下微不足道的尘埃。你既言‘今日静候’，那便候着。若无足以撼动雷霆的新证，休怪我让你见识何为真正的‘无情’。",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "城外官道",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 47,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "眼狩署",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 4,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 9,
+      "moment": 9.0,
+      "clock": 201.0,
+      "events": [
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 移动到 稻妻主城",
+        "雷电将军 观望",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "城外官道",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 47,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 4,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 9,
+      "moment": 14.0,
+      "clock": 206.0,
+      "events": [
+        "刚郎 观望",
+        "小梅 对 雷电将军 说: 将军大人，小梅已将孤本呈上。恳请大人细览其中关于眼狩令弊端的实证，莫让雷霆手段误伤无辜，亦莫让风神之眼成为动荡之源。 ← 雷电将军: 孤本上的墨迹未干，其中的“实证”不过是你一面之词。既呈上来了，便搁在那里，待我自行翻阅，无需你在一旁聒噪。",
+        "执行官 移动到 城外官道",
+        "雷电将军 观望",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "城外官道",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 47,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 4,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 9,
+      "moment": 19.0,
+      "clock": 211.0,
+      "events": [
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 移动到 稻妻主城",
+        "雷电将军 对 小梅 说: 孤本已呈，却仍无实证。你既执意呈上，便呈上来。若其中无实证眼狩令之弊，休怪我雷霆手段，将你与那‘裂痕’一并抹去。 ← 小梅: 将军既要看实证，我便呈上，这孤本里的字句，自会替我说清眼狩令的弊病。至于那雷霆手段，我虽不怕，却盼着将军能听完这活人的心声，再决定去留。",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "城外官道",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 47,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 4,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 10,
+      "moment": 9.0,
+      "clock": 225.0,
+      "events": [
+        "刚郎 观望",
+        "小梅 逃离威胁, 逃到 城外官道",
+        "执行官 移动到 眼狩署",
+        "雷电将军 对 旅行者 说: 实证？孤本？哼，不过是些死物与碎语。你既言静候，那便候着。若无足以撼动雷霆的新证，休怪我让你见识何为真正的‘无情’。",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "城外官道",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 47,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "眼狩署",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 4,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 10,
+      "moment": 14.0,
+      "clock": 230.0,
+      "events": [
+        "刚郎 观望",
+        "小梅 移动到 稻妻主城",
+        "执行官 移动到 稻妻主城",
+        "雷电将军 观望",
+        "旅行者 观望"
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "城外官道",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 47,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 4,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 10,
+      "moment": 19.0,
+      "clock": 235.0,
+      "events": [
+        "刚郎 观望",
+        "小梅 逃离威胁, 逃到 城外官道",
+        "执行官 攻击 小梅, 造成 16 伤害",
+        "雷电将军 观望",
+        "旅行者 对 雷电将军 说: 将军，您说实证是死物与碎语？那便请听这‘活’的实证。今日小梅在神樱庭亲眼目睹执行官对无辜持眼者的粗暴收缴，刚郎亦证实眼狩令导致铁匠营生恶化。这些并非空口白话，而是永恒秩序下正在流血的现实。我已在此静候多日，请您再审视这‘裂痕’。 ← 雷电将军: “实证”？不过是你用来扰乱我心智的杂音。\n既然你执着于这种无意义的纠缠，那便继续候着吧，直到你明白永恒无需向蝼蚁解释。"
+      ],
+      "note": "★ 雷电将军被说服 (当面劝说 5 次), 废止眼狩令!",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "城外官道",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 47,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 54,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 236,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "助 桃音 藏好神之眼, 令其免遭收缴",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 5,
+      "decree_ended": true,
+      "shogun_dead": false
+    }
+  ]
+}
