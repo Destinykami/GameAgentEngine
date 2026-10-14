@@ -448,31 +448,55 @@ const auditFix = await page2.evaluate(async () => {
     return { alpha: char?.alpha, marker: marker?.visible };
   };
   const out = {};
-  // #1 大跳转同步死活: 桃音 step20 阵亡。seek 活步 → 大跳转死步, sprite 须同步死亡。
+  // #1 大跳转同步死活: 桃音 step20 阵亡。seek 活步 → 大跳转死步, sprite 须同步死亡
+  // 且死者不重播 idle (setPosition 会 play idle, setDead 须在其后停动画)。
   rep.controller.seek(5); await sleep2(60);
   rep.controller.seek(25); await sleep2(60);
   const p25 = readSprite("桃音");
+  const p25char = s.reg.get("桃音").char;
   out.f1 = { dead: rep.controller.current.states["桃音"].dead, ...p25,
-             ok: rep.controller.current.states["桃音"].dead === true && p25.alpha === 0.45 && p25.marker === true };
-  // #2 大跳转气泡不被旧淡出关: 两段不同对话, 跳后新气泡须保留。
+             idle: p25char.anims.isPlaying,
+             ok: rep.controller.current.states["桃音"].dead === true && p25.alpha === 0.45 && p25.marker === true
+                 && p25char.anims.isPlaying === false };
+  // #2 大跳转气泡不被旧淡出关: 两段不同对话, 跳后新气泡须保留。查实际 Container
+  // 可见性 + alpha (淡入结束后), 不只看 isVisible() 逻辑标记 (旧淡出回调可能把 root.visible
+  // 设回 false 而标记仍 true)。
   const convIdx = [];
   for (let i = 0; i < rep.timeline.steps.length; i++)
     if (rep.timeline.steps[i].visual_events.find((v) => v.type === "conversation" && v.utterance)) convIdx.push(i);
   const A = convIdx[0], B = convIdx[convIdx.length - 1];
   rep.controller.seek(A); await sleep2(160);
   const txtA = s.actorBubble.bubbleText();
-  rep.controller.seek(B); await sleep2(200);
-  out.f2 = { ok: txtA !== s.actorBubble.bubbleText() && s.actorBubble.isVisible() };
+  rep.controller.seek(B); await sleep2(300);   // 等淡入 (140ms) 结束
+  const root = s.actorBubble.root;
+  out.f2 = { txtB: s.actorBubble.bubbleText(), rootVisible: root.visible, rootAlpha: root.alpha,
+             ok: txtA !== s.actorBubble.bubbleText() && root.visible === true && root.alpha > 0.9 };
   // #5 重播立即显示第 0 步: 末步 → play(), 面板须立即显示第 0 天。
   rep.controller.seek(rep.controller.totalSteps - 1); await sleep2(60);
   rep.controller.play(); await sleep2(50);
   out.f5 = { ok: s.panel.header.text.includes("第 0 天") };
   rep.controller.pause();
+  // #1 同一步多段对话按序播放 (不再互相覆盖): seek 到多对话步, 先显第一段,
+  // 停留 (台词长度*250ms) 后切到第二段 —— 前面几段不再被最后一段在绘制前覆盖。
+  const steps = rep.timeline.steps;
+  let multiIdx = -1;
+  for (let i = 0; i < steps.length; i++) {
+    const c = (steps[i].visual_events || []).filter((v) => v.type === "conversation" && v.success !== false && v.utterance);
+    if (c.length >= 2) { multiIdx = i; break; }
+  }
+  rep.controller.seek(multiIdx); await sleep2(150);
+  const firstLine = s.actorBubble.bubbleText();
+  const dwell = Math.min(6000, Math.max(2000, s.convQueue[0].utterance.length * 250)) + 150;
+  await sleep2(dwell);
+  const secondLine = s.actorBubble.bubbleText();
+  out.f3 = { first: firstLine.slice(0, 8), second: secondLine.slice(0, 8),
+             ok: firstLine !== secondLine };
   return out;
 });
-check(auditFix.f1.ok, "跨步大跳转同步死活 (桃音死→sprite 半透明+死亡标记, 不再死人仍站着)");
-check(auditFix.f2.ok, "大跳转到另一段对话 → 新气泡保留 (不被旧淡出 tween 关掉)");
+check(auditFix.f1.ok, "跨步大跳转同步死活 (桃音死→半透明+死亡标记, 且死者不重播 idle)");
+check(auditFix.f2.ok, "大跳转到另一段对话 → 新气泡保留 (实际 Container visible+alpha, 不被旧淡出关)");
 check(auditFix.f5.ok, "结局后重播 → 立即显示第 0 步 (不再跳过第 0 步)");
+check(auditFix.f3.ok, "同一步多段对话按序播放 (\"" + auditFix.f3.first + "…\" → 停留后 \"" + auditFix.f3.second + "…\", 不再被覆盖)");
 await page2.screenshot({ path: resolve(SHOTS, "12_real_ending.png") });
 await page2.close();
 

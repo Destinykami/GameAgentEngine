@@ -28,7 +28,7 @@ import { SpeechBubble } from "../dialogue/SpeechBubble";
 import { DamagePopup } from "../dialogue/DamagePopup";
 import { DetailCard } from "../ui/DetailCard";
 import { TimelineScrubber } from "../ui/TimelineScrubber";
-import type { Timeline, TimelineStep } from "../data/schema";
+import type { AgentSnapshot, Timeline, TimelineStep } from "../data/schema";
 
 // InazumaScene — 单场景回放器: 地图+实体+HUD+播放+M2 交互 (气泡/详情卡/时间轴/伤害)。
 // 单场景避免多场景时钟不进更新相位 (timer/tween 可靠 tick)。
@@ -49,6 +49,9 @@ export class InazumaScene extends Phaser.Scene {
   // M2 交互组件
   private actorBubble!: SpeechBubble;   // 行动者台词
   private replyBubble!: SpeechBubble;   // 目标回复
+  // 对话队列: 同一步多段对话按序播放 (不再互相覆盖), 每段停留后切下一段。
+  private convQueue: { actor: string; target?: string; utterance: string; reply?: string }[] = [];
+  private convTimer: Phaser.Time.TimerEvent | null = null;
   private damagePopup!: DamagePopup;    // 受击伤害数字
   private detailCard!: DetailCard;      // 点击实体详情卡
   private scrubber!: TimelineScrubber;  // 时间轴拖拽
@@ -345,11 +348,19 @@ export class InazumaScene extends Phaser.Scene {
     const bigJump = this.lastAppliedIndex >= 0 && Math.abs(idx - this.lastAppliedIndex) > 1;
     this.lastAppliedIndex = idx;
 
+    // 本步谁"仍在巡逻" (唯一排除出布局的角色): 当前巡逻者 + 未被中断 + 地点没变 + 未死。
+    // 任何退出巡逻的角色 (逃跑到新地点 / 阵亡 / 同地点被战斗中断) 都要参与目标地点的错开布局,
+    // 否则退出巡逻者被排除在 byLoc 外, offsetOf 算错 (独居返回 0 与他人重叠, 多人 indexOf=-1 组外偏移)。
+    const stillPatrol = (name: string, s: AgentSnapshot): boolean =>
+      this.patrol?.name === name
+      && !isInterrupted(name, step.visual_events)
+      && (this.prevLoc.get(name) ?? s.loc) === s.loc
+      && !s.dead;
+
     // 同地点错开: 按地点分组 (按名字排序, 偏移跨步稳定不跳), 每人按组内序号左右站开。
-    // 巡逻者排除在外 —— 它自己在动 (往返 tween), 不参与错开, 位置由巡逻驱动。
     const byLoc = new Map<string, string[]>();
     for (const [name, s] of Object.entries(step.states)) {
-      if (name === this.patrol?.name) continue;
+      if (stillPatrol(name, s)) continue;   // 仍在巡逻: 自己往返移动, 不参与错开
       if (!byLoc.has(s.loc)) byLoc.set(s.loc, []);
       byLoc.get(s.loc)!.push(name);
     }
@@ -366,24 +377,25 @@ export class InazumaScene extends Phaser.Scene {
       const prev = this.prevLoc.get(name) ?? null;
       if (this.patrol?.name === name) {
         const locChanged = prev !== null && prev !== s.loc;
-        if (locChanged || s.dead) {
-          // 巡逻被打断 (逃跑到新地点 / 阵亡): 取消旧移动 + 同步状态 + 重定位,
-          // 否则角色留在旧地点 (面板已显示新地点, 地图却没动)。
-          spr.stopMove();
-          spr.setHealth(s.health);
-          spr.setDead(s.dead);
+        const interrupted = isInterrupted(name, step.visual_events);
+        if (locChanged || s.dead || interrupted) {
+          // 退出巡逻 (换地点 / 阵亡 / 同地点被战斗中断): 重定位到布局位 (setPosition 内部
+          // killMove 取消巡逻 tween), 再最后同步血/死 —— 顺序关键: setPosition 会重播 idle,
+          // setDead 必须在其后, 否则死者被重播待机动画 (审查回归 #2)。
           const a = anchorOf(s.loc);
           spr.setPosition(a.x + offsetOf(name, s.loc), a.y);
+          spr.setHealth(s.health);
+          spr.setDead(s.dead);
         } else {
-          // 同地点巡逻中: 只更新血/死, 不重定位 (重定位会打断往返 tween)。
+          // 仍在巡逻: 只更新血/死, 不重定位 (重定位会打断往返 tween)。
           reg.updateHealthDead(spr, s);
         }
       } else if (bigJump) {
-        spr.stopMove();
-        spr.setHealth(s.health);   // 大跳转同步血/死 (不能只重定位, 否则死人仍站着/活人仍带死亡标记)
-        spr.setDead(s.dead);
+        // 大跳转: 先重定位到布局位, 再同步血/死 (setDead 在 setPosition 后, 防死者重播 idle)。
         const a = anchorOf(s.loc);
         spr.setPosition(a.x + offsetOf(name, s.loc), a.y);
+        spr.setHealth(s.health);
+        spr.setDead(s.dead);
       } else {
         reg.applySnapshot(spr, s, prev, offsetOf(name, s.loc));
       }
@@ -456,44 +468,74 @@ export class InazumaScene extends Phaser.Scene {
 
   // 渲染当前步的 visual_events (气泡/伤害/系统效果/世界事件)。
   // 事件成功后才表现副作用: success===false 的动作不显示完成态 (计划 §2.4)。
-  // 气泡/横幅只在"大跳转"(scrub/拖时间轴)时清掉防残留; 连续推进 (自动播放/直播/手动
-  // next) 保留上一条对话气泡 —— 直播每秒推进一步, 若每步都清气泡会一闪而过来不及读。
+  // 同一步多段对话进队列按序播放 (不再互相覆盖, 每段停留后切下一段); 横幅/伤害每步清。
+  // 连续推进 (自动播放/直播/手动 next) 无新对话时冻结最后一段对话气泡 (不推进旧队列),
+  // 防直播每秒一步时气泡一闪而过。
   private renderVisualEvents(step: TimelineStep, bigJump = false): void {
-    // 对话气泡: 大跳转清掉防残留; 连续推进保留上一条 (直播每秒一步, 清掉会来不及读)。
-    // 新对话出现时会 show() 覆盖旧气泡, 不冲突。
-    if (bigJump) { this.actorBubble.hide(); this.replyBubble.hide(); }
+    if (bigJump) { this.cancelConvTimer(); this.actorBubble.hide(); this.replyBubble.hide(); }
     this.worldBanner.setAlpha(0);        // 世界事件横幅每步都清 (一次性法令提示, 非对话)
     this.damagePopup.clear();            // 伤害数字每步都清 (飘字, 无阅读需求)
 
+    // 收集本步对话 → 队列, 按序播放 (前面几段不再被最后一段在绘制前覆盖)。
+    const convs = step.visual_events.filter(
+      (ve): ve is typeof ve & { utterance: string } =>
+        ve.type === "conversation" && ve.success !== false && !!ve.utterance);
+    if (convs.length > 0) {
+      this.convQueue = convs.map(ve => ({
+        actor: ve.actor, target: ve.target, utterance: ve.utterance, reply: ve.reply,
+      }));
+      this.playConv(0);
+    } else {
+      this.cancelConvTimer();   // 无新对话: 冻结最后一段 (不推进旧队列), 保留显示防一闪而过
+    }
+
+    // 非对话事件 (系统效果浮字 / 伤害 / 世界横幅) 立即处理。
     for (const ve of step.visual_events) {
-      if (ve.type === "conversation" && ve.success !== false && ve.utterance) {
-        const actor = this.reg.get(ve.actor);
-        const target = ve.target ? this.reg.get(ve.target) : undefined;
-        if (actor) {
-          this.actorBubble.setAnchor(actor.gameObject);
-          this.actorBubble.show(ve.utterance, ve.actor === "旅行者" ? "player" : "npc");
-        }
-        if (target && ve.reply) {
-          this.replyBubble.setAnchor(target.gameObject);
-          this.replyBubble.show(ve.reply, "npc");
-        } else {
-          // 本条对话无回复 → 清掉上一段的旧回复, 防"新行动者台词 + 上一段回复"错配。
-          this.replyBubble.hide();
-        }
-        // 系统效果 → 浮动提示 (不塞进气泡正文, 计划 §4/§9.5)
-        if (actor) {
-          if (ve.reason_added) this.floatSystem(actor, `理由 +1 (现${ve.reason_count ?? 0}条)`);
-          else if (ve.weapon_attack) this.floatSystem(actor, `攻击力 → ${ve.weapon_attack}`);
-          else if (ve.witnessed) this.floatSystem(actor, `目击搜捕 (理由现${ve.reason_count ?? 0}条)`);
-        }
-      } else if (ve.type === "attack" && ve.success !== false && ve.damage !== undefined) {
+      if (ve.type === "attack" && ve.success !== false && ve.damage !== undefined) {
         const target = ve.target ? this.reg.get(ve.target) : undefined;
         if (target) this.damagePopup.push(target.x, target.y, ve.damage, !!ve.target_dead);
       } else if (ve.type === "world_event" && ve.description) {
         this.worldBanner.setText(wrapText(ve.description, 700, "15px monospace"));
         this.tweens.add({ targets: this.worldBanner, alpha: 1, duration: 200 });
+      } else if (ve.type === "conversation" && ve.success !== false && ve.utterance) {
+        // 系统效果浮字立即显示 (不排队, 它是事件副作用不是台词)。
+        const actor = this.reg.get(ve.actor);
+        if (actor) {
+          if (ve.reason_added) this.floatSystem(actor, `理由 +1 (现${ve.reason_count ?? 0}条)`);
+          else if (ve.weapon_attack) this.floatSystem(actor, `攻击力 → ${ve.weapon_attack}`);
+          else if (ve.witnessed) this.floatSystem(actor, `目击搜捕 (理由现${ve.reason_count ?? 0}条)`);
+        }
       }
     }
+  }
+
+  // 播放第 i 段对话: 显示台词 + 回复 (无回复清旧回复防错配), 停留后切下一段。
+  // 最后一段停留显示 (不自动隐藏), 直到新步/大跳转替换 —— 直播每秒一步时最新对话优先。
+  private playConv(i: number): void {
+    this.cancelConvTimer();
+    if (i >= this.convQueue.length) return;
+    const conv = this.convQueue[i];
+    const actor = this.reg.get(conv.actor);
+    const target = conv.target ? this.reg.get(conv.target) : undefined;
+    if (actor) {
+      this.actorBubble.setAnchor(actor.gameObject);
+      this.actorBubble.show(conv.utterance, conv.actor === "旅行者" ? "player" : "npc");
+    }
+    if (target && conv.reply) {
+      this.replyBubble.setAnchor(target.gameObject);
+      this.replyBubble.show(conv.reply, "npc");
+    } else {
+      this.replyBubble.hide();   // 无回复 → 清掉上一段旧回复, 防错配
+    }
+    if (i < this.convQueue.length - 1) {
+      // 停留时长随台词长度 (每字 ~250ms, 夹 2~6s), 长台词读得完。
+      const dwell = Math.min(6000, Math.max(2000, conv.utterance.length * 250));
+      this.convTimer = this.time.delayedCall(dwell, () => this.playConv(i + 1));
+    }
+  }
+
+  private cancelConvTimer(): void {
+    if (this.convTimer) { this.convTimer.destroy(); this.convTimer = null; }
   }
 
   // 系统效果浮动文字 (金色, 上飘淡出), 锚在 sprite 头顶上方。
