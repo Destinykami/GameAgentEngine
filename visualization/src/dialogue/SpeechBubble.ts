@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { wrapText } from "../text/wrapText";
 
 // 气泡风格: player=旅行者 (蓝边), npc=NPC (灰白边), system=系统提示 (金边)。
 // 对应计划 §4 气泡模型: 锚点跟随 Sprite, 进入/停留/离场动画, 自动换行。
@@ -15,38 +16,6 @@ const PAD = 8;               // 内边距
 const FONTSIZE = 14;
 const FONT = `${FONTSIZE}px monospace`;
 const TAIL = 8;              // 尾巴高
-
-// 此环境 (无头 WebGL) Phaser 的 wordWrap 不生效 —— 长 CJK 文本 (无空格) 不换行,
-// 按 1 行高建背景, 文字溢出到框外。改用**手动换行**: 离屏 canvas 逐字符测量,
-// 每行超宽就插 \n, 显式断行 (CJK 逐字断行正确)。测量 canvas 模块级建一次。
-let measureCtx: CanvasRenderingContext2D | null = null;
-function getMeasureCtx(): CanvasRenderingContext2D {
-  if (!measureCtx) {
-    const c = document.createElement("canvas");
-    measureCtx = c.getContext("2d") as CanvasRenderingContext2D;
-  }
-  return measureCtx;
-}
-
-// 手动换行: 逐字符累加, 超 maxWidth 就断行。保留显式 \n。返回带 \n 的文本。
-function wrapText(text: string, maxWidth: number): string {
-  const ctx = getMeasureCtx();
-  ctx.font = FONT;
-  const lines: string[] = [];
-  let cur = "";
-  for (const ch of text) {
-    if (ch === "\n") { lines.push(cur); cur = ""; continue; }
-    const test = cur + ch;
-    if (ctx.measureText(test).width > maxWidth && cur.length > 0) {
-      lines.push(cur);
-      cur = ch;
-    } else {
-      cur = test;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines.join("\n");
-}
 
 // SpeechBubble: 创建/销毁气泡, 跟随角色锚点, 进入/离场淡入淡出。
 // 一次对话由场景编排: 先 show 行动者气泡, 再 show 目标回复气泡, 系统效果单独提示。
@@ -93,7 +62,7 @@ export class SpeechBubble {
   // 显示气泡: 手动换行 + 按换行后行数定背景高度, 重建背景/尾巴。
   show(text: string, style: BubbleStyle): void {
     this.original = text;                          // 存原始台词 (bubbleText 比对用)
-    const wrapped = wrapText(text, WRAP_WIDTH);   // 手动换行 (此环境 wordWrap 失效)
+    const wrapped = wrapText(text, WRAP_WIDTH, FONT);   // 手动换行 (此环境 wordWrap 失效)
     this.text.setText(wrapped);
     const color = STYLE_COLOR[style];
     this.bg.setStrokeStyle(2, color);

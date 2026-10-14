@@ -182,6 +182,21 @@ const longFit = await page.evaluate(() => {
 check(longFit.lines >= 2, "长台词手动换行成多行 (" + longFit.lines + " 行)");
 check(longFit.textW <= longFit.bgW && longFit.textH <= longFit.bgH,
   "长台词气泡不溢出 (bg " + longFit.bgW + "x" + longFit.bgH + " 容 text " + longFit.textW + "x" + longFit.textH + ")");
+// 事件框同样 wordWrap 失效: 手动换行 + 按框高截断, 防长对话/多事件溢出框外。
+const logFit = await page.evaluate(() => {
+  const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
+  s.log.update([
+    { type: "conversation", actor: "旅行者", target: "桃音", success: true,
+      utterance: "你知道眼狩令造成了什么吗？持眼者被搜捕、被收缴，我见过太多人因此家破人亡，稻妻的秩序压碎的是活生生的人。",
+      reply: "我懂你的苦，但眼狩令是将军的意志。", reply_speaker: "桃音" },
+    { type: "attack", actor: "执行官", target: "小梅", success: true, damage: 30, target_dead: false },
+    { type: "move", actor: "刚郎", to: "锻造坊", success: true },
+  ]);
+  const t = s.log.text;
+  return { w: Math.round(t.width), lines: t.text.split("\n").length };
+});
+check(logFit.w <= 460, "事件框换行不横向溢出 (宽 " + logFit.w + " ≤ 460)");
+check(logFit.lines <= 4, "事件框按框高截断 (" + logFit.lines + " 行 ≤ 4, 防竖向溢出)");
 await page.screenshot({ path: resolve(SHOTS, "06_bubbles.png") });
 // 跳到无对话的步, 气泡应消失 (快速跳步不留旧气泡, 计划 §7.2-10)
 await page.evaluate(() => window.__REPLAY__.controller.seek(0));
