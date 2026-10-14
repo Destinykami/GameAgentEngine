@@ -52,6 +52,20 @@ export class AgentSprite {
 
   get x(): number { return this.container.x; }
   get y(): number { return this.container.y; }
+  // 暴露容器供气泡锚定 / 伤害弹出定位 / 点击交互。
+  get gameObject(): Phaser.GameObjects.Container { return this.container; }
+
+  // 点击回调 (M2 详情卡)。用 Rectangle hitArea + hitAreaCallback (Container 必须显式给,
+  // 否则 Phaser 每帧命中测试抛 hitAreaCallback is not a function, 拖垮整个输入)。
+  onClick(cb: () => void): void {
+    const hit = new Phaser.Geom.Rectangle(-BODY_W / 2 - 5, -BODY_H / 2 - 8, BODY_W + 10, BODY_H + 18);
+    this.container.setInteractive({
+      hitArea: hit,
+      hitAreaCallback: (p: { x: number; y: number }) => hit.contains(p.x, p.y),
+      useHandCursor: true,
+    });
+    this.container.on("pointerdown", cb);
+  }
 
   // 立即设位 (跳步/初始化用, 取消进行中的 Tween, 不留旧动画 —— 计划 §7.2-10)。
   setPosition(x: number, y: number): void {

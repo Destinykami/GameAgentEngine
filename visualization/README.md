@@ -24,9 +24,10 @@ visualization/
     ├── main.ts / config.ts    # Phaser 入口与全局显示约束 (960x540, pixelArt)
     ├── data/                  # schema.ts, timelineLoader.ts, locationAnchors.ts
     ├── PlaybackController.ts  # 播放/暂停/上一步/下一步/调速 (纯逻辑, 可单测)
-    ├── scenes/InazumaScene.ts # 单场景: 地图+实体+HUD+播放, 消费 visual_events
-    ├── entities/              # AgentSprite (血条/名牌/移动), AgentRegistry
-    └── ui/                    # StatusPanel / EventLog / PlaybackControls
+    ├── scenes/InazumaScene.ts # 单场景: 地图+实体+HUD+播放+M2交互, 消费 visual_events
+    ├── entities/              # AgentSprite (血条/名牌/移动/点击), AgentRegistry
+    ├── dialogue/              # SpeechBubble (气泡), DamagePopup (伤害数字弹出)
+    └── ui/                    # StatusPanel / EventLog / PlaybackControls / DetailCard / TimelineScrubber
 ```
 
 ## 运行
@@ -53,11 +54,18 @@ npm run e2e
 
 无头 chromium 加载构建产物，直接驱动 `window.__REPLAY__.controller`，断言：
 
+**M1 回放**
 - 页面加载无 console/page 错误；`schema_version=1`、14 步、6 实体
 - 初始站位：旅行者@稻妻主城、将军@神樱庭（sprite 像素位置 = 地点锚点）
 - 手动逐步后旅行者 **移动落到治疗堂锚点**（位移 > 0，移动 Tween 生效）
 - day2：桃音 `dead=true` + 致死 `attack`（`target_dead=true`，`damage` 非负）
 - 最后一步：`decree_ended=true`、`persuade=3`、非阵亡、note 含"废止"眼狩令
+
+**M2 交互**
+- 对话气泡：seek 到对话步，行动者气泡文本=台词、目标回复气泡文本=NPC回复，锚定 sprite；
+  跳回无对话步气泡消失（快速跳步不留旧气泡）
+- 点击实体详情卡：点旅行者 → 卡打开，名字/地点/血量/类型正确；点空白 → 收起
+- 时间轴拖拽寻址：点时间轴中点 → 跳到约中间步；拖到右端 → 跳到末尾
 - 全程无残留错误
 
 截图落在 `e2e_shots/`。
@@ -79,3 +87,16 @@ npm run e2e
   （`scene.add`+`start/launch` 会让 timer/tween 不 tick）。
 - **播放控制**：`PlaybackController` 纯逻辑类；`onStep`（步变化→应用状态）与
   `onTransport`（播放/暂停→冻结/解冻 Tween）严格分离，手动逐步不冻死移动动画。
+- **M2 对话气泡**：`SpeechBubble` 锚定 sprite 头顶、自动换行、淡入淡出，区分
+  player（蓝边）/npc（灰白边）/system（金边）风格；同地点对话双方气泡左右错开不重叠。
+  只有成功对话才显示气泡（`success===false` 不显示完成态）；系统效果（理由/锻刀/目击）
+  用独立浮动金色提示，不塞进气泡正文（计划 §4/§9.5）。
+- **M2 点击详情卡**：点实体弹出只读详情卡（名字/生死/地点/血量/攻击/身份/类型 +
+  旅行者证据理由），点空白收起。用**几何判定**区分"点实体"与"点空白"，不依赖事件触发
+  顺序（Phaser 场景级 pointerdown 先于 sprite onClick 触发，标记会残留误判）。
+- **M2 时间轴拖拽**：顶部时间轴每步一个刻度 + 金色播放头，点击/拖动跳到任意 step。
+  由**场景级输入**统一驱动（独立游戏对象的 `setInteractive` 在此无头环境不生效，
+  Zone/Rectangle 的 input 均不触发，只有场景级 pointerdown 可靠）。
+- **M2 伤害弹出**：成功攻击时目标头顶弹出 `-N`（致死红色 `✝` 强化），上飘淡出。
+- **reason_count 源头完整**：引擎 `VisualEvent.to_dict()` 对 `witnessed` 事件也输出
+  `reason_count`（此前只输出 `reason_added` 分支），前端不再显示"现 undefined 条"。

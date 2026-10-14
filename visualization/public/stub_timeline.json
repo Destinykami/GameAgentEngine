@@ -239,7 +239,8 @@
           "target": "桃音",
           "damage": 16,
           "target_dead": false,
-          "witnessed": true
+          "witnessed": true,
+          "reason_count": 1
         },
         {
           "type": "wait",

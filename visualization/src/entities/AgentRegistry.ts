@@ -10,6 +10,7 @@ export class AgentRegistry {
   private sprites: Map<string, AgentSprite> = new Map();
   private scene: Phaser.Scene;
   private maxHealth: Map<string, number> = new Map();
+  private clickHandler: ((name: string, spr: AgentSprite) => void) | null = null;
 
   constructor(scene: Phaser.Scene, initialStates: Record<string, AgentSnapshot>) {
     this.scene = scene;
@@ -24,15 +25,22 @@ export class AgentRegistry {
     }
   }
 
+  // 点击实体回调 (M2 详情卡)。对存量与新创建的 Sprite 都接线。
+  setClickHandler(cb: (name: string, spr: AgentSprite) => void): void {
+    this.clickHandler = cb;
+    for (const [name, spr] of this.sprites) spr.onClick(() => cb(name, spr));
+  }
+
   // 确保某实体有 Sprite (新实体按当前快照创建, 满血未知则用当前血量)。
   ensure(name: string, s: AgentSnapshot): AgentSprite {
-    let spr = this.sprites.get(name);
-    if (!spr) {
-      this.maxHealth.set(name, Math.max(1, s.health));
-      const a = anchorOf(s.loc);
-      spr = new AgentSprite(this.scene, name, a.x, a.y, this.maxHealth.get(name) ?? 100);
-      this.sprites.set(name, spr);
-    }
+    const existing = this.sprites.get(name);
+    if (existing) return existing;
+    this.maxHealth.set(name, Math.max(1, s.health));
+    const a = anchorOf(s.loc);
+    const spr = new AgentSprite(this.scene, name, a.x, a.y, this.maxHealth.get(name) ?? 100);
+    this.sprites.set(name, spr);
+    const cb = this.clickHandler;
+    if (cb) spr.onClick(() => cb(name, spr));
     return spr;
   }
 
