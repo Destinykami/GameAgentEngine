@@ -13,8 +13,40 @@ const BG = 0x14141a;
 const WRAP_WIDTH = 168;      // 气泡文字换行宽度 (像素)
 const PAD = 8;               // 内边距
 const FONTSIZE = 14;
+const FONT = `${FONTSIZE}px monospace`;
 const TAIL = 8;              // 尾巴高
-const MAX_W = 200;           // 气泡最大宽 (超了继续换行)
+
+// 此环境 (无头 WebGL) Phaser 的 wordWrap 不生效 —— 长 CJK 文本 (无空格) 不换行,
+// 按 1 行高建背景, 文字溢出到框外。改用**手动换行**: 离屏 canvas 逐字符测量,
+// 每行超宽就插 \n, 显式断行 (CJK 逐字断行正确)。测量 canvas 模块级建一次。
+let measureCtx: CanvasRenderingContext2D | null = null;
+function getMeasureCtx(): CanvasRenderingContext2D {
+  if (!measureCtx) {
+    const c = document.createElement("canvas");
+    measureCtx = c.getContext("2d") as CanvasRenderingContext2D;
+  }
+  return measureCtx;
+}
+
+// 手动换行: 逐字符累加, 超 maxWidth 就断行。保留显式 \n。返回带 \n 的文本。
+function wrapText(text: string, maxWidth: number): string {
+  const ctx = getMeasureCtx();
+  ctx.font = FONT;
+  const lines: string[] = [];
+  let cur = "";
+  for (const ch of text) {
+    if (ch === "\n") { lines.push(cur); cur = ""; continue; }
+    const test = cur + ch;
+    if (ctx.measureText(test).width > maxWidth && cur.length > 0) {
+      lines.push(cur);
+      cur = ch;
+    } else {
+      cur = test;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.join("\n");
+}
 
 // SpeechBubble: 创建/销毁气泡, 跟随角色锚点, 进入/离场淡入淡出。
 // 一次对话由场景编排: 先 show 行动者气泡, 再 show 目标回复气泡, 系统效果单独提示。
@@ -28,16 +60,17 @@ export class SpeechBubble {
   private visible = false;
   private dx = 0;   // 相对锚点的水平偏移 (对话双方同地点时左右错开)
   private dy = 0;   // 相对锚点的垂直偏移
+  private original = "";   // 原始台词 (未换行); bubbleText() 返回它供 E2E 比对内容
 
   constructor(scene: Phaser.Scene, depth = 200) {
     this.scene = scene;
     this.root = scene.add.container(0, 0).setDepth(depth);
+    // 不配 wordWrap (此环境不生效), 靠 show() 手动换行插 \n。
     this.text = scene.add.text(0, 0, "", {
       fontFamily: "monospace",
       fontSize: `${FONTSIZE}px`,
       color: "#f0ece4",
       align: "left",
-      wordWrap: { width: WRAP_WIDTH },
       lineSpacing: 2,
     });
     this.bg = scene.add.rectangle(0, 0, 10, 10, BG, 1).setStrokeStyle(2, 0xffffff);
@@ -57,16 +90,17 @@ export class SpeechBubble {
     if (this.anchor) this.layout();
   }
 
-  // 显示气泡: 文本 + 风格, 自动测量换行后的文本尺寸并重建背景/尾巴。
+  // 显示气泡: 手动换行 + 按换行后行数定背景高度, 重建背景/尾巴。
   show(text: string, style: BubbleStyle): void {
-    this.text.setText(text);
+    this.original = text;                          // 存原始台词 (bubbleText 比对用)
+    const wrapped = wrapText(text, WRAP_WIDTH);   // 手动换行 (此环境 wordWrap 失效)
+    this.text.setText(wrapped);
     const color = STYLE_COLOR[style];
     this.bg.setStrokeStyle(2, color);
     this.tail.setFillStyle(color).setStrokeStyle(2, color);
 
-    // 测量换行后实际高度, 重建背景尺寸 (像素风用直角矩形)
-    this.text.setSize(WRAP_WIDTH, this.text.height);
-    const tw = Math.min(this.text.width + PAD * 2, MAX_W);
+    // 换行后: 宽=最宽行 (≤WRAP_WIDTH), 高=行数×行高。背景 = 文本尺寸 + 内边距。
+    const tw = this.text.width + PAD * 2;
     const th = this.text.height + PAD * 2;
     this.bg.setSize(tw, th);
     this.text.setOrigin(0.5).setPosition(0, 0);
@@ -111,7 +145,15 @@ export class SpeechBubble {
 
   // E2E 断言用。
   isVisible(): boolean { return this.visible; }
-  bubbleText(): string { return this.text.text; }
+  bubbleText(): string { return this.original; }   // 原始台词 (不含换行), E2E 比对内容用
+  // E2E 断言用: 背景是否容得下文字 (bg 尺寸 >= 文本尺寸, 即无溢出)。
+  fitInfo(): { bgW: number; bgH: number; textW: number; textH: number; lines: number } {
+    return {
+      bgW: this.bg.width, bgH: this.bg.height,
+      textW: this.text.width, textH: this.text.height,
+      lines: this.text.text.split("\n").length,
+    };
+  }
 
   destroy(): void {
     this.bg.destroy(); this.text.destroy(); this.tail.destroy(); this.root.destroy();

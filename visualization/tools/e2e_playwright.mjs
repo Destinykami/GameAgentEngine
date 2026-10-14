@@ -171,6 +171,17 @@ check(bubbles.actorVisible === true, "行动者气泡可见");
 check(bubbles.actorText === bubbles.utterance, "行动者气泡文本=台词 (实际 \"" + bubbles.actorText + "\")");
 check(bubbles.replyVisible === true, "目标回复气泡可见");
 check(bubbles.replyText === bubbles.reply, "回复气泡文本=NPC回复 (实际 \"" + bubbles.replyText + "\")");
+// 长台词换行不溢出: 手动换行后背景须容得下文字 (此环境 Phaser wordWrap 失效, 靠手动 \n)。
+// 防回归: 真实 LLM 长 utterance 曾因气泡按 1 行高建而溢出到框外。
+const longFit = await page.evaluate(() => {
+  const b = window.__REPLAY__.bubbles.actor;
+  b.setAnchor(window.__REPLAY__.sprites.get("旅行者"));
+  b.show("你知道眼狩令造成了什么吗？持眼者被搜捕、被收缴，我见过太多人因此家破人亡，稻妻的秩序压碎的是活生生的人。", "player");
+  return b.fitInfo();
+});
+check(longFit.lines >= 2, "长台词手动换行成多行 (" + longFit.lines + " 行)");
+check(longFit.textW <= longFit.bgW && longFit.textH <= longFit.bgH,
+  "长台词气泡不溢出 (bg " + longFit.bgW + "x" + longFit.bgH + " 容 text " + longFit.textW + "x" + longFit.textH + ")");
 await page.screenshot({ path: resolve(SHOTS, "06_bubbles.png") });
 // 跳到无对话的步, 气泡应消失 (快速跳步不留旧气泡, 计划 §7.2-10)
 await page.evaluate(() => window.__REPLAY__.controller.seek(0));
