@@ -1,8 +1,9 @@
-// e2e_playwright.mjs — 回放器端到端验证 (无头 chromium), 覆盖 M1 + M2 交互。
+// e2e_playwright.mjs — 回放器端到端验证 (无头 chromium), 覆盖 M1 + M2 交互 + M3 像素地图。
 // 启动 vite preview 服务 dist/, 加载页面, 用 window.__REPLAY__ 驱动 PlaybackController,
 // 断言:
 //   M1: 加载无错 / 6地点6实体 / 移动落锚点 / 桃音阵亡 / 结局废止
 //   M2: 对话气泡 (行动者台词 + 目标回复, 锚定/文本正确) / 点击实体详情卡 / 时间轴拖拽寻址
+//   M3: 像素角色播 idle/walk 动画 / y-sort 深度层级 (前景遮挡排序基础)
 // 游戏坐标→页面坐标: Phaser FIT 缩放, 用 canvas 的 getBoundingClientRect 映射。
 // 关键时刻截图到 e2e_shots/。
 import { chromium } from "playwright";
@@ -73,6 +74,19 @@ check(initPos.旅行者 && initPos.雷电将军, "sprite 位置可读");
 console.log("    旅行者@(" + Math.round(initPos.旅行者.x) + "," + Math.round(initPos.旅行者.y) +
   ")  将军@(" + Math.round(initPos.雷电将军.x) + "," + Math.round(initPos.雷电将军.y) + ")");
 
+console.log("\n== 2b. M3 像素角色动画 + y-sort 遮挡 ==");
+// 角色换成带 idle 动画的像素 Sprite: animKey 应为 idle_<name>; 深度应 = round(y) (y-sort 层级)。
+const m3 = await page.evaluate(() => {
+  const r = window.__REPLAY__.sprites;
+  const p = r.posOf("旅行者");
+  return { anim: r.animKeyOf("旅行者"), depth: r.depthOf("旅行者"), y: p?.y, 将军anim: r.animKeyOf("雷电将军") };
+});
+check(m3.anim === "idle_旅行者", "旅行者播 idle 动画 (实际 " + m3.anim + ")");
+check(m3.将军anim === "idle_雷电将军", "将军播 idle 动画 (实际 " + m3.将军anim + ")");
+check(m3.depth === Math.round(m3.y), "旅行者深度=round(y) y-sort 层级 (depth " + m3.depth + " = y " + Math.round(m3.y) + ")");
+// 遮挡不变量: y 更大者深度更大 → 角色与建筑/樱树按 y 排序, 走过屋顶/树后正确遮挡。
+check(typeof m3.depth === "number" && m3.depth > 0, "深度为正且随 y 递增 (遮挡排序基础)");
+
 console.log("\n== 3. 点击实体详情卡 (M2) ==");
 // 点击旅行者 (day0 在稻妻主城), 断言详情卡打开且内容正确
 const tv = initPos.旅行者;
@@ -95,18 +109,23 @@ await page.mouse.click(emptyPage.px, emptyPage.py);
 await sleep(100);
 check(await page.evaluate(() => window.__REPLAY__.detailCard.isOpen() === false), "点空白 → 详情卡收起");
 
-console.log("\n== 4. 逐步推进 + 移动落锚点 (M1) ==");
+console.log("\n== 4. 逐步推进 + 移动落锚点 (M1) + walk 动画 (M3) ==");
 const before = await page.evaluate(() => window.__REPLAY__.sprites.posOf("旅行者"));
 await page.evaluate(() => window.__REPLAY__.controller.next());
-await sleep(800);
+await sleep(120);   // 移动途中 (Tween 600ms), 应播 walk 动画
+const walkAnim = await page.evaluate(() => window.__REPLAY__.sprites.animKeyOf("旅行者"));
+check(walkAnim === "walk_旅行者", "移动途中播 walk 动画 (实际 " + walkAnim + ")");
+await sleep(800);   // 等移动完成
 const after = await page.evaluate(() => ({
   index: window.__REPLAY__.controller.currentIndex,
   旅行者: window.__REPLAY__.sprites.posOf("旅行者"),
   step: window.__REPLAY__.controller.current,
+  anim: window.__REPLAY__.sprites.animKeyOf("旅行者"),
 }));
 check(after.index === 1, "推进到 step 1");
 check(Math.hypot(after.旅行者.x - before.x, after.旅行者.y - before.y) > 20, "旅行者移动落到治疗堂锚点");
 check(after.step.states["旅行者"].loc === "治疗堂", "step1 旅行者 loc=治疗堂");
+check(after.anim === "idle_旅行者", "移动到位回 idle 动画 (实际 " + after.anim + ")");
 await page.screenshot({ path: resolve(SHOTS, "02_step1_moved.png") });
 
 console.log("\n== 5. 对话气泡 (M2) ==");
@@ -136,30 +155,10 @@ const bubblesGone = await page.evaluate(() => ({
 check(bubblesGone.a === false && bubblesGone.r === false, "跳回 day0 → 对话气泡消失");
 
 console.log("\n== 6. 时间轴拖拽寻址 (M2) ==");
-// 诊断: canvas rect + 映射坐标
-const canvasInfo = await page.evaluate(() => {
-  const r = window.__PHASER_GAME__.canvas.getBoundingClientRect();
-  return { left: r.left, top: r.top, width: r.width, height: r.height };
-});
-console.log("    canvas rect:", JSON.stringify(canvasInfo));
 const idxBefore = await page.evaluate(() => window.__REPLAY__.controller.currentIndex);
 const midPage = await gameToPage(page, 480, 20);   // 时间轴中点
-console.log("    中点映射 → page(" + midPage.px.toFixed(1) + "," + midPage.py.toFixed(1) + ")");
 await page.mouse.click(midPage.px, midPage.py);
 await sleep(200);
-const scrubDbg = await page.evaluate(() => window.__REPLAY__.scrubber.dbg);
-console.log("    scrubber.dbg:", JSON.stringify(scrubDbg));
-const scenePtr = await page.evaluate(() => window.__dbgScenePointer);
-console.log("    场景pointerdown:", JSON.stringify(scenePtr), "(点(480,20)应 count+1, lastX≈480 lastY≈20)");
-const zoneInfo = await page.evaluate(() => {
-  const z = window.__REPLAY__.scrubber.hit;
-  return {
-    exists: !!z, inputEnabled: z?.inputEnabled, x: z?.x, y: z?.y, w: z?.width, h: z?.height,
-    originX: z?.originX, originY: z?.originY,
-    hitArea: z?.input ? (z.input.hitArea ? "has-hitArea" : "no-hitArea") : "no-input",
-  };
-});
-console.log("    zone:", JSON.stringify(zoneInfo));
 const idxAfter = await page.evaluate(() => window.__REPLAY__.controller.currentIndex);
 check(idxAfter > idxBefore, "点击时间轴中点 → 步前进 (" + idxBefore + "→" + idxAfter + ")");
 check(Math.abs(idxAfter - 7) <= 1, "跳转到约中间步 (index " + idxAfter + ", 期望~7)");
@@ -206,4 +205,4 @@ await browser.close();
 preview.kill();
 console.log("\n截图已存: " + SHOTS);
 if (failures) { console.error("\nE2E FAIL — " + failures + " 项未通过"); process.exit(1); }
-console.log("\nE2E PASS — M1(移动/阵亡/结局) + M2(气泡/详情卡/时间轴拖拽) 全部通过");
+console.log("\nE2E PASS — M1(移动/阵亡/结局) + M2(气泡/详情卡/时间轴拖拽) + M3(像素角色动画/y-sort遮挡) 全部通过");

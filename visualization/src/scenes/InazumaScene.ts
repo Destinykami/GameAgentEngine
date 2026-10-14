@@ -3,6 +3,8 @@ import { loadTimeline } from "../data/timelineLoader";
 import { PlaybackController } from "../PlaybackController";
 import { AgentRegistry } from "../entities/AgentRegistry";
 import { LOCATION_ANCHORS, anchorOf } from "../data/locationAnchors";
+import { buildArt } from "../art/ArtFactory";
+import { BUILDINGS } from "../art/buildings";
 import { StatusPanel } from "../ui/StatusPanel";
 import { EventLog } from "../ui/EventLog";
 import { PlaybackControls } from "../ui/PlaybackControls";
@@ -54,13 +56,40 @@ export class InazumaScene extends Phaser.Scene {
     this.loadingText.destroy();
     const day0 = tl.steps[0].states;
 
-    // 占位地图: 每地点一个色块 + 标签 (M1 用色块代替真实 Tiled 地图)
-    for (const a of Object.values(LOCATION_ANCHORS)) {
-      this.add.rectangle(a.x, a.y, a.w, a.h, a.color).setStrokeStyle(2, 0x666677).setAlpha(0.85);
-      this.add.text(a.x, a.y - a.h / 2 - 8, a.label, {
-        fontFamily: "monospace", fontSize: "13px", color: "#cfc6b8",
-      }).setOrigin(0.5, 1);
+    // M3 真实像素地图: 地面 (Ground) + 建筑 (Buildings) + 活动点/前景道具, 全部参与 y-sort。
+    // 角色与建筑/道具同处一个深度空间, 按 y 排序 → 角色从屋顶/树后走过时正确遮挡 (计划 §M3)。
+    buildArt(this);
+    this.add.image(480, 270, "ground").setOrigin(0.5, 0.5).setDepth(0);
+
+    // 建筑: 每地点一栋, 底边锚在地点锚点略后方, 角色站在建筑前。
+    const BLDG_AT: Record<string, string> = {
+      稻妻主城: "inazumaMain", 治疗堂: "clinic", 锻造坊: "forge",
+      眼狩署: "bureau", 神樱庭: "shrine", 城外官道: "road",
+    };
+    for (const [loc, bkey] of Object.entries(BLDG_AT)) {
+      const a = LOCATION_ANCHORS[loc];
+      const def = BUILDINGS[bkey];
+      const img = this.add.image(a.x + def.anchorDx, a.y - 8 + def.anchorDy, `bldg_${bkey}`)
+        .setOrigin(0.5, 1).setDepth(Math.round(a.y - 8));
+      img.alpha = 0.96;
+      // 地点标签 (保留, 缩小放上方)
+      this.add.text(a.x, a.y - a.h / 2 - 14, a.label, {
+        fontFamily: "monospace", fontSize: "11px", color: "#cfc6b8", stroke: "#000000", strokeThickness: 2,
+      }).setOrigin(0.5, 1).setDepth(500);
     }
+    // 活动点道具 (NPC 日常活动的锚点, 计划 Phase 3 活动投影的基础) + 前景遮挡物。
+    this.prop("anvil", LOCATION_ANCHORS.锻造坊.x + 14, LOCATION_ANCHORS.锻造坊.y + 4);
+    this.prop("bed", LOCATION_ANCHORS.治疗堂.x - 10, LOCATION_ANCHORS.治疗堂.y + 4);
+    this.prop("desk", LOCATION_ANCHORS.稻妻主城.x - 22, LOCATION_ANCHORS.稻妻主城.y + 4);
+    this.prop("torii", LOCATION_ANCHORS.神樱庭.x, LOCATION_ANCHORS.神樱庭.y + 8);
+    // 樱树 (前景遮挡): 神樱庭周边 + 沿路, 角色走过会被花冠遮挡
+    this.prop("tree", LOCATION_ANCHORS.神樱庭.x - 40, LOCATION_ANCHORS.神樱庭.y + 14);
+    this.prop("tree", LOCATION_ANCHORS.神樱庭.x + 44, LOCATION_ANCHORS.神樱庭.y + 10);
+    this.prop("tree", 300, 240);
+    this.prop("tree", 560, 420);
+    // 灯笼 (路边)
+    this.prop("lantern", 440, 250);
+    this.prop("lantern", 700, 300);
 
     // 实体注册表 (day-0 为初始注册表 + 满血参考), 记录初始地点
     this.reg = new AgentRegistry(this, day0);
@@ -95,9 +124,6 @@ export class InazumaScene extends Phaser.Scene {
       if (s) this.detailCard.show(name, s);
     });
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
-      const dbg = (window as unknown as Record<string, unknown>).__dbgScenePointer as
-        { count: number; lastX: number; lastY: number } | undefined;
-      if (dbg) { dbg.count++; dbg.lastX = Math.round(p.x); dbg.lastY = Math.round(p.y); }
       if (this.hitAnySprite(p.x, p.y)) return;   // 点的是实体, 交给其 onClick 打开详情卡
       if (this.detailCard.isOpen() && this.detailCard.containsPoint(p.x, p.y)) return;
       if (this.inScrubber(p.x, p.y)) { this.scrubber.onPointerDown(p.x); return; }   // 时间轴点选/拖拽
@@ -129,8 +155,7 @@ export class InazumaScene extends Phaser.Scene {
     this.log.update(tl.steps[0].visual_events);
     this.scrubber.refresh();
 
-    // E2E 调试钩子
-    (window as unknown as Record<string, unknown>).__dbgScenePointer = { count: 0, lastX: 0, lastY: 0 };
+    // E2E 调试钩子 (sprites=AgentRegistry, 可 posOf/animKeyOf/depthOf)
     (window as unknown as Record<string, unknown>).__REPLAY__ = {
       controller: this.controller, timeline: tl, sprites: this.reg,
       detailCard: this.detailCard, scrubber: this.scrubber,
@@ -215,16 +240,22 @@ export class InazumaScene extends Phaser.Scene {
     });
   }
 
+  // 前景道具 (活动点/樱树/灯笼): 原点在脚底, 参与 y-sort (角色从其前/后走过)。
+  private prop(key: string, x: number, y: number): void {
+    this.add.image(x, y, `prop_${key}`).setOrigin(0.5, 1).setDepth(Math.round(y));
+  }
+
   // 时间轴命中区 (避免点时间轴时误收起详情卡)。
   private inScrubber(x: number, y: number): boolean {
     return x >= 30 && x <= 930 && y >= 6 && y <= 36;
   }
 
-  // 指针是否落在某实体命中区内 (与 AgentSprite.onClick 的 hitArea 一致: 半宽14/半高20)。
+  // 指针是否落在某实体命中区内 (与 AgentSprite.onClick 的 hitArea 一致: x半宽10, y -22~+8)。
   // 用于区分"点实体"(打开详情卡)与"点空白"(收起详情卡), 不依赖事件触发顺序。
   private hitAnySprite(x: number, y: number): boolean {
     for (const spr of this.reg.all()) {
-      if (Math.abs(x - spr.x) <= 14 && Math.abs(y - spr.y) <= 20) return true;
+      const dy = y - spr.y;
+      if (Math.abs(x - spr.x) <= 10 && dy >= -22 && dy <= 8) return true;
     }
     return false;
   }

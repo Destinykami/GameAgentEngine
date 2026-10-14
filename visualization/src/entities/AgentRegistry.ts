@@ -53,6 +53,13 @@ export class AgentRegistry {
     const s = this.sprites.get(name);
     return s ? { x: s.x, y: s.y } : null;
   }
+  // E2E 断言用: 某实体当前动画 key (idle_*/walk_*) 与 y-sort 深度。
+  animKeyOf(name: string): string | null {
+    return this.sprites.get(name)?.animKey ?? null;
+  }
+  depthOf(name: string): number {
+    return this.sprites.get(name)?.depth ?? -1;
+  }
 
   // 把某实体更新到快照: 站位 (若地点变了, 由调用方决定是否 Tween)、血量、死亡。
   applySnapshot(spr: AgentSprite, s: AgentSnapshot, prevLoc: string | null): { moved: boolean; newLoc: string } {

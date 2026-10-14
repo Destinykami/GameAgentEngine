@@ -1,0 +1,251 @@
+// 建筑与活动点道具的像素定义 (字符对应 palette.ts)。
+// 建筑作为独立 Sprite 参与 y-sort (角色可从建筑前/后走过, 实现前景遮挡)。
+// 活动点 (铁砧/病床/书桌) 是 NPC 日常活动的锚点 (计划 Phase 3 活动投影的基础)。
+// 全部原创像素, 无第三方素材。
+
+export interface BuildingDef {
+  grid: string[];
+  // 锚点 (角色站位) 相对建筑中心底部的偏移, 用于把角色放到建筑前的合理位置
+  anchorDx: number;
+  anchorDy: number;
+}
+
+// 6 地点建筑。每栋 ~24 宽 x 20 高, 带屋顶/墙/门/辨识特征。
+export const BUILDINGS: Record<string, BuildingDef> = {
+  // 稻妻主城: 市井门楼 + 摊位 (红顶, 木门)
+  inazumaMain: {
+    anchorDx: 0, anchorDy: 6,
+    grid: [
+      "    RRRRRRRRRRRRRRRRRRR      ",
+      "   RRRRRRRRRRRRRRRRRRRR      ",
+      "  RRRRRRRRRRRRRRRRRRRRRR     ",
+      " RRRRRRRRRRRRRRRRRRRRRRR     ",
+      " RRRRRRRRRRRRRRRRRRRRRRR     ",
+      " MWWWWWWWWWWMWWWWWWWWWWMWW   ",
+      " MWWWWWWWWWWMWWWWWWWWWWMWW   ",
+      " MWWwwWWWWWWWWwwWWWWWWWWWW   ",
+      " MWWwwWWWWWWWWwwWWWWWWWWWW   ",
+      " MWWWWWWWWWMWWWWWWWWWWWWWW   ",
+      " MWWWWWWWWWMWWWWWWWWWWWWWW   ",
+      " MWWWWWWWWWMWWWWWWWWWWWWWW   ",
+      " MWWNNNNNNNWNNNNNNNNNNNNNN   ",
+      " ttttttttttttttttttttttttt   ",
+    ],
+  },
+  // 治疗堂: 白墙 + 红十字 (稻妻式绿十字) + 红顶
+  clinic: {
+    anchorDx: 0, anchorDy: 4,
+    grid: [
+      "     RRRRRRRRRRRRRRRRR      ",
+      "    RRRRRRRRRRRRRRRRRR      ",
+      "   RRRRRRRRRRRRRRRRRRR      ",
+      "  RRRRRRRRRRRRRRRRRRRRR     ",
+      " RRRRRRRRRRRRRRRRRRRRRRR    ",
+      " WWWWGGWWWWWWWWWWWWWWWWWW   ",
+      " WWWWGGWWWWWWWWWWWWWWWWWW   ",
+      " WWWWGGWWWWWWWWWWWWWWWWWW   ",
+      " WWWWWWWWGGWWWWWWWWWWWWWW   ",
+      " WWWWWWWWWWWWWWWWWWWWWWWW   ",
+      " WWWwwWWWWWMWWWWWWWWWWWWW   ",
+      " WWWwwWWWWWMWWWWWWWWWWWWW   ",
+      " WWWWWWWWWWMWWWWWWWWWWWWW   ",
+      " ttttttttttttttttttttttttt  ",
+    ],
+  },
+  // 锻造坊: 深色窑 + 烟囱 + 前铁砧 (铁砧单独 prop)
+  forge: {
+    anchorDx: 10, anchorDy: 4,
+    grid: [
+      "         NN                ",
+      "         NN   RRRRRRRRRRR",
+      "         NN  RRRRRRRRRRRR",
+      "    NNNNNN RRRRRRRRRRRRR ",
+      "   NNNNNNNNNRRRRRRRRRRRRR",
+      "  MMMMMMMMMMMMMMMMMMMMMMM ",
+      "  MMMMMMMMMMMMMMMMMMMMMMM ",
+      "  MMMMMbMMMMMMMMMMMMMMMMM ",
+      "  MMMMMbMMMMMMMMMMMMMMMMM ",
+      "  MMMMMMMMMMMMMMMMMMMMMMM ",
+      "  MMMMWMMMMMMMMMMMMMMMMMM ",
+      "  MMMMWMMMMMMMMMMMMMMMMMM ",
+      "  NNNNNNNNNNNNNNNNNNNNNNN ",
+      "  ttttttttttttttttttttttt ",
+    ],
+  },
+  // 眼狩署: 官署 (石墙 + 红印旗)
+  bureau: {
+    anchorDx: 0, anchorDy: 4,
+    grid: [
+      "    RRRRRRRRRRRRRRRRRRR    ",
+      "   RRRRRRRRRRRRRRRRRRRRR   ",
+      "  RRRRRRRRRRRRRRRRRRRRRRR  ",
+      " RRRRRRRRRRRRRRRRRRRRRRRRR ",
+      " RRRRRRRRRRRRRRRRRRRRRRRRR ",
+      " sssBBssssssssssssssBBsss  ",
+      " sssBBssssssssssssssBBsss  ",
+      " ssssssssssssssssssssssss  ",
+      " sssssssssMMsssssssssssss  ",
+      " sssssssssMMsssssssssssss  ",
+      " sssssssssMMsssssssssssss  ",
+      " ssswwsssssssssssssswwsss  ",
+      " ssswwsssssssssssssswwsss  ",
+      " ttttttttttttttttttttttttt ",
+    ],
+  },
+  // 神樱庭: 神社本殿 (红顶白墙, 前接鸟居 prop)
+  shrine: {
+    anchorDx: 0, anchorDy: 8,
+    grid: [
+      "      RRRRRRRRRRRRRRRRR    ",
+      "     RRRRRRRRRRRRRRRRRR    ",
+      "    RRRRRRRRRRRRRRRRRRR    ",
+      "   RRRRRRRRRRRRRRRRRRRRR   ",
+      "  RRRRRRRRRRRRRRRRRRRRRRR  ",
+      "  WWWWWWWWWWWWWWWWWWWWWW   ",
+      "  WWWWWWWWRRWWWWWWWWWWWWW  ",
+      "  WWWWWWWWRRWWWWWWWWWWWWW  ",
+      "  WWWWWWWWWWWWWWWWWWWWWW   ",
+      "  WWWWWWWWWWWWWWWWWWWWWW   ",
+      "  WWWwwWWWWMMWWWWWWWWWWWWW ",
+      "  WWWwwWWWWMMWWWWWWWWWWWWW ",
+      "  NNNNNNNNNNNNNNNNNNNNNNN  ",
+      "  ttttttttttttttttttttttt  ",
+    ],
+  },
+  // 城外官道: 路标 + 简易门
+  road: {
+    anchorDx: 0, anchorDy: 0,
+    grid: [
+      "     MMM        ",
+      "     MMM        ",
+      "    MMMMMM      ",
+      "    MMMMMM      ",
+      "     MMM        ",
+      "     MMM  sss   ",
+      "     MMM  sss   ",
+      "     MMM  sss   ",
+      "     MMM  sss   ",
+      "     MMM  sss   ",
+      "    tttt   sss  ",
+      "    tttt   sss  ",
+    ],
+  },
+};
+
+// 活动点 / 前景道具 (16x16 为主, 鸟居/樱树更高)。
+export const PROPS: Record<string, string[]> = {
+  // 铁砧 (锻造坊活动点)
+  anvil: [
+    "                ",
+    "                ",
+    "                ",
+    "     aaaa       ",
+    "   aaaaaaa      ",
+    "  aaaaaaaaa     ",
+    "   aaaaaaa      ",
+    "    bbbb        ",
+    "     bb         ",
+    "    bbbb        ",
+    "   bbbbbbb      ",
+    "  bbbbbbbbb     ",
+    "                ",
+    "                ",
+    "                ",
+    "                ",
+  ],
+  // 病床 (治疗堂活动点)
+  bed: [
+    "                ",
+    "                ",
+    "                ",
+    "   WWWWWW       ",
+    "   WWGGWW       ",
+    "   WWWWWW       ",
+    "   WWWWWW       ",
+    "   WWWWWW       ",
+    "   MMMMMM       ",
+    "   MMMMMM       ",
+    "  MMMMMMMM      ",
+    "  MMMMMMMM      ",
+    "                ",
+    "                ",
+    "                ",
+    "                ",
+  ],
+  // 书桌 (小梅阅读活动点)
+  desk: [
+    "                ",
+    "                ",
+    "                ",
+    "   MBBMM        ",
+    "   MMMMM        ",
+    "   MMMMM        ",
+    "  MMMMMMM       ",
+    "  MMMMMMM       ",
+    "  MMMMMMM       ",
+    "  MMMMMMM       ",
+    "   MMM MM       ",
+    "   MMM MM       ",
+    "                ",
+    "                ",
+    "                ",
+    "                ",
+  ],
+  // 鸟居 (神樱庭前景, 红)
+  torii: [
+    "  RRRRRRRRRRRR  ",
+    "  RRRRRRRRRRRR  ",
+    "   RRRRRRRRRR   ",
+    "    RR    RR    ",
+    "    RR    RR    ",
+    "    RR    RR    ",
+    "    RR    RR    ",
+    "    RR    RR    ",
+    "    RR    RR    ",
+    "    RR    RR    ",
+    "    RR    RR    ",
+    "   RRRRRRRRRR   ",
+    "    RR    RR    ",
+    "    RR    RR    ",
+    "    RR    RR    ",
+    "    RR    RR    ",
+  ],
+  // 樱树 (前景遮挡用, 花冠高)
+  tree: [
+    "    TTTTT    ",
+    "  TTTTTTTTT  ",
+    " TTTTTTTTTTT ",
+    "TTTTTTTTTTTTT",
+    " TTTTTTTTTTT ",
+    "  TTTTTTTTT  ",
+    "   TTTTTTT   ",
+    "    ooo      ",
+    "    oo       ",
+    "    oo       ",
+    "    oo       ",
+    "   oooo      ",
+    "   oooo      ",
+    "  ttttttt    ",
+    "  ttttttt    ",
+    "  ttttttt    ",
+  ],
+  // 灯笼 (稻妻式, 路边)
+  lantern: [
+    "     M     ",
+    "    MMM    ",
+    "     M     ",
+    "     M     ",
+    "    BBB    ",
+    "   BBBBB   ",
+    "   BYYBB   ",
+    "   BYYBB   ",
+    "   BBBBB   ",
+    "    BBB    ",
+    "     M     ",
+    "     M     ",
+    "     M     ",
+    "    MMM    ",
+    "   MMMMM   ",
+    "   MMMMM   ",
+  ],
+};

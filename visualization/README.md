@@ -25,8 +25,9 @@ visualization/
     ├── data/                  # schema.ts, timelineLoader.ts, locationAnchors.ts
     ├── PlaybackController.ts  # 播放/暂停/上一步/下一步/调速 (纯逻辑, 可单测)
     ├── scenes/InazumaScene.ts # 单场景: 地图+实体+HUD+播放+M2交互, 消费 visual_events
-    ├── entities/              # AgentSprite (血条/名牌/移动/点击), AgentRegistry
+    ├── entities/              # AgentSprite (像素角色动画/血条/名牌/移动/点击), AgentRegistry
     ├── dialogue/              # SpeechBubble (气泡), DamagePopup (伤害数字弹出)
+    ├── art/                   # M3 原创像素素材: palette/tiles/groundMap/buildings/characters/ArtFactory
     └── ui/                    # StatusPanel / EventLog / PlaybackControls / DetailCard / TimelineScrubber
 ```
 
@@ -66,6 +67,11 @@ npm run e2e
   跳回无对话步气泡消失（快速跳步不留旧气泡）
 - 点击实体详情卡：点旅行者 → 卡打开，名字/地点/血量/类型正确；点空白 → 收起
 - 时间轴拖拽寻址：点时间轴中点 → 跳到约中间步；拖到右端 → 跳到末尾
+
+**M3 像素地图**
+- 像素角色播 idle 动画（`idle_<name>`），移动途中播 walk（`walk_<name>`），到位回 idle
+- y-sort 深度层级：角色深度 = round(y)，随 y 递增 → 角色与建筑/樱树按 y 排序，
+  走过屋顶/树后正确遮挡（前景遮挡排序基础）
 - 全程无残留错误
 
 截图落在 `e2e_shots/`。
@@ -100,3 +106,13 @@ npm run e2e
 - **M2 伤害弹出**：成功攻击时目标头顶弹出 `-N`（致死红色 `✝` 强化），上飘淡出。
 - **reason_count 源头完整**：引擎 `VisualEvent.to_dict()` 对 `witnessed` 事件也输出
   `reason_count`（此前只输出 `reason_added` 分支），前端不再显示"现 undefined 条"。
+- **M3 原创像素素材**：`art/` 用代码生成全部像素（`palette` 调色板 + `tiles` 地面 +
+  `groundMap` 60×34 确定性布局 + `buildings` 六建筑/活动点 + `characters` 角色 idle/walk 帧），
+  `ArtFactory` 烘焙成 Canvas 纹理。无第三方素材，无许可证风险（计划 §8.1 原型阶段标准）。
+- **M3 Ground/Buildings 分层 + y-sort 遮挡**：地面是一张整图（depth 0），建筑/活动点/樱树/
+  灯笼是独立 Sprite，角色也是独立 Sprite，全部 `setDepth(round(y))` 参与同一深度空间 →
+  按 y 排序，角色从屋顶/树后走过时正确遮挡（计划 §M3 前景遮挡与角色层级）。
+- **M3 角色动画**：`AgentSprite` 用 `Phaser.GameObjects.Sprite` 播 `idle_<name>`（呼吸两帧）
+  与 `walk_<name>`（迈腿两帧）；`moveTo` 途中切 walk、到位回 idle，暂停时 `anims.pause()` 冻结。
+- **M3 活动点**：铁砧/病床/书桌/鸟居是 NPC 日常活动锚点（计划 Phase 3 活动投影的基础），
+  作为前景道具参与 y-sort。

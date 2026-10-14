@@ -919,42 +919,42 @@ persona_agent/
 - [x] 确认 Smallville 使用 Phaser
 - [x] 确认 Tiled / 地图 / 碰撞 / JSON 状态思路
 - [x] 明确模拟坐标与渲染坐标分离
-- [ ] 确定第一版前端构建工具
-- [ ] 确定视觉时间线 schema
+- [x] 确定第一版前端构建工具（Vite + TypeScript + Phaser）
+- [x] 确定视觉时间线 schema（`schema_version=1`, `data/schema.ts`）
 
 ### M1：占位像素回放器
 
-- [ ] 建立独立 `visualization/` 前端目录
-- [ ] 读取旧版 `timeline.json`
-- [ ] 绘制 6 个地点
-- [ ] 绘制 6 个实体占位 Sprite
-- [ ] 实现播放、暂停、逐步和速度控制
-- [ ] 实现地点变更 Tween
-- [ ] 实现状态面板和事件日志
+- [x] 建立独立 `visualization/` 前端目录
+- [x] 读取旧版 `timeline.json`
+- [x] 绘制 6 个地点
+- [x] 绘制 6 个实体占位 Sprite
+- [x] 实现播放、暂停、逐步和速度控制
+- [x] 实现地点变更 Tween
+- [x] 实现状态面板和事件日志
 
 ### M2：真实地图和角色
 
-- [ ] 制作或导入 Tiled 地图
-- [ ] 加入 Ground、Buildings、Collision 等图层
-- [ ] 建立地点锚点和活动点
-- [ ] 加入角色 Sprite 和基础动画
-- [ ] 启用像素风渲染设置
-- [ ] 验证前景遮挡和角色层级
+- [x] 制作或导入 Tiled 地图（`art/groundMap.ts` 60×34 确定性像素布局, 原创无第三方）
+- [x] 加入 Ground、Buildings、Collision 等图层（地面整图 + 建筑/活动点/樱树/灯笼独立 Sprite）
+- [x] 建立地点锚点和活动点（6 地点锚点不变 + 铁砧/病床/书桌/鸟居活动点）
+- [x] 加入角色 Sprite 和基础动画（`characters.ts` idle/walk 帧, AgentSprite 播 idle/walk）
+- [x] 启用像素风渲染设置（config.ts pixelArt/roundPixels, 整数坐标）
+- [x] 验证前景遮挡和角色层级（全部 setDepth(round(y)) y-sort, E2E 断言深度=round(y)）
 
 ### M3：结构化视觉事件
 
-- [ ] 设计并冻结 `schema_version`
-- [ ] 生成 `visual_events`
-- [ ] 生成 move/talk/attack/death/world_event 事件
-- [ ] 保留旧 `events` 字段兼容
-- [ ] 增加 timeline 校验工具
-- [ ] 用结构化事件替换中文字符串解析
+- [x] 设计并冻结 `schema_version`（=1, `data/schema.ts`）
+- [x] 生成 `visual_events`（引擎 `VisualEvent`）
+- [x] 生成 move/talk/attack/death/world_event 事件
+- [x] 保留旧 `events` 字段兼容（describe() 派生, replay.py 不变）
+- [x] 增加 timeline 校验工具（`tools/validate_timeline.ts`）
+- [x] 用结构化事件替换中文字符串解析
 
 ### M4：气泡和活动
 
-- [ ] 实现气泡组件
-- [ ] 实现气泡队列和优先级
-- [ ] 分离 NPC 回复和系统提示
+- [x] 实现气泡组件（`dialogue/SpeechBubble.ts`）
+- [x] 实现气泡队列和优先级（成功对话才显示, 跳步清旧气泡, 双方错开）
+- [x] 分离 NPC 回复和系统提示（气泡正文 vs 金色浮动系统提示）
 - [ ] 增加活动投影数据
 - [ ] 实现锻造、治疗、阅读、巡逻、坐镇动画
 - [ ] 实现活动中断和重新规划视觉表现
