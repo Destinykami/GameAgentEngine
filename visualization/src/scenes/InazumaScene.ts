@@ -35,6 +35,8 @@ import type { Timeline, TimelineStep } from "../data/schema";
 // create() 异步加载 timeline, 成功后建地图/实体/HUD/controller/M2 组件并显示第 0 步。
 // 消费 visual_events (结构化事实源): 地点变化 Tween 移动, 成功对话气泡, 成功攻击伤害,
 // 系统效果浮动提示, 世界事件横幅。只读, 不修改世界状态。
+// 同地点错开间距: 多个 NPC 在同一地点时左右站开 (16px 角色 + 余量), 避免人物重合。
+const AGENT_SPACING = 30;
 export class InazumaScene extends Phaser.Scene {
   private reg!: AgentRegistry;
   private panel!: StatusPanel;
@@ -334,15 +336,34 @@ export class InazumaScene extends Phaser.Scene {
     const bigJump = this.lastAppliedIndex >= 0 && Math.abs(idx - this.lastAppliedIndex) > 1;
     this.lastAppliedIndex = idx;
 
+    // 同地点错开: 按地点分组 (按名字排序, 偏移跨步稳定不跳), 每人按组内序号左右站开。
+    // 巡逻者排除在外 —— 它自己在动 (往返 tween), 不参与错开, 位置由巡逻驱动。
+    const byLoc = new Map<string, string[]>();
+    for (const [name, s] of Object.entries(step.states)) {
+      if (name === this.patrol?.name) continue;
+      if (!byLoc.has(s.loc)) byLoc.set(s.loc, []);
+      byLoc.get(s.loc)!.push(name);
+    }
+    for (const names of byLoc.values()) names.sort();
+    const offsetOf = (name: string, loc: string): number => {
+      const names = byLoc.get(loc);
+      if (!names || names.length <= 1) return 0;
+      const i = names.indexOf(name);
+      return (i - (names.length - 1) / 2) * AGENT_SPACING;
+    };
+
     for (const [name, s] of Object.entries(step.states)) {
       const spr = reg.ensure(name, s);
       const prev = this.prevLoc.get(name) ?? null;
-      if (bigJump) {
+      if (this.patrol?.name === name) {
+        // 巡逻中: 只更新血/死, 不重定位 (重定位会打断往返 tween)。
+        reg.updateHealthDead(spr, s);
+      } else if (bigJump) {
         spr.stopMove();
         const a = anchorOf(s.loc);
-        spr.setPosition(a.x, a.y);
+        spr.setPosition(a.x + offsetOf(name, s.loc), a.y);
       } else {
-        reg.applySnapshot(spr, s, prev);
+        reg.applySnapshot(spr, s, prev, offsetOf(name, s.loc));
       }
       this.prevLoc.set(name, s.loc);
     }

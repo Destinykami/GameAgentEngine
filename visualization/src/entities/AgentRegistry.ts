@@ -61,15 +61,23 @@ export class AgentRegistry {
     return this.sprites.get(name)?.depth ?? -1;
   }
 
-  // 把某实体更新到快照: 站位 (若地点变了, 由调用方决定是否 Tween)、血量、死亡。
-  applySnapshot(spr: AgentSprite, s: AgentSnapshot, prevLoc: string | null): { moved: boolean; newLoc: string } {
+  // 把某实体更新到快照: 站位 (若地点变了 Tween 走过去)、血量、死亡。
+  // offsetX: 同地点错开偏移 —— 多人同地点时左右站开, 避免人物重合。
+  // 不移动时也 setPosition 对齐偏移位置 (含初始站位), 修同地点重合。
+  applySnapshot(spr: AgentSprite, s: AgentSnapshot, prevLoc: string | null, offsetX = 0): { moved: boolean; newLoc: string } {
     const a = anchorOf(s.loc);
     const moved = prevLoc !== null && prevLoc !== s.loc;
-    if (moved) spr.moveTo(a.x, a.y, 600);
-    else if (prevLoc === null) spr.setPosition(a.x, a.y);
+    if (moved) spr.moveTo(a.x + offsetX, a.y, 600);
+    else spr.setPosition(a.x + offsetX, a.y);
     spr.setHealth(s.health);
     spr.setDead(s.dead);
     return { moved, newLoc: s.loc };
+  }
+
+  // 巡逻者专用: 只更新血量/死亡, 不动位置 (位置由巡逻 tween 驱动, 重定位会打断往返)。
+  updateHealthDead(spr: AgentSprite, s: AgentSnapshot): void {
+    spr.setHealth(s.health);
+    spr.setDead(s.dead);
   }
 
   freezeAll(): void { for (const s of this.sprites.values()) s.freeze(); }

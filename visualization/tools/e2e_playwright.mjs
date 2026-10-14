@@ -75,6 +75,14 @@ const initPos = await page.evaluate(() => ({
 check(initPos.旅行者 && initPos.雷电将军, "sprite 位置可读");
 console.log("    旅行者@(" + Math.round(initPos.旅行者.x) + "," + Math.round(initPos.旅行者.y) +
   ")  将军@(" + Math.round(initPos.雷电将军.x) + "," + Math.round(initPos.雷电将军.y) + ")");
+// 同地点错开: day0 小梅和旅行者同在稻妻主城, 应水平错开站 (不重合)。
+const overlap = await page.evaluate(() => {
+  const s = window.__REPLAY__.sprites;
+  const a = s.posOf("小梅"), b = s.posOf("旅行者");
+  return { dx: Math.abs(a.x - b.x), dy: Math.abs(a.y - b.y) };
+});
+check(overlap.dx >= 20 && overlap.dy < 10,
+  "同地点两人错开站 (小梅/旅行者 dx=" + overlap.dx + " dy=" + overlap.dy + ", 不重合)");
 
 console.log("\n== 2b. M3 像素角色动画 + y-sort 遮挡 ==");
 // 角色换成带 idle 动画的像素 Sprite: animKey 应为 idle_<name>; 深度应 = round(y) (y-sort 层级)。
