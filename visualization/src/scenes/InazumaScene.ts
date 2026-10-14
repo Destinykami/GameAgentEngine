@@ -63,6 +63,7 @@ export class InazumaScene extends Phaser.Scene {
   private liveSetupDone = false;   // setup() 是否已用直播数据建好场景
   private liveDone = false;        // 收到 __done__ 行 (模拟结束)
   private liveStepCount = 0;       // 已摄入的 step 数 (不含 meta 行)
+  private liveHint: { x: number; y: number; w: number; h: number } | null = null;   // 普通页「直播模式」提示命中区
 
   constructor() { super("Inazuma"); }
 
@@ -89,12 +90,25 @@ export class InazumaScene extends Phaser.Scene {
     }
     // 默认回放 stub 时间线; ?timeline=<file> 可回放其它样本 (如 real_timeline.json 旧格式真实样本, M5)。
     const tlFile = params.get("timeline") ?? "stub_timeline.json";
+    this.addLiveHint();   // 普通回放页常驻提示: 点它进直播模式 (?live), 实时看运行中的模拟
     Promise.all([loadTimeline(tlFile), ttImgPromise])
       .then(([tl, ttImg]) => this.setup(tl, ttImg))
       .catch((e: unknown) => {
         this.loadingText.setText("加载失败:\n" + String(e) +
           "\n\n请确认 public/stub_timeline.json 与 public/assets/tiny-town-tilemap.png 存在。");
       });
+  }
+
+  // 普通回放页 (非 ?live) 左上角常驻「● 直播模式」提示。场景级 pointerdown 命中它 →
+  // 跳转 ?live (实时跟随运行中的模拟)。不靠 per-object input (此环境不可靠)。
+  private addLiveHint(): void {
+    // y=44: 在时间轴命中区 (y≈8-32) 之下、sprite 锚点 (y≥180) 之上, 避免与时间轴拖拽/点选冲突
+    const x = 10, y = 44, w = 150, h = 22;
+    this.liveHint = { x, y, w, h };
+    this.add.rectangle(x + w / 2, y + h / 2, w, h, 0x1c2b22).setStrokeStyle(1, 0x4a7a5a).setDepth(1200);
+    this.add.text(x + w / 2, y + h / 2, "● 直播模式 /?live", {
+      fontFamily: "monospace", fontSize: "11px", color: "#7ec67e",
+    }).setOrigin(0.5).setDepth(1201);
   }
 
   // 直播模式: 每 1s 轮询 live.jsonl。收到 meta + ≥1 步 → 建场景并跳到最新步跟随;
@@ -244,6 +258,11 @@ export class InazumaScene extends Phaser.Scene {
     // 点选/详情卡: 全在场景级 pointerdown 用几何判定处理 (spriteAt 识别被点 sprite)。
     // 不用每个 sprite 的 onClick 闭包 —— 闭包捕获名字不可靠 (曾出现点谁都开旅行者卡)。
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
+      if (this.liveHint && Math.abs(p.x - (this.liveHint.x + this.liveHint.w / 2)) <= this.liveHint.w / 2 &&
+          Math.abs(p.y - (this.liveHint.y + this.liveHint.h / 2)) <= this.liveHint.h / 2) {
+        window.location.href = window.location.pathname + "?live";   // 点「直播模式」提示 → 进 ?live
+        return;
+      }
       if (this.controls.handleClick(p.x, p.y)) return;   // 播放控制按钮 (场景级几何命中, 可靠)
       if (this.inScrubber(p.x, p.y)) { this.scrubber.onPointerDown(p.x); return; }   // 时间轴点选/拖拽
       if (this.detailCard.isOpen() && this.detailCard.containsPoint(p.x, p.y)) return;   // 点在卡内, 交给卡自身
