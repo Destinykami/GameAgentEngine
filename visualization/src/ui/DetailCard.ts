@@ -10,6 +10,10 @@ const X = 300;
 const Y = 235;
 const MAX_REASONS = 4;
 const REASON_WRAP = 224;
+// 布局行高/行距: 此环境 t.height 低估实际渲染行高 (~19px), 用 21px 固定行高 + 6px 行距,
+// 保证折行后的多行理由不重叠 (12-13px 字号都够)。
+const LINE_H = 21;
+const ROW_GAP = 6;
 
 export class DetailCard {
   private scene: Phaser.Scene;
@@ -88,28 +92,31 @@ export class DetailCard {
         lines.push({ text: `  … 另有 ${s.reasons.length - MAX_REASONS} 条`, color: "#8a8a8a", size: 11 });
       }
     }
+    // 行高: 此环境 Phaser t.height 低估实际渲染行高 (12px 字 1 行报 15px, 实际 ~19px),
+    // 用 t.height 布局会让行与行重叠。改按 行数 × 固定行高 (LINE_H) 算, 保证不叠。
+    const rowHeights: number[] = [];
     for (const ln of lines) {
       // 手动换行 (此环境 wordWrap 失效): 长理由行折行不顶出卡宽; 卡高随行数自动长。
-      const t = this.scene.add.text(-W / 2 + 10, 0, wrapText(ln.text, REASON_WRAP, `${ln.size}px monospace`), {
+      const wrapped = wrapText(ln.text, REASON_WRAP, `${ln.size}px monospace`);
+      const t = this.scene.add.text(-W / 2 + 10, 0, wrapped, {
         fontFamily: "monospace", fontSize: `${ln.size}px`, color: ln.color,
         fontStyle: ln.bold ? "bold" : "normal",
         lineSpacing: 2,
       }).setOrigin(0, 0.5);
       this.rows.push(t);
       this.root.add(t);
+      rowHeights.push(wrapped.split("\n").length * LINE_H);
     }
     // 垂直布局: 背景居中 (origin 0.5), 名字置顶, 行从名字下方往下排 —— 保证所有行
-    // (含折行后的多行理由) 都落在背景内。之前行从 y=-2 往下排而背景居中, 行数一多
-    // (长理由折行) 行就顶出背景底边 (掉到卡外/压到事件日志)。
-    let linesH = 0;
-    for (const t of this.rows) linesH += t.height + 4;
+    // (含折行后的多行理由) 都落在背景内, 且行间距用真实行高 (不低估)。
+    const linesH = rowHeights.reduce((a, b) => a + b + ROW_GAP, 0);
     const nameH = this.nameText.height;
     const h = nameH + 10 + linesH + 12;   // 名字 + 间隙 + 行 + 底部留白
     this.bg.setSize(W, h);
     this.nameText.setY(-h / 2 + nameH / 2 + 6);
     this.closeHit.setY(-h / 2 + 10);
     let y = -h / 2 + nameH + 12;
-    for (const t of this.rows) { t.setY(y); y += t.height + 4; }
+    for (let i = 0; i < this.rows.length; i++) { this.rows[i].setY(y); y += rowHeights[i] + ROW_GAP; }
     this.root.setVisible(true);
     this.open = true;
   }
