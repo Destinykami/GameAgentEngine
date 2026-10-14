@@ -220,7 +220,6 @@ def main() -> int:
     # 存时间线 (供 replay.py 回放)
     tl_path = os.path.join(DATA, "timeline.json")
     with open(tl_path, "w", encoding="utf-8") as f:
-        import json
         # 顶层保留旧键 (reason_needed/attack_needed/persuade_n) 兼容 replay.py;
         # 新增 schema_version + world 供前端 (见 VisualizationPlan §6 数据契约)。
         # 每个 step 的 visual_events 是结构化事实源, events 串为派生兼容产物。
