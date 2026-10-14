@@ -134,6 +134,26 @@ const emptyPage = await gameToPage(page, 700, 300);
 await page.mouse.click(emptyPage.px, emptyPage.py);
 await sleep(100);
 check(await page.evaluate(() => window.__REPLAY__.detailCard.isOpen() === false), "点空白 → 详情卡收起");
+// 详情卡长理由不溢出: 手动换行 + 布局修正 (背景居中, 行从名字下方排), 所有行落在背景内。
+// 防回归: 长理由曾折行后顶出背景底边 (掉到卡外/压事件日志), 横向也顶出 252 卡宽。
+const cardFit = await page.evaluate(() => {
+  const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
+  const LONG_REASON = "目击执行官在稻妻主城当众收缴持眼者的神之眼, 持眼者被拖走时苦苦哀求却无人敢拦, 眼狩令的暴行昭然若揭。";
+  s.detailCard.show("旅行者", { name: "旅行者", health: 300, attack: 20, loc: "稻妻主城", dead: false,
+    role: "traveler", kind: "player", reasons: [LONG_REASON, "帮助桃音藏好雷神之眼"] }, "游历");
+  const root = s.detailCard.root, bg = s.detailCard.bg;
+  const cx = 300, cy = 235;   // 卡中心
+  let maxRight = 0, maxBottom = 0;
+  for (const ch of root.list) {
+    if (ch.type !== "Text" || !ch.text.length) continue;
+    maxRight = Math.max(maxRight, Math.round(cx + ch.x + ch.width));
+    maxBottom = Math.max(maxBottom, Math.round(cy + ch.y + ch.height));
+  }
+  return { maxRight, maxBottom, bgRight: Math.round(cx + bg.width / 2), bgBottom: Math.round(cy + bg.height / 2) };
+});
+check(cardFit.maxRight <= cardFit.bgRight, "详情卡长理由不横向溢出 (最右 " + cardFit.maxRight + " ≤ " + cardFit.bgRight + ")");
+check(cardFit.maxBottom <= cardFit.bgBottom, "详情卡长理由不竖向溢出 (最底 " + cardFit.maxBottom + " ≤ " + cardFit.bgBottom + ")");
+await page.evaluate(() => window.__REPLAY__.detailCard.hide());
 
 console.log("\n== 4. 逐步推进 + 移动落锚点 (M1) + walk 动画 (M3) ==");
 const before = await page.evaluate(() => window.__REPLAY__.sprites.posOf("旅行者"));

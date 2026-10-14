@@ -1,4 +1,5 @@
 import Phaser from "phaser";
+import { wrapText } from "../text/wrapText";
 import type { AgentSnapshot } from "../data/schema";
 
 // DetailCard: 点击实体弹出的详情卡 (只读)。
@@ -88,21 +89,27 @@ export class DetailCard {
       }
     }
     for (const ln of lines) {
-      const t = this.scene.add.text(-W / 2 + 10, 0, ln.text, {
+      // 手动换行 (此环境 wordWrap 失效): 长理由行折行不顶出卡宽; 卡高随行数自动长。
+      const t = this.scene.add.text(-W / 2 + 10, 0, wrapText(ln.text, REASON_WRAP, `${ln.size}px monospace`), {
         fontFamily: "monospace", fontSize: `${ln.size}px`, color: ln.color,
         fontStyle: ln.bold ? "bold" : "normal",
-        wordWrap: { width: REASON_WRAP }, lineSpacing: 2,
+        lineSpacing: 2,
       }).setOrigin(0, 0.5);
       this.rows.push(t);
       this.root.add(t);
     }
-    // 垂直布局
-    let y = -2;
-    for (const t of this.rows) { t.setY(y); y += t.height + 4; }
-    const h = y + 12;
+    // 垂直布局: 背景居中 (origin 0.5), 名字置顶, 行从名字下方往下排 —— 保证所有行
+    // (含折行后的多行理由) 都落在背景内。之前行从 y=-2 往下排而背景居中, 行数一多
+    // (长理由折行) 行就顶出背景底边 (掉到卡外/压到事件日志)。
+    let linesH = 0;
+    for (const t of this.rows) linesH += t.height + 4;
+    const nameH = this.nameText.height;
+    const h = nameH + 10 + linesH + 12;   // 名字 + 间隙 + 行 + 底部留白
     this.bg.setSize(W, h);
-    this.nameText.setY(-h / 2 + 14);
-    this.closeHit.setY(-h / 2 + 4);
+    this.nameText.setY(-h / 2 + nameH / 2 + 6);
+    this.closeHit.setY(-h / 2 + 10);
+    let y = -h / 2 + nameH + 12;
+    for (const t of this.rows) { t.setY(y); y += t.height + 4; }
     this.root.setVisible(true);
     this.open = true;
   }

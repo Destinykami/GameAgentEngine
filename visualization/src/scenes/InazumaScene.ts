@@ -20,6 +20,7 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 }
 import { defaultActivity, isInterrupted } from "../data/activityProjection";
 import { LiveSource, type LiveMeta } from "../data/liveSource";
+import { wrapText } from "../text/wrapText";
 import { StatusPanel } from "../ui/StatusPanel";
 import { EventLog } from "../ui/EventLog";
 import { PlaybackControls } from "../ui/PlaybackControls";
@@ -250,7 +251,6 @@ export class InazumaScene extends Phaser.Scene {
     this.worldBanner = this.add.text(400, 64, "", {
       fontFamily: "monospace", fontSize: "15px", color: "#ffd27a",
       stroke: "#000000", strokeThickness: 3, align: "center",
-      wordWrap: { width: 640 },
     }).setOrigin(0.5).setDepth(250).setAlpha(0);
 
     // 点击实体 → 详情卡 (sprite 的 onClick); 点空白 → 收起。
@@ -441,7 +441,7 @@ export class InazumaScene extends Phaser.Scene {
         const target = ve.target ? this.reg.get(ve.target) : undefined;
         if (target) this.damagePopup.push(target.x, target.y, ve.damage, !!ve.target_dead);
       } else if (ve.type === "world_event" && ve.description) {
-        this.worldBanner.setText(ve.description);
+        this.worldBanner.setText(wrapText(ve.description, 700, "15px monospace"));
         this.tweens.add({ targets: this.worldBanner, alpha: 1, duration: 200 });
       }
     }
