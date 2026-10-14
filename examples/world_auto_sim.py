@@ -126,8 +126,12 @@ def main() -> int:
     decree_ended = False
     last_persuade_day = -1   # 上次有效劝说的天 (将军"容我考虑", 当天再劝无效)
     timeline: list[dict] = []   # 结构化时间线 (供回放)
+    # 开场世界事件: 引擎已产出结构化 VisualEvent, 直接序列化 (不再硬编码字符串)。
+    opening_ve = [ve.to_dict() for ve in w.visual_events]
+    opening_events = [ve.describe() for ve in w.visual_events]
+    w.visual_events.clear()
     timeline.append({"day": 0, "moment": 7.0, "clock": 7.0,
-                     "events": ["世界事件: 雷电将军颁布眼狩令, 全城神之眼一律收缴"],
+                     "events": opening_events, "visual_events": opening_ve,
                      "states": snapshot(w), "persuade": 0, "decree_ended": False,
                      "shogun_dead": False})
 
@@ -170,8 +174,13 @@ def main() -> int:
                     note = f"★ 雷电将军被说服 (当面劝说 {persuade_count} 次), 废止眼狩令!"
                     print(f"   {note}")
                     decree_ended = True
+            # 结构化视觉事件 (引擎单一事实源): 本步 execute_action 的事件 +
+            # 结局 world_event (若本步触发)。前端回放读它, 不解析中文 events 串。
+            visual = [ve.to_dict() for ve in w.visual_events]
+            w.visual_events.clear()
             timeline.append({"day": day, "moment": moment, "clock": now,
-                             "events": events, "note": note, "states": snapshot(w),
+                             "events": events, "visual_events": visual,
+                             "note": note, "states": snapshot(w),
                              "persuade": persuade_count, "decree_ended": decree_ended,
                              "shogun_dead": shogun.dead})
             if decree_ended or shogun.dead:
@@ -189,7 +198,13 @@ def main() -> int:
     tl_path = os.path.join(DATA, "timeline.json")
     with open(tl_path, "w", encoding="utf-8") as f:
         import json
-        json.dump({"reason_needed": REASON_NEEDED, "attack_needed": ATTACK_NEEDED,
+        # 顶层保留旧键 (reason_needed/attack_needed/persuade_n) 兼容 replay.py;
+        # 新增 schema_version + world 供前端 (见 VisualizationPlan §6 数据契约)。
+        # 每个 step 的 visual_events 是结构化事实源, events 串为派生兼容产物。
+        json.dump({"schema_version": 1,
+                   "world": {"name": w.name, "coordinate_system": "location-name",
+                             "render_map": "inazuma-v1"},
+                   "reason_needed": REASON_NEEDED, "attack_needed": ATTACK_NEEDED,
                    "persuade_n": PERSUADE_N, "steps": timeline}, f, ensure_ascii=False,
                   indent=2)
     w.close()

@@ -101,6 +101,129 @@ def location_distance(loc: Location, ent: Entity) -> float:
             (loc.y - ent.location.y) ** 2) ** 0.5
 
 
+# --------------------------------------------------------------------- 视觉事件
+@dataclass
+class VisualEvent:
+    """结构化视觉事件 (渲染层的单一事实源)。
+
+    execute_action / world_event 产出它, 显示字符串由 describe() 派生 —— 字符串
+    与语义字段同源, 永不漂移 (前端不再需要解析中文事件串)。type 为判别字段,
+    其余字段仅对特定类型有意义:
+
+    - move:        actor, to                          移动到某区域
+    - conversation: actor, target, utterance, reply,  成功对话 (reply_speaker 通常 = target)
+                   reply_speaker (+ reason/weapon 系统效果)
+    - attack:      actor, target, damage, target_dead 攻击 (target_dead = 此击致死)
+    - help / hide: actor, target (+ reason 系统效果)
+    - flee:        actor, to                          逃离威胁
+    - wait:        actor                              观望
+    - world_event: description                        全图/局部世界事件
+
+    success=False 表示动作中止 (认知事件生成失败等): 此时只有 actor/target/
+    failure_reason 有意义, 不携带 reply/damage 等成功态字段 —— 渲染层据此不显示
+    完成态气泡或伤害动画。reason/weapon/witnessed 是"系统效果", 用独立字段
+    而非塞进 utterance, 渲染层可单独渲染为系统提示。
+    """
+    type: str
+    actor: str
+    clock: float
+    location: str = ""             # 动作发生所在区域
+    target: str = ""               # 作用对象 (talk/attack/help/hide)
+    to: str = ""                   # 移动/逃跑的目的地区域
+    utterance: str = ""            # conversation: 行动者台词
+    reply: str = ""                # conversation: 目标 NPC 回复
+    reply_speaker: str = ""        # conversation: 回复者 (通常 = target)
+    damage: int = 0                # attack: 造成的伤害
+    target_dead: bool = False      # attack: 目标是否因此击阵亡
+    success: bool = True           # False = 动作中止 (认知事件生成失败等)
+    failure_reason: str = ""       # 中止原因 (仅进日志, 不触发完成态动画)
+    reason_added: str = ""         # 系统效果: 新增的理由文本 (player 积累)
+    reason_count: int = 0          # 系统效果: 加理由后的条数 (marker 用)
+    weapon_attack: int = 0         # 系统效果: 铁匠锻刀后玩家攻值 (0 = 未锻)
+    witnessed: bool = False        # attack: 执行官收缴持眼者被玩家目击 (加理由)
+    description: str = ""          # world_event: 事件描述
+
+    def describe(self) -> str:
+        """派生显示字符串, 与既有 execute_action 逐字一致 (向后兼容)。"""
+        a = self.actor
+        if self.type == "move":
+            if not self.success:
+                return f"{a} 想移动到不存在的 {self.to}, 未动"
+            return f"{a} 移动到 {self.to}"
+        if self.type == "conversation":
+            if not self.success:
+                return (f"{a} 想对 {self.target} 说话, "
+                        f"但认知事件生成失败, 动作中止")
+            out = f"{a} 对 {self.target} 说: {self.utterance}"
+            if self.reply:
+                out += f" ← {self.reply_speaker}: {self.reply}"
+            if self.reason_added:
+                out += f" [旅行者积累理由, 现{self.reason_count}条]"
+            if self.weapon_attack:
+                out += f" [刚郎锻好武器, {a}攻升至{self.weapon_attack}]"
+            return out
+        if self.type == "attack":
+            if not self.success:
+                return (f"{a} 想攻击 {self.target}, "
+                        f"但认知事件生成失败, 动作中止")
+            out = f"{a} 攻击 {self.target}, 造成 {self.damage} 伤害"
+            if self.target_dead:
+                out += f" → {self.target} 阵亡!"
+            if self.witnessed:
+                out += f" [旅行者目击搜捕, 积累理由现{self.reason_count}条]"
+            return out
+        if self.type == "flee":
+            if not self.success:
+                return f"{a} 想逃但无威胁"
+            return f"{a} 逃离威胁, 逃到 {self.to}"
+        if self.type == "help":
+            out = f"{a} 帮助 {self.target}"
+            if self.reason_added:
+                out += f" [旅行者积累理由, 现{self.reason_count}条]"
+            return out
+        if self.type == "hide":
+            return f"{a} 替 {self.target}"
+        if self.type == "world_event":
+            return f"世界事件: {self.description}"
+        return f"{a} 观望"
+
+    def to_dict(self) -> dict:
+        """序列化为 JSON 友好的 dict (供 timeline 的 visual_events 字段)。
+
+        只保留非空/非默认字段, 保持紧凑; type/actor/clock 恒保留。
+        """
+        d: dict = {"type": self.type, "actor": self.actor, "clock": self.clock}
+        if self.location:
+            d["location"] = self.location
+        if self.target:
+            d["target"] = self.target
+        if self.to:
+            d["to"] = self.to
+        if self.type == "conversation":
+            d["utterance"] = self.utterance
+            if self.reply:
+                d["reply"] = self.reply
+            if self.reply_speaker:
+                d["reply_speaker"] = self.reply_speaker
+        if self.type == "attack" and self.success:
+            d["damage"] = self.damage
+            d["target_dead"] = self.target_dead
+        if not self.success:
+            d["success"] = False
+            if self.failure_reason:
+                d["failure_reason"] = self.failure_reason
+        if self.reason_added:
+            d["reason_added"] = self.reason_added
+            d["reason_count"] = self.reason_count
+        if self.weapon_attack:
+            d["weapon_attack"] = self.weapon_attack
+        if self.witnessed:
+            d["witnessed"] = True
+        if self.type == "world_event":
+            d["description"] = self.description
+        return d
+
+
 # --------------------------------------------------------------------- 世界
 class World:
     """游戏世界: 持有区域、实体注册表、游戏时钟。
@@ -138,6 +261,10 @@ class World:
         # talk/attack/help 对目标 NPC observe 后登记进来, step_autonomous 统一
         # 消费 (跑关系反思), 步末清空。让自治世界的社交动作进 NPC 记忆/信任/反思层。
         self._step_social: list[tuple["NPC", str]] = []
+        # 结构化视觉事件缓冲 (单一事实源): execute_action / world_event 追加,
+        # step_autonomous 每步执行前重置。前端回放读它 (序列化为 visual_events),
+        # 不再解析中文事件串。旧调用方忽略本字段不受影响。
+        self.visual_events: list[VisualEvent] = []
         if path is not None:
             self._open(path)
 
@@ -318,17 +445,32 @@ class World:
         return norm
 
     def execute_action(self, agent: Entity, action: dict) -> str:
-        """执行动作并应用影响, 返回发生了什么 (供打印/记录)。非全知: 只影响直接相关方。"""
+        """执行动作并应用影响, 返回发生了什么 (供打印/记录)。非全知: 只影响直接相关方。
+
+        结构化视觉事件是单一事实源: 每个分支产出 VisualEvent 追加进
+        self.visual_events, 返回的字符串由 ve.describe() 派生 (与旧实现逐字一致)。
+        前端回放读 visual_events, 不再解析中文事件串。
+        """
         action = self._norm_action(action)   # R7: 入口 schema 校验/降级
         a = action.get("action", "wait")
         target = self.get(action.get("target", "")) if action.get("target") else None
+
+        def emit(ve: VisualEvent) -> str:
+            """追加结构化事件并返回其派生字符串。"""
+            self.visual_events.append(ve)
+            return ve.describe()
+
         if a == "move":
             dest = action.get("dest") or agent.location.name
             if dest in self.locations:
                 agent.move(self.locations[dest])
                 agent.record(f"移动到 {dest}")
-                return f"{agent.name} 移动到 {dest}"
-            return f"{agent.name} 想移动到不存在的 {dest}, 未动"
+                return emit(VisualEvent("move", agent.name, self.clock,
+                                        location=agent.location.name, to=dest))
+            return emit(VisualEvent("move", agent.name, self.clock,
+                                    location=agent.location.name, to=dest,
+                                    success=False,
+                                    failure_reason=f"目标区域 {dest} 不存在"))
         if a == "talk" and target and target.is_alive():
             line = action.get("utterance", "")
             # R6: 原子性 —— 可失败的认知事件生成在前 (observe + speak, LLM/embedding
@@ -343,13 +485,16 @@ class World:
                     if npc is not None:
                         reply = npc.speak(agent.name, line, self.clock) or ""
                 except Exception:
-                    return (f"{agent.name} 想对 {target.name} 说话, "
-                            f"但认知事件生成失败, 动作中止")
+                    return emit(VisualEvent(
+                        "conversation", agent.name, self.clock,
+                        location=agent.location.name, target=target.name,
+                        utterance=line, success=False,
+                        failure_reason="认知事件生成失败"))
             agent.record(f"对 {target.name} 说: {line}")
             target.record(f"{agent.name} 对TA说: {line}")
-            out = f"{agent.name} 对 {target.name} 说: {line}"
-            if reply:
-                out += f" ← {target.name}: {reply}"
+            ve = VisualEvent("conversation", agent.name, self.clock,
+                             location=agent.location.name, target=target.name,
+                             utterance=line, reply=reply, reply_speaker=target.name)
             # 理由 (仅玩家积累): 学者取证 / 医者证言 / 铁匠经济之弊
             if agent.kind == "player":
                 if "scholar" in target.role:
@@ -361,12 +506,13 @@ class World:
                 else:
                     r = None
                 if r and agent.add_reason(r, self.reason_cap):
-                    out += f" [旅行者积累理由, 现{len(agent.reasons)}条]"
+                    ve.reason_added = r
+                    ve.reason_count = len(agent.reasons)
             # 铁匠: 对话 = 锻一把武器, 攻提升 (与理由独立, 玩家找铁匠既取证又锻刀)
             if "blacksmith" in target.role and agent.attack < self.weapon_cap:
                 agent.attack = min(self.weapon_cap, agent.attack + self.weapon_gain)
-                out += f" [刚郎锻好武器, {agent.name}攻升至{agent.attack}]"
-            return out
+                ve.weapon_attack = agent.attack
+            return emit(ve)
         if a == "attack" and target and target.is_alive():
             dmg = max(0, agent.attack - target.defense + random.randint(-2, 2))
             will_die = target.health - dmg <= 0   # 预判死亡 (提交后 target.dead 才定)
@@ -380,14 +526,17 @@ class World:
                         target, agent,
                         f"攻击了TA, 造成 {dmg} 伤害" + ("(致TA阵亡)" if will_die else ""))
                 except Exception:
-                    return (f"{agent.name} 想攻击 {target.name}, "
-                            f"但认知事件生成失败, 动作中止")
+                    return emit(VisualEvent(
+                        "attack", agent.name, self.clock,
+                        location=agent.location.name, target=target.name,
+                        success=False, failure_reason="认知事件生成失败"))
             # 认知事件生成成功 (或目标非 NPC) → 提交物理状态 + 历史
             target.take_damage(dmg)
             agent.record(f"攻击 {target.name}, 造成 {dmg} 伤害")
             target.record(f"{agent.name} 攻击了TA, 受到 {dmg} 伤害")
-            extra = f" → {target.name} 阵亡!" if target.dead else ""
-            out = f"{agent.name} 攻击 {target.name}, 造成 {dmg} 伤害{extra}"
+            ve = VisualEvent("attack", agent.name, self.clock,
+                             location=agent.location.name, target=target.name,
+                             damage=dmg, target_dead=target.dead)
             # 执行官收缴持眼者 → 同地点的目击玩家积累一条理由 (亲眼所见)
             if "enforcer" in agent.role and "vision_holder" in target.role:
                 for witness in self.entities.values():
@@ -397,8 +546,9 @@ class World:
                         if witness.add_reason(
                                 f"目睹执行官当众收缴 {target.name} 的神之眼, 其家破人亡",
                                 self.reason_cap):
-                            out += f" [旅行者目击搜捕, 积累理由现{len(witness.reasons)}条]"
-            return out
+                            ve.witnessed = True
+                            ve.reason_count = len(witness.reasons)
+            return emit(ve)
         if a == "flee":
             # 逃到离最近威胁最远的区域
             threats = [o for o in self.entities.values()
@@ -412,12 +562,16 @@ class World:
                 best = max(self.locations.values(), key=farthest)
                 agent.move(best)
                 agent.record(f"逃离威胁, 逃到 {best.name}")
-                return f"{agent.name} 逃离威胁, 逃到 {best.name}"
-            return f"{agent.name} 想逃但无威胁"
+                return emit(VisualEvent("flee", agent.name, self.clock,
+                                        location=agent.location.name, to=best.name))
+            return emit(VisualEvent("flee", agent.name, self.clock,
+                                    location=agent.location.name, success=False,
+                                    failure_reason="无威胁可逃"))
         if a in ("help", "hide") and target and target.is_alive():
             agent.record(f"{'帮助' if a == 'help' else '替'} {target.name}")
             target.record(f"{agent.name} {'帮了TA' if a == 'help' else '替TA藏匿'}")
-            out = f"{agent.name} {'帮助' if a == 'help' else '替'} {target.name}"
+            ve = VisualEvent(a, agent.name, self.clock,
+                             location=agent.location.name, target=target.name)
             # E16: 目标 NPC 观察这次帮助/藏匿进自己记忆流 (关系观察, 信任度随之
             # 惰性上升)。NPC 的"反应"同样由其下一步 decide_agent 行动承担。
             self._observe_target_social(
@@ -426,10 +580,12 @@ class World:
             if a == "help" and agent.kind == "player" and "vision_holder" in target.role:
                 if agent.add_reason(f"助 {target.name} 藏好神之眼, 令其免遭收缴",
                                     self.reason_cap):
-                    out += f" [旅行者积累理由, 现{len(agent.reasons)}条]"
-            return out
+                    ve.reason_added = f"助 {target.name} 藏好神之眼, 令其免遭收缴"
+                    ve.reason_count = len(agent.reasons)
+            return emit(ve)
         agent.record("观望")
-        return f"{agent.name} 观望"
+        return emit(VisualEvent("wait", agent.name, self.clock,
+                                location=agent.location.name))
 
     def step_autonomous(self, now: float) -> tuple[list[str], dict[str, dict]]:
         """多智能体自治一步: 所有存活 agent 先决策 (同一时刻感知) → 统一执行 →
@@ -461,7 +617,9 @@ class World:
                 mems = [m.content for m in npc.store.all_valid()[-5:]]
                 memory_context = " | ".join(mems)
             decisions[name] = self.decide_agent(agent, memory_context)
-        # 2. 统一执行 (应用影响)
+        # 2. 统一执行 (应用影响)。重置结构化视觉事件缓冲 —— 本步 execute_action
+        # 追加的事件执行后恰好等于 self.visual_events, 供回放层读取。
+        self.visual_events = []
         events: list[str] = []
         for name, agent in self.entities.items():
             if not agent.is_alive():
@@ -588,6 +746,11 @@ class World:
             if self.entities[name].dead:
                 continue   # L7: 死去的 NPC 不感知世界事件 (同 step/日计划的死亡检查)
             result[name] = [self._npcs[name].observe(desc, now)]
+        # 结构化视觉事件 (回放层用): 世界事件不归属任何玩家, actor 记"世界"。
+        # 即使范围内无 NPC 也记录 —— 它是环境状态, 与谁感知到无关。
+        self.visual_events.append(
+            VisualEvent("world_event", "世界", now,
+                        location=at or "", description=desc))
         self.advance(now)
         return result
 
