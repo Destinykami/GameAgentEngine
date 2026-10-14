@@ -15,8 +15,10 @@ export class PlaybackController {
   private readonly baseInterval = 2200;   // 1x 时一步的现实毫秒
   private timer: Phaser.Time.TimerEvent | null = null;
   private scene: Phaser.Scene;
-  private onStepCb: ((step: TimelineStep) => void) | null = null;
-  private onTransportCb: (() => void) | null = null;
+  // 支持多监听器 (场景 + PlaybackControls 都订阅): 累积而非覆盖, 否则后订阅者会
+  // 盖掉前者, 导致播放自动推进时进度文本/按钮不刷新 (世界在走但"步 X/N"卡住)。
+  private onStepCbs: ((step: TimelineStep) => void)[] = [];
+  private onTransportCbs: (() => void)[] = [];
 
   constructor(scene: Phaser.Scene, tl: Timeline) {
     this.scene = scene;
@@ -24,9 +26,12 @@ export class PlaybackController {
   }
 
   subscribe(onStep: (step: TimelineStep) => void, onTransport: () => void): void {
-    this.onStepCb = onStep;
-    this.onTransportCb = onTransport;
+    this.onStepCbs.push(onStep);
+    this.onTransportCbs.push(onTransport);
   }
+
+  private emitStep(step: TimelineStep): void { for (const cb of this.onStepCbs) cb(step); }
+  private emitTransport(): void { for (const cb of this.onTransportCbs) cb(); }
 
   get current(): TimelineStep { return stepAt(this.tl, this.index); }
   get currentIndex(): number { return this.index; }
@@ -39,14 +44,14 @@ export class PlaybackController {
     if (this.playing) return;
     if (this.index >= this.tl.steps.length - 1) this.index = 0;   // 播完再 play 从头
     this.playing = true;
-    this.onTransportCb?.();
+    this.emitTransport();
     this.startTimer();
   }
 
   pause(): void {
     this.playing = false;
     this.stopTimer();
-    this.onTransportCb?.();
+    this.emitTransport();
   }
 
   toggle(): void { this.playing ? this.pause() : this.play(); }
@@ -54,26 +59,26 @@ export class PlaybackController {
   // 手动下一步 (暂停自动播放, 供逐步查看; 只 onStep, 不触发 onTransport → 不冻结 Tween)
   next(): void {
     if (this.playing) this.pause();
-    if (this.index < this.tl.steps.length - 1) { this.index++; this.onStepCb?.(this.current); }
+    if (this.index < this.tl.steps.length - 1) { this.index++; this.emitStep(this.current); }
   }
 
   // 手动上一步 (暂停自动播放)
   prev(): void {
     if (this.playing) this.pause();
-    if (this.index > 0) { this.index--; this.onStepCb?.(this.current); }
+    if (this.index > 0) { this.index--; this.emitStep(this.current); }
   }
 
   // 跳转到指定 step (停 Tween 残影由场景处理)
   seek(i: number): void {
     if (this.playing) this.pause();
     this.index = Math.max(0, Math.min(this.tl.steps.length - 1, i));
-    this.onStepCb?.(this.current);
+    this.emitStep(this.current);
   }
 
   setSpeed(s: number): void {
     this.speed = Math.max(0.25, Math.min(4, s));
     if (this.playing) { this.stopTimer(); this.startTimer(); }   // 调速立即生效
-    this.onTransportCb?.();
+    this.emitTransport();
   }
 
   private startTimer(): void {
@@ -83,7 +88,7 @@ export class PlaybackController {
       delay: ms,
       loop: true,
       callback: () => {
-        if (this.index < this.tl.steps.length - 1) { this.index++; this.onStepCb?.(this.current); }
+        if (this.index < this.tl.steps.length - 1) { this.index++; this.emitStep(this.current); }
         else this.pause();   // 到末尾自动停
       },
     });

@@ -48,6 +48,7 @@ export class InazumaScene extends Phaser.Scene {
   private damagePopup!: DamagePopup;    // 受击伤害数字
   private detailCard!: DetailCard;      // 点击实体详情卡
   private scrubber!: TimelineScrubber;  // 时间轴拖拽
+  private controls!: PlaybackControls;  // 播放控制 (进度文本 E2E 可读)
   private worldBanner!: Phaser.GameObjects.Text;   // 世界事件横幅
 
   // Phase 3 视觉活动投影状态: 巡逻 (执行官往返两点) + 坐镇特效 (将军光环)
@@ -134,7 +135,7 @@ export class InazumaScene extends Phaser.Scene {
     this.panel = new StatusPanel(this, 840, 150, 230, 270);
     this.log = new EventLog(this, 270, 430, 480, 100);
     this.controller = new PlaybackController(this, tl);
-    new PlaybackControls(this, this.controller, 270, 512);
+    this.controls = new PlaybackControls(this, this.controller, 270, 512);
 
     // M2 交互组件
     this.actorBubble = new SpeechBubble(this, 200);
@@ -201,7 +202,7 @@ export class InazumaScene extends Phaser.Scene {
     // E2E 调试钩子 (sprites=AgentRegistry, 可 posOf/animKeyOf/depthOf)
     (window as unknown as Record<string, unknown>).__REPLAY__ = {
       controller: this.controller, timeline: tl, sprites: this.reg,
-      detailCard: this.detailCard, scrubber: this.scrubber,
+      detailCard: this.detailCard, scrubber: this.scrubber, controls: this.controls,
       bubbles: { actor: this.actorBubble, reply: this.replyBubble },
     };
   }

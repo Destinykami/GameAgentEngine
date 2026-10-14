@@ -233,6 +233,29 @@ check(actInt.桃音 !== "heal_桃音", "step2 桃音被攻击 → 治疗中断 (
 check(actInt.刚郎 === "hammer_刚郎", "step2 刚郎未被攻击 → 继续锻造 (实际 " + actInt.刚郎 + ")");
 await page.evaluate(() => window.__REPLAY__.controller.seek(0));
 
+console.log("\n== 9b. 播放自动推进 + 进度条刷新 (play → 步 X/N 随步进更新) ==");
+// 真实点播放 (不是手动 next/seek): timer 自动推进 step, 进度文本 "步 X/N" 必须跟着变。
+// 回归防护: 此前 subscribe() 覆盖式, 场景订阅盖掉 PlaybackControls 的 refresh,
+// 世界在走 (index 推进) 但底部 "步 1/14" 卡住不刷新。
+const prog0 = await page.evaluate(() => window.__REPLAY__.controls.progressText());
+check(/^步 1\/\d+$/.test(prog0), "播放前进度=步 1/N (实际 \"" + prog0 + "\")");
+await page.evaluate(() => window.__REPLAY__.controller.play());
+await sleep(150);
+const playingNow = await page.evaluate(() => window.__REPLAY__.controller.isPlaying);
+check(playingNow === true, "play() 后 isPlaying=true");
+await sleep(6000);   // 约 2-3 步 (每步 2.2s)
+const prog1 = await page.evaluate(() => ({
+  text: window.__REPLAY__.controls.progressText(),
+  index: window.__REPLAY__.controller.currentIndex,
+}));
+check(prog1.index > 0, "播放自动推进 index 前进 (0→" + prog1.index + ")");
+const progNum = parseInt((prog1.text.match(/^步 (\d+)\//) || [])[1] ?? "0", 10);
+check(progNum === prog1.index + 1, "进度文本随步进刷新 (实际 \"" + prog1.text + "\", index=" + prog1.index + ")");
+await page.screenshot({ path: resolve(SHOTS, "09b_playback_progress.png") });
+// 清理: 暂停并回 step0, 不污染后续段
+await page.evaluate(() => { window.__REPLAY__.controller.pause(); window.__REPLAY__.controller.seek(0); });
+await sleep(200);
+
 console.log("\n== 10. M5 真实样本回放 (旧格式: 中文 events 串 → 回退解析) ==");
 // 真实 9/10 天样本 (data/auto_sim/timeline.json → public/real_timeline.json) 无 visual_events/
 // schema_version。加载器归一化 (回退解析中文串填 visual_events) 后应完整可回放, 不回归。

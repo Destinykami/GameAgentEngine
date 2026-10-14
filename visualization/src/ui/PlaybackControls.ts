@@ -42,4 +42,7 @@ export class PlaybackControls {
     this.speedLabel.setText(c.currentSpeed.toFixed(2) + "x");
     this.progress.setText(`步 ${c.currentIndex + 1}/${c.totalSteps}`);
   }
+
+  // E2E 断言用: 读当前进度文本 ("步 X/N")。
+  progressText(): string { return this.progress.text; }
 }
