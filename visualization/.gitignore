@@ -1,0 +1,10 @@
+# 依赖与构建产物
+node_modules/
+dist/
+.npm-cache/
+
+# E2E 无头浏览器与系统库 (本地下载, 不入仓)
+.browsers/
+syslibs/
+e2e_shots/
+*.deb

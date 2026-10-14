@@ -1,0 +1,24 @@
+{
+  "name": "inazuma-visualization",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "稻妻城自治世界像素风回放器 (M1 占位版): Phaser + Vite + TS, 消费 timeline.json 的 visual_events",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "validate": "tsx tools/validate_timeline.ts",
+    "e2e": "node tools/e2e_playwright.mjs"
+  },
+  "dependencies": {
+    "phaser": "^3.85.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "playwright": "^1.64.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0",
+    "vite": "^5.4.0"
+  }
+}

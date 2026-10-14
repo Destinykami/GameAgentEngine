@@ -1,0 +1,1569 @@
+{
+  "schema_version": 1,
+  "world": {
+    "name": "稻妻城",
+    "coordinate_system": "location-name",
+    "render_map": "inazuma-v1"
+  },
+  "reason_needed": 3,
+  "attack_needed": 20,
+  "persuade_n": 3,
+  "steps": [
+    {
+      "day": 0,
+      "moment": 7.0,
+      "clock": 7.0,
+      "events": [
+        "世界事件: 雷电将军颁布眼狩令: 全城神之眼一律收缴"
+      ],
+      "visual_events": [
+        {
+          "type": "world_event",
+          "actor": "世界",
+          "clock": 7.0,
+          "description": "雷电将军颁布眼狩令: 全城神之眼一律收缴"
+        }
+      ],
+      "states": {
+        "桃音": {
+          "health": 30,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "眼狩署",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 300,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 0,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 1,
+      "moment": 9.0,
+      "clock": 9.0,
+      "events": [
+        "桃音 观望",
+        "刚郎 观望",
+        "小梅 移动到 城外官道",
+        "执行官 移动到 稻妻主城",
+        "雷电将军 观望",
+        "旅行者 移动到 治疗堂"
+      ],
+      "visual_events": [
+        {
+          "type": "wait",
+          "actor": "桃音",
+          "clock": 9.0,
+          "location": "治疗堂"
+        },
+        {
+          "type": "wait",
+          "actor": "刚郎",
+          "clock": 9.0,
+          "location": "锻造坊"
+        },
+        {
+          "type": "move",
+          "actor": "小梅",
+          "clock": 9.0,
+          "location": "城外官道",
+          "to": "城外官道"
+        },
+        {
+          "type": "move",
+          "actor": "执行官",
+          "clock": 9.0,
+          "location": "稻妻主城",
+          "to": "稻妻主城"
+        },
+        {
+          "type": "wait",
+          "actor": "雷电将军",
+          "clock": 9.0,
+          "location": "神樱庭"
+        },
+        {
+          "type": "move",
+          "actor": "旅行者",
+          "clock": 9.0,
+          "location": "治疗堂",
+          "to": "治疗堂"
+        }
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 30,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 300,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 0,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 1,
+      "moment": 14.0,
+      "clock": 14.0,
+      "events": [
+        "桃音 观望",
+        "刚郎 观望",
+        "小梅 想逃但无威胁",
+        "执行官 攻击 桃音, 造成 16 伤害 [旅行者目击搜捕, 积累理由现1条]",
+        "雷电将军 观望",
+        "旅行者 对 桃音 说: 你知道眼狩令造成了什么吗？ ← 桃音: stub-reply [旅行者积累理由, 现2条]"
+      ],
+      "visual_events": [
+        {
+          "type": "wait",
+          "actor": "桃音",
+          "clock": 14.0,
+          "location": "治疗堂"
+        },
+        {
+          "type": "wait",
+          "actor": "刚郎",
+          "clock": 14.0,
+          "location": "锻造坊"
+        },
+        {
+          "type": "flee",
+          "actor": "小梅",
+          "clock": 14.0,
+          "location": "城外官道",
+          "success": false,
+          "failure_reason": "无威胁可逃"
+        },
+        {
+          "type": "attack",
+          "actor": "执行官",
+          "clock": 14.0,
+          "location": "稻妻主城",
+          "target": "桃音",
+          "damage": 16,
+          "target_dead": false,
+          "witnessed": true
+        },
+        {
+          "type": "wait",
+          "actor": "雷电将军",
+          "clock": 14.0,
+          "location": "神樱庭"
+        },
+        {
+          "type": "conversation",
+          "actor": "旅行者",
+          "clock": 14.0,
+          "location": "治疗堂",
+          "target": "桃音",
+          "utterance": "你知道眼狩令造成了什么吗？",
+          "reply": "stub-reply",
+          "reply_speaker": "桃音",
+          "reason_added": "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+          "reason_count": 2
+        }
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 14,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 300,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [
+            "目睹执行官当众收缴 桃音 的神之眼, 其家破人亡",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦"
+          ],
+          "attack": 12,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 0,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 1,
+      "moment": 19.0,
+      "clock": 19.0,
+      "events": [
+        "桃音 观望",
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 观望",
+        "雷电将军 观望",
+        "旅行者 帮助 桃音 [旅行者积累理由, 现3条]"
+      ],
+      "visual_events": [
+        {
+          "type": "wait",
+          "actor": "桃音",
+          "clock": 19.0,
+          "location": "治疗堂"
+        },
+        {
+          "type": "wait",
+          "actor": "刚郎",
+          "clock": 19.0,
+          "location": "锻造坊"
+        },
+        {
+          "type": "wait",
+          "actor": "小梅",
+          "clock": 19.0,
+          "location": "城外官道"
+        },
+        {
+          "type": "wait",
+          "actor": "执行官",
+          "clock": 19.0,
+          "location": "稻妻主城"
+        },
+        {
+          "type": "wait",
+          "actor": "雷电将军",
+          "clock": 19.0,
+          "location": "神樱庭"
+        },
+        {
+          "type": "help",
+          "actor": "旅行者",
+          "clock": 19.0,
+          "location": "治疗堂",
+          "target": "桃音",
+          "reason_added": "助 桃音 藏好神之眼, 令其免遭收缴",
+          "reason_count": 3
+        }
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 14,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 300,
+          "loc": "治疗堂",
+          "dead": false,
+          "reasons": [
+            "目睹执行官当众收缴 桃音 的神之眼, 其家破人亡",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "助 桃音 藏好神之眼, 令其免遭收缴"
+          ],
+          "attack": 12,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 0,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 2,
+      "moment": 9.0,
+      "clock": 33.0,
+      "events": [
+        "桃音 观望",
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 攻击 桃音, 造成 18 伤害 → 桃音 阵亡!",
+        "雷电将军 观望",
+        "旅行者 移动到 锻造坊"
+      ],
+      "visual_events": [
+        {
+          "type": "wait",
+          "actor": "桃音",
+          "clock": 33.0,
+          "location": "治疗堂"
+        },
+        {
+          "type": "wait",
+          "actor": "刚郎",
+          "clock": 33.0,
+          "location": "锻造坊"
+        },
+        {
+          "type": "wait",
+          "actor": "小梅",
+          "clock": 33.0,
+          "location": "城外官道"
+        },
+        {
+          "type": "attack",
+          "actor": "执行官",
+          "clock": 33.0,
+          "location": "稻妻主城",
+          "target": "桃音",
+          "damage": 18,
+          "target_dead": true
+        },
+        {
+          "type": "wait",
+          "actor": "雷电将军",
+          "clock": 33.0,
+          "location": "神樱庭"
+        },
+        {
+          "type": "move",
+          "actor": "旅行者",
+          "clock": 33.0,
+          "location": "锻造坊",
+          "to": "锻造坊"
+        }
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "治疗堂",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 300,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [
+            "目睹执行官当众收缴 桃音 的神之眼, 其家破人亡",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "助 桃音 藏好神之眼, 令其免遭收缴"
+          ],
+          "attack": 12,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 0,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 2,
+      "moment": 14.0,
+      "clock": 38.0,
+      "events": [
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 观望",
+        "雷电将军 观望",
+        "旅行者 对 刚郎 说: 帮我锻一把最利的武器 ← 刚郎: stub-reply [刚郎锻好武器, 旅行者攻升至16]"
+      ],
+      "visual_events": [
+        {
+          "type": "wait",
+          "actor": "刚郎",
+          "clock": 38.0,
+          "location": "锻造坊"
+        },
+        {
+          "type": "wait",
+          "actor": "小梅",
+          "clock": 38.0,
+          "location": "城外官道"
+        },
+        {
+          "type": "wait",
+          "actor": "执行官",
+          "clock": 38.0,
+          "location": "稻妻主城"
+        },
+        {
+          "type": "wait",
+          "actor": "雷电将军",
+          "clock": 38.0,
+          "location": "神樱庭"
+        },
+        {
+          "type": "conversation",
+          "actor": "旅行者",
+          "clock": 38.0,
+          "location": "锻造坊",
+          "target": "刚郎",
+          "utterance": "帮我锻一把最利的武器",
+          "reply": "stub-reply",
+          "reply_speaker": "刚郎",
+          "weapon_attack": 16
+        }
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "治疗堂",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 300,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [
+            "目睹执行官当众收缴 桃音 的神之眼, 其家破人亡",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "助 桃音 藏好神之眼, 令其免遭收缴"
+          ],
+          "attack": 16,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 0,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 2,
+      "moment": 19.0,
+      "clock": 43.0,
+      "events": [
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 观望",
+        "雷电将军 观望",
+        "旅行者 对 刚郎 说: 再帮我磨一磨, 要能正面对决 ← 刚郎: stub-reply [刚郎锻好武器, 旅行者攻升至20]"
+      ],
+      "visual_events": [
+        {
+          "type": "wait",
+          "actor": "刚郎",
+          "clock": 43.0,
+          "location": "锻造坊"
+        },
+        {
+          "type": "wait",
+          "actor": "小梅",
+          "clock": 43.0,
+          "location": "城外官道"
+        },
+        {
+          "type": "wait",
+          "actor": "执行官",
+          "clock": 43.0,
+          "location": "稻妻主城"
+        },
+        {
+          "type": "wait",
+          "actor": "雷电将军",
+          "clock": 43.0,
+          "location": "神樱庭"
+        },
+        {
+          "type": "conversation",
+          "actor": "旅行者",
+          "clock": 43.0,
+          "location": "锻造坊",
+          "target": "刚郎",
+          "utterance": "再帮我磨一磨, 要能正面对决",
+          "reply": "stub-reply",
+          "reply_speaker": "刚郎",
+          "weapon_attack": 20
+        }
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "治疗堂",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 300,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [
+            "目睹执行官当众收缴 桃音 的神之眼, 其家破人亡",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "助 桃音 藏好神之眼, 令其免遭收缴"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 0,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 3,
+      "moment": 9.0,
+      "clock": 57.0,
+      "events": [
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 观望",
+        "雷电将军 观望",
+        "旅行者 移动到 神樱庭"
+      ],
+      "visual_events": [
+        {
+          "type": "wait",
+          "actor": "刚郎",
+          "clock": 57.0,
+          "location": "锻造坊"
+        },
+        {
+          "type": "wait",
+          "actor": "小梅",
+          "clock": 57.0,
+          "location": "城外官道"
+        },
+        {
+          "type": "wait",
+          "actor": "执行官",
+          "clock": 57.0,
+          "location": "稻妻主城"
+        },
+        {
+          "type": "wait",
+          "actor": "雷电将军",
+          "clock": 57.0,
+          "location": "神樱庭"
+        },
+        {
+          "type": "move",
+          "actor": "旅行者",
+          "clock": 57.0,
+          "location": "神樱庭",
+          "to": "神樱庭"
+        }
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "治疗堂",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "目睹执行官当众收缴 桃音 的神之眼, 其家破人亡",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "助 桃音 藏好神之眼, 令其免遭收缴"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 0,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 3,
+      "moment": 14.0,
+      "clock": 62.0,
+      "events": [
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 观望",
+        "雷电将军 观望",
+        "旅行者 对 雷电将军 说: 眼狩令之弊我已取证, 持眼者流离失所, 请废止它 ← 雷电将军: stub-reply"
+      ],
+      "visual_events": [
+        {
+          "type": "wait",
+          "actor": "刚郎",
+          "clock": 62.0,
+          "location": "锻造坊"
+        },
+        {
+          "type": "wait",
+          "actor": "小梅",
+          "clock": 62.0,
+          "location": "城外官道"
+        },
+        {
+          "type": "wait",
+          "actor": "执行官",
+          "clock": 62.0,
+          "location": "稻妻主城"
+        },
+        {
+          "type": "wait",
+          "actor": "雷电将军",
+          "clock": 62.0,
+          "location": "神樱庭"
+        },
+        {
+          "type": "conversation",
+          "actor": "旅行者",
+          "clock": 62.0,
+          "location": "神樱庭",
+          "target": "雷电将军",
+          "utterance": "眼狩令之弊我已取证, 持眼者流离失所, 请废止它",
+          "reply": "stub-reply",
+          "reply_speaker": "雷电将军"
+        }
+      ],
+      "note": "当面劝说, 将军'容我考虑' — 1/3",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "治疗堂",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "目睹执行官当众收缴 桃音 的神之眼, 其家破人亡",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "助 桃音 藏好神之眼, 令其免遭收缴"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 1,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 3,
+      "moment": 19.0,
+      "clock": 67.0,
+      "events": [
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 观望",
+        "雷电将军 攻击 旅行者, 造成 15 伤害",
+        "旅行者 观望"
+      ],
+      "visual_events": [
+        {
+          "type": "wait",
+          "actor": "刚郎",
+          "clock": 67.0,
+          "location": "锻造坊"
+        },
+        {
+          "type": "wait",
+          "actor": "小梅",
+          "clock": 67.0,
+          "location": "城外官道"
+        },
+        {
+          "type": "wait",
+          "actor": "执行官",
+          "clock": 67.0,
+          "location": "稻妻主城"
+        },
+        {
+          "type": "attack",
+          "actor": "雷电将军",
+          "clock": 67.0,
+          "location": "神樱庭",
+          "target": "旅行者",
+          "damage": 15,
+          "target_dead": false
+        },
+        {
+          "type": "wait",
+          "actor": "旅行者",
+          "clock": 67.0,
+          "location": "神樱庭"
+        }
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "治疗堂",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 285,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "目睹执行官当众收缴 桃音 的神之眼, 其家破人亡",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "助 桃音 藏好神之眼, 令其免遭收缴"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 1,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 4,
+      "moment": 9.0,
+      "clock": 81.0,
+      "events": [
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 观望",
+        "雷电将军 观望",
+        "旅行者 对 雷电将军 说: 我已锻利刃、集实证, 将军容我再言一次 ← 雷电将军: stub-reply"
+      ],
+      "visual_events": [
+        {
+          "type": "wait",
+          "actor": "刚郎",
+          "clock": 81.0,
+          "location": "锻造坊"
+        },
+        {
+          "type": "wait",
+          "actor": "小梅",
+          "clock": 81.0,
+          "location": "城外官道"
+        },
+        {
+          "type": "wait",
+          "actor": "执行官",
+          "clock": 81.0,
+          "location": "稻妻主城"
+        },
+        {
+          "type": "wait",
+          "actor": "雷电将军",
+          "clock": 81.0,
+          "location": "神樱庭"
+        },
+        {
+          "type": "conversation",
+          "actor": "旅行者",
+          "clock": 81.0,
+          "location": "神樱庭",
+          "target": "雷电将军",
+          "utterance": "我已锻利刃、集实证, 将军容我再言一次",
+          "reply": "stub-reply",
+          "reply_speaker": "雷电将军"
+        }
+      ],
+      "note": "当面劝说, 将军'容我考虑' — 2/3",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "治疗堂",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 285,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "目睹执行官当众收缴 桃音 的神之眼, 其家破人亡",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "助 桃音 藏好神之眼, 令其免遭收缴"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 2,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 4,
+      "moment": 14.0,
+      "clock": 86.0,
+      "events": [
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 观望",
+        "雷电将军 观望",
+        "旅行者 观望"
+      ],
+      "visual_events": [
+        {
+          "type": "wait",
+          "actor": "刚郎",
+          "clock": 86.0,
+          "location": "锻造坊"
+        },
+        {
+          "type": "wait",
+          "actor": "小梅",
+          "clock": 86.0,
+          "location": "城外官道"
+        },
+        {
+          "type": "wait",
+          "actor": "执行官",
+          "clock": 86.0,
+          "location": "稻妻主城"
+        },
+        {
+          "type": "wait",
+          "actor": "雷电将军",
+          "clock": 86.0,
+          "location": "神樱庭"
+        },
+        {
+          "type": "wait",
+          "actor": "旅行者",
+          "clock": 86.0,
+          "location": "神樱庭"
+        }
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "治疗堂",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 285,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "目睹执行官当众收缴 桃音 的神之眼, 其家破人亡",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "助 桃音 藏好神之眼, 令其免遭收缴"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 2,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 4,
+      "moment": 19.0,
+      "clock": 91.0,
+      "events": [
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 观望",
+        "雷电将军 观望",
+        "旅行者 观望"
+      ],
+      "visual_events": [
+        {
+          "type": "wait",
+          "actor": "刚郎",
+          "clock": 91.0,
+          "location": "锻造坊"
+        },
+        {
+          "type": "wait",
+          "actor": "小梅",
+          "clock": 91.0,
+          "location": "城外官道"
+        },
+        {
+          "type": "wait",
+          "actor": "执行官",
+          "clock": 91.0,
+          "location": "稻妻主城"
+        },
+        {
+          "type": "wait",
+          "actor": "雷电将军",
+          "clock": 91.0,
+          "location": "神樱庭"
+        },
+        {
+          "type": "wait",
+          "actor": "旅行者",
+          "clock": 91.0,
+          "location": "神樱庭"
+        }
+      ],
+      "note": "",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "治疗堂",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 285,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "目睹执行官当众收缴 桃音 的神之眼, 其家破人亡",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "助 桃音 藏好神之眼, 令其免遭收缴"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 2,
+      "decree_ended": false,
+      "shogun_dead": false
+    },
+    {
+      "day": 5,
+      "moment": 9.0,
+      "clock": 105.0,
+      "events": [
+        "刚郎 观望",
+        "小梅 观望",
+        "执行官 观望",
+        "雷电将军 观望",
+        "旅行者 对 雷电将军 说: 稻妻百姓苦眼狩令久矣, 望将军三思 ← 雷电将军: stub-reply"
+      ],
+      "visual_events": [
+        {
+          "type": "wait",
+          "actor": "刚郎",
+          "clock": 105.0,
+          "location": "锻造坊"
+        },
+        {
+          "type": "wait",
+          "actor": "小梅",
+          "clock": 105.0,
+          "location": "城外官道"
+        },
+        {
+          "type": "wait",
+          "actor": "执行官",
+          "clock": 105.0,
+          "location": "稻妻主城"
+        },
+        {
+          "type": "wait",
+          "actor": "雷电将军",
+          "clock": 105.0,
+          "location": "神樱庭"
+        },
+        {
+          "type": "conversation",
+          "actor": "旅行者",
+          "clock": 105.0,
+          "location": "神樱庭",
+          "target": "雷电将军",
+          "utterance": "稻妻百姓苦眼狩令久矣, 望将军三思",
+          "reply": "stub-reply",
+          "reply_speaker": "雷电将军"
+        },
+        {
+          "type": "world_event",
+          "actor": "世界",
+          "clock": 105.0,
+          "description": "雷电将军被旅行者说服, 废止眼狩令: 持眼者可保留神之眼"
+        }
+      ],
+      "note": "★ 雷电将军被说服 (当面劝说 3 次), 废止眼狩令!",
+      "states": {
+        "桃音": {
+          "health": 0,
+          "loc": "治疗堂",
+          "dead": true,
+          "reasons": [],
+          "attack": 8,
+          "role": "vision_holder,healer",
+          "kind": "npc"
+        },
+        "刚郎": {
+          "health": 100,
+          "loc": "锻造坊",
+          "dead": false,
+          "reasons": [],
+          "attack": 12,
+          "role": "blacksmith",
+          "kind": "npc"
+        },
+        "小梅": {
+          "health": 70,
+          "loc": "城外官道",
+          "dead": false,
+          "reasons": [],
+          "attack": 6,
+          "role": "scholar,vision_holder",
+          "kind": "npc"
+        },
+        "执行官": {
+          "health": 120,
+          "loc": "稻妻主城",
+          "dead": false,
+          "reasons": [],
+          "attack": 18,
+          "role": "enforcer",
+          "kind": "npc"
+        },
+        "雷电将军": {
+          "health": 300,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [],
+          "attack": 20,
+          "role": "shogun",
+          "kind": "npc"
+        },
+        "旅行者": {
+          "health": 285,
+          "loc": "神樱庭",
+          "dead": false,
+          "reasons": [
+            "目睹执行官当众收缴 桃音 的神之眼, 其家破人亡",
+            "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦",
+            "助 桃音 藏好神之眼, 令其免遭收缴"
+          ],
+          "attack": 20,
+          "role": "",
+          "kind": "player"
+        }
+      },
+      "persuade": 3,
+      "decree_ended": true,
+      "shogun_dead": false
+    }
+  ]
+}
