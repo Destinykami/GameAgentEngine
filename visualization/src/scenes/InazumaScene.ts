@@ -236,16 +236,20 @@ export class InazumaScene extends Phaser.Scene {
     for (const [name, s] of Object.entries(day0)) this.prevLoc.set(name, s.loc);
     this.lastAppliedIndex = -1;
 
-    // HUD: 状态面板 (右上) / 事件日志 (左下) / 播放控制 (底部)
-    this.panel = new StatusPanel(this, 840, 150, 230, 270);
+    // HUD: 状态面板 (右上) / 事件日志 (左下) / 播放控制 (底部)。
+    // 面板中心 y=175 (顶边 40), 在时间轴 (y 6-36) 之下 —— 标题栏可点击折叠, 不被时间轴命中区拦截。
+    this.panel = new StatusPanel(this, 840, 175, 230, 270);
     this.log = new EventLog(this, 270, 430, 480, 100);
     this.controller = new PlaybackController(this, tl);
     this.controls = new PlaybackControls(this, this.controller, 270, 512);
 
     // M2 交互组件
-    this.actorBubble = new SpeechBubble(this, 200);
+    // 气泡深度 1100: 高于面板/事件框/控制条 (1001), 低于直播标记 (1200)。
+    // 近右侧的对话气泡 (如神樱庭将军) 会落在世界情况面板下, 若深度低于面板会被盖住;
+    // 提到面板之上 → 气泡永远画在面板上, 可读。
+    this.actorBubble = new SpeechBubble(this, 1100);
     this.actorBubble.setOffset(-100, -10);      // 台词在左
-    this.replyBubble = new SpeechBubble(this, 200);
+    this.replyBubble = new SpeechBubble(this, 1100);
     this.replyBubble.setOffset(100, 10);        // 回复在右, 同地点不重叠
     this.damagePopup = new DamagePopup(this);
     this.detailCard = new DetailCard(this);
@@ -267,6 +271,7 @@ export class InazumaScene extends Phaser.Scene {
       }
       if (this.controls.handleClick(p.x, p.y)) return;   // 播放控制按钮 (场景级几何命中, 可靠)
       if (this.inScrubber(p.x, p.y)) { this.scrubber.onPointerDown(p.x); return; }   // 时间轴点选/拖拽
+      if (this.panel.headerContainsPoint(p.x, p.y)) { this.panel.toggle(); return; }   // 点面板标题栏 → 折叠/展开
       if (this.detailCard.isOpen() && this.detailCard.containsPoint(p.x, p.y)) return;   // 点在卡内, 交给卡自身
       const spr = this.spriteAt(p.x, p.y);
       if (spr) {

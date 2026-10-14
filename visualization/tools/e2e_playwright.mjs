@@ -210,6 +210,13 @@ const longFit = await page.evaluate(() => {
 check(longFit.lines >= 2, "长台词手动换行成多行 (" + longFit.lines + " 行)");
 check(longFit.textW <= longFit.bgW && longFit.textH <= longFit.bgH,
   "长台词气泡不溢出 (bg " + longFit.bgW + "x" + longFit.bgH + " 容 text " + longFit.textW + "x" + longFit.textH + ")");
+// 气泡深度须高于世界情况面板 (1001), 近右侧对话气泡 (如神樱庭) 落在面板上不被盖住。
+const bubbleDepth = await page.evaluate(() => {
+  const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
+  return { actor: s.actorBubble.root.depth, reply: s.replyBubble.root.depth };
+});
+check(bubbleDepth.actor > 1001 && bubbleDepth.reply > 1001,
+  "气泡深度盖过面板 (" + bubbleDepth.actor + "/" + bubbleDepth.reply + " > 1001, 不被世界情况遮挡)");
 // 事件框同样 wordWrap 失效: 手动换行 + 按框高截断, 防长对话/多事件溢出框外。
 const logFit = await page.evaluate(() => {
   const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
@@ -403,6 +410,20 @@ const panelFit = await page2.evaluate(() => {
 });
 check(panelFit.maxRight <= panelFit.rightInner,
   "世界情况面板不溢出 (最右 " + panelFit.maxRight + " ≤ " + panelFit.rightInner + ", 最宽 \"" + panelFit.worst + "…\")");
+// 面板可折叠: 点标题栏 (840,52) → 收起 (只剩标题条, 让位地图/气泡); 再点 → 展开。
+const panelToggle = await page2.evaluate(async () => {
+  const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
+  const sleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
+  const h0 = s.panel.bg.height;
+  s.panel.toggle(); await sleep2(50);
+  const collapsed = s.panel.isCollapsed();
+  const hCollapsed = s.panel.bg.height;
+  s.panel.toggle(); await sleep2(50);
+  return { h0, collapsed, hCollapsed, h1: s.panel.bg.height };
+});
+check(panelToggle.collapsed === true && panelToggle.hCollapsed < panelToggle.h0,
+  "面板点标题栏可折叠 (收起后高度 " + Math.round(panelToggle.hCollapsed) + " < " + Math.round(panelToggle.h0) + ", 让位地图)");
+check(panelToggle.h1 === panelToggle.h0, "面板再点展开 (高度恢复 " + Math.round(panelToggle.h1) + ")");
 await page2.screenshot({ path: resolve(SHOTS, "12_real_ending.png") });
 await page2.close();
 
