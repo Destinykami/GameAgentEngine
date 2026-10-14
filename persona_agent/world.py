@@ -219,6 +219,7 @@ class VisualEvent:
             d["weapon_attack"] = self.weapon_attack
         if self.witnessed:
             d["witnessed"] = True
+            d["reason_count"] = self.reason_count   # 目击事件同样带理由条数, 前端不再显示 undefined
         if self.type == "world_event":
             d["description"] = self.description
         return d
