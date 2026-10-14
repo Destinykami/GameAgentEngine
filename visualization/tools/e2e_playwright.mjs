@@ -341,6 +341,22 @@ check(realDeath.atk && realDeath.atk.target_dead === true, "真实样本 step20 
 await page2.screenshot({ path: resolve(SHOTS, "11_real_death.png") });
 await page2.evaluate(() => window.__REPLAY__.controller.seek(window.__REPLAY__.controller.totalSteps - 1));
 await sleep(400);
+// 世界情况面板不溢出: 标题/页脚(长结局说明换行)/meta(血@地点) 右缘 ≤ 面板右内边 945。
+// 防回归: 真实样本长 note + 4 字地点名曾把标题/页脚/meta 顶出框外。
+const panelFit = await page2.evaluate(() => {
+  const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
+  const rightInner = 945;   // 面板 (840,150,230,270) 右内边
+  const texts = s.children.list.filter((o) => o.type === "Text" && o.depth === 1001
+    && o.x >= 725 && o.x <= 955 && o.text.length > 0);
+  let maxRight = 0; let worst = "";
+  for (const t of texts) {
+    const r = Math.round(t.x + t.width);
+    if (r > maxRight) { maxRight = r; worst = t.text.slice(0, 12); }
+  }
+  return { maxRight, rightInner, worst };
+});
+check(panelFit.maxRight <= panelFit.rightInner,
+  "世界情况面板不溢出 (最右 " + panelFit.maxRight + " ≤ " + panelFit.rightInner + ", 最宽 \"" + panelFit.worst + "…\")");
 await page2.screenshot({ path: resolve(SHOTS, "12_real_ending.png") });
 await page2.close();
 
