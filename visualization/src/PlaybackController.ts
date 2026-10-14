@@ -81,6 +81,13 @@ export class PlaybackController {
     this.emitTransport();
   }
 
+  // 直播模式: 追加一个新 step (时间线增长)。totalSteps getter 读 tl.steps.length 自动更新。
+  // 返回追加后的总步数, 供场景让时间轴增刻度 + 跳到最新步跟随。
+  addStep(step: TimelineStep): number {
+    this.tl.steps.push(step);
+    return this.tl.steps.length;
+  }
+
   private startTimer(): void {
     this.stopTimer();
     const ms = this.baseInterval / this.speed;

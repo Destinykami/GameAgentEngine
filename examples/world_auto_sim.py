@@ -19,6 +19,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
@@ -28,6 +29,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from persona_agent import (RealLLM, World, Location, make_embedder)
 
 DATA = os.path.join(os.path.dirname(__file__), "..", "data", "auto_sim")
+# 直播文件: 每跑完一步就 append 一行 (meta/step/done), 供前端 ?live 模式轮询实时跟随。
+# 与最终 timeline.json 并存 (timeline.json 仍为跑完后的离线回放源)。
+LIVE_JSONL = os.path.join(os.path.dirname(__file__), "..", "visualization", "public", "live.jsonl")
 REFLECT_THRESHOLD = 25.0     # 调低, 让稀疏步的事件量也能触发反思
 PERSUADE_N = 5               # 双关都过之后, 还需当面劝说多少次 → 被说服 (眼狩令废止)
 ONE_PERSUADE_PER_DAY = True  # 将军听完"需要时间考虑", 当天再劝无效
@@ -126,14 +130,26 @@ def main() -> int:
     decree_ended = False
     last_persuade_day = -1   # 上次有效劝说的天 (将军"容我考虑", 当天再劝无效)
     timeline: list[dict] = []   # 结构化时间线 (供回放)
+
+    # 直播增量写: 先写 meta 行 (前端用它建 timeline 元数据), 之后每步 append 一行,
+    # 结尾写 done 行。前端 ?live 轮询此文件实时跟随 (见 visualization ?live 模式)。
+    live_f = open(LIVE_JSONL, "w", encoding="utf-8")
+    live_f.write(json.dumps({"__meta__": True, "schema_version": 1,
+                             "world": {"name": w.name, "coordinate_system": "location-name",
+                                       "render_map": "inazuma-v1"},
+                             "reason_needed": REASON_NEEDED, "attack_needed": ATTACK_NEEDED,
+                             "persuade_n": PERSUADE_N}, ensure_ascii=False) + "\n")
+    live_f.flush()
     # 开场世界事件: 引擎已产出结构化 VisualEvent, 直接序列化 (不再硬编码字符串)。
     opening_ve = [ve.to_dict() for ve in w.visual_events]
     opening_events = [ve.describe() for ve in w.visual_events]
     w.visual_events.clear()
-    timeline.append({"day": 0, "moment": 7.0, "clock": 7.0,
-                     "events": opening_events, "visual_events": opening_ve,
-                     "states": snapshot(w), "persuade": 0, "decree_ended": False,
-                     "shogun_dead": False})
+    opening = {"day": 0, "moment": 7.0, "clock": 7.0,
+               "events": opening_events, "visual_events": opening_ve,
+               "states": snapshot(w), "persuade": 0, "decree_ended": False,
+               "shogun_dead": False}
+    timeline.append(opening)
+    live_f.write(json.dumps(opening, ensure_ascii=False) + "\n"); live_f.flush()
 
     for day in range(1, DAYS + 1):
         for moment in MOMENTS:
@@ -178,15 +194,22 @@ def main() -> int:
             # 结局 world_event (若本步触发)。前端回放读它, 不解析中文 events 串。
             visual = [ve.to_dict() for ve in w.visual_events]
             w.visual_events.clear()
-            timeline.append({"day": day, "moment": moment, "clock": now,
-                             "events": events, "visual_events": visual,
-                             "note": note, "states": snapshot(w),
-                             "persuade": persuade_count, "decree_ended": decree_ended,
-                             "shogun_dead": shogun.dead})
+            step = {"day": day, "moment": moment, "clock": now,
+                    "events": events, "visual_events": visual,
+                    "note": note, "states": snapshot(w),
+                    "persuade": persuade_count, "decree_ended": decree_ended,
+                    "shogun_dead": shogun.dead}
+            timeline.append(step)
+            live_f.write(json.dumps(step, ensure_ascii=False) + "\n"); live_f.flush()
             if decree_ended or shogun.dead:
                 break
         if decree_ended or shogun.dead:
             break
+
+    # 直播 done 行: 前端 ?live 收到后停止轮询, 切回普通回放 (可往回拖)。
+    live_f.write(json.dumps({"__done__": True, "decree_ended": decree_ended,
+                             "shogun_dead": shogun.dead}, ensure_ascii=False) + "\n")
+    live_f.flush(); live_f.close()
 
     banner("结局")
     print(status_line(w))

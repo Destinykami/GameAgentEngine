@@ -19,6 +19,7 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 import { defaultActivity, isInterrupted } from "../data/activityProjection";
+import { LiveSource, type LiveMeta } from "../data/liveSource";
 import { StatusPanel } from "../ui/StatusPanel";
 import { EventLog } from "../ui/EventLog";
 import { PlaybackControls } from "../ui/PlaybackControls";
@@ -55,6 +56,14 @@ export class InazumaScene extends Phaser.Scene {
   private patrol: { name: string; loc: string; a: { x: number; y: number }; b: { x: number; y: number }; atA: boolean } | null = null;
   private stationAura: Phaser.GameObjects.Arc | null = null;
 
+  // 直播模式 (?live): 轮询 live.jsonl 实时跟随运行中的模拟, 跑完切回放。
+  private live: LiveSource | null = null;
+  private liveBadge: Phaser.GameObjects.Text | null = null;
+  private liveTimer: Phaser.Time.TimerEvent | null = null;
+  private liveSetupDone = false;   // setup() 是否已用直播数据建好场景
+  private liveDone = false;        // 收到 __done__ 行 (模拟结束)
+  private liveStepCount = 0;       // 已摄入的 step 数 (不含 meta 行)
+
   constructor() { super("Inazuma"); }
 
   // 预加载 Kenney "Tiny Town" (CC0) tilemap, 供 buildArt 烘焙真实 tile。
@@ -67,14 +76,93 @@ export class InazumaScene extends Phaser.Scene {
       fontFamily: "monospace", fontSize: "16px", color: "#b08d57",
       align: "center", wordWrap: { width: 760 },
     }).setOrigin(0.5);
+    const params = new URLSearchParams(window.location.search);
+    const isLive = params.has("live");
+    const ttImgPromise = loadImage("assets/tiny-town-tilemap.png");   // tilemap 立即开始加载 (两种模式共用)
+    if (isLive) {
+      // 直播模式 (?live): 轮询 live.jsonl 实时跟随运行中的模拟 (见 M5 扩展)。
+      this.loadingText.setText("等待模拟开始… (直播模式, 轮询 live.jsonl)");
+      this.live = new LiveSource("live.jsonl");
+      this.showLiveBadge();
+      this.startLivePolling(ttImgPromise);
+      return;
+    }
     // 默认回放 stub 时间线; ?timeline=<file> 可回放其它样本 (如 real_timeline.json 旧格式真实样本, M5)。
-    const tlFile = new URLSearchParams(window.location.search).get("timeline") ?? "stub_timeline.json";
-    Promise.all([loadTimeline(tlFile), loadImage("assets/tiny-town-tilemap.png")])
+    const tlFile = params.get("timeline") ?? "stub_timeline.json";
+    Promise.all([loadTimeline(tlFile), ttImgPromise])
       .then(([tl, ttImg]) => this.setup(tl, ttImg))
       .catch((e: unknown) => {
         this.loadingText.setText("加载失败:\n" + String(e) +
           "\n\n请确认 public/stub_timeline.json 与 public/assets/tiny-town-tilemap.png 存在。");
       });
+  }
+
+  // 直播模式: 每 1s 轮询 live.jsonl。收到 meta + ≥1 步 → 建场景并跳到最新步跟随;
+  // 之后每来新步 → addStep + 时间轴增刻度 + 跳到最新 (跟随); 收到 done → 停止轮询、
+  // 隐藏 LIVE 标记, 时间线完整可往回拖 (切回普通回放)。
+  private startLivePolling(ttImgPromise: Promise<HTMLImageElement>): void {
+    this.liveTimer = this.time.addEvent({
+      delay: 1000, loop: true,
+      callback: async () => {
+        if (!this.live || this.liveDone) return;
+        const { meta, newSteps, done } = await this.live.poll();
+        this.liveStepCount = this.live.stepCount;
+        let setupThisPoll = false;
+        // 1) 首次收到 meta + ≥1 步 → 建场景。时间线用 buildLiveTimeline 拷贝 allSteps
+        //    (已含本 poll 的 newSteps), 故本轮不再 addStep (setupThisPoll 防重复)。
+        if (!this.liveSetupDone && meta && this.liveStepCount >= 1) {
+          const ttImg = await ttImgPromise;
+          this.setup(this.buildLiveTimeline(meta), ttImg);
+          this.liveSetupDone = true;
+          setupThisPoll = true;
+          this.controller.seek(this.controller.totalSteps - 1);   // 跳到最新步跟随
+        }
+        // 2) 后续 poll 的新步: addStep + 时间轴增刻度 + 跟随最新。
+        if (this.liveSetupDone && !setupThisPoll && newSteps.length > 0) {
+          for (const s of newSteps) this.controller.addStep(s);
+          this.scrubber.grow();
+          this.controller.seek(this.controller.totalSteps - 1);   // 跟随最新步
+        }
+        // 3) 还没收到足够数据且未结束: 更新加载提示。
+        if (!this.liveSetupDone && !done) {
+          this.loadingText.setText(`等待模拟开始… (已收 ${this.liveStepCount} 步)`);
+        }
+        // 4) 收到 done: 停轮询、隐藏 LIVE 标记 (时间线完整, 切回普通回放可往回拖)。
+        if (done) {
+          this.liveDone = true;
+          this.hideLiveBadge();
+          this.liveTimer?.remove(false);
+        }
+      },
+    });
+  }
+
+  // 由直播 meta 行构造 Timeline。steps 拷贝 LiveSource 已摄入的步 (setup 用它建 controller,
+  // 后续新步由轮询回调 controller.addStep 增长)。
+  private buildLiveTimeline(meta: LiveMeta): Timeline {
+    return {
+      schema_version: meta.schema_version ?? 1,
+      world: meta.world ?? { name: "稻妻城", coordinate_system: "location-name", render_map: "inazuma-v1" },
+      reason_needed: meta.reason_needed ?? 3,
+      attack_needed: meta.attack_needed ?? 20,
+      persuade_n: meta.persuade_n ?? 3,
+      steps: [...this.live!.allSteps],
+    };
+  }
+
+  // LIVE 标记 (右上, 红色脉冲)。
+  private showLiveBadge(): void {
+    this.liveBadge = this.add.text(940, 12, "● LIVE 直播中", {
+      fontFamily: "monospace", fontSize: "13px", color: "#ff5a4a", fontStyle: "bold",
+      stroke: "#000000", strokeThickness: 3,
+    }).setOrigin(1, 0).setDepth(1200);
+    this.tweens.add({ targets: this.liveBadge, alpha: 0.3, duration: 600, yoyo: true, repeat: -1 });
+  }
+  private hideLiveBadge(): void {
+    if (!this.liveBadge) return;
+    this.tweens.killTweensOf(this.liveBadge);
+    this.liveBadge.destroy();
+    this.liveBadge = null;
   }
 
   private setup(tl: Timeline, ttImg: HTMLImageElement): void {

@@ -6,3 +6,5 @@ __pycache__/
 /data/
 *.sqlite
 *.db
+# 直播增量文件 (运行中实时可视化的运行时产物, 引擎每步 append)
+live.jsonl

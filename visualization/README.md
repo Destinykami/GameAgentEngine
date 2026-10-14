@@ -17,14 +17,16 @@ visualization/
 ├── public/
 │   ├── stub_timeline.json  # 确定性 stub 时间线 (由 tools/gen_stub_timeline.py 生成)
 │   ├── real_timeline.json  # 真实 9/10 天旧格式样本 (data/auto_sim/timeline.json 拷贝, M5 回放)
+│   ├── live.jsonl          # 直播增量文件 (运行时产物, 引擎每步 append; gitignore, 不入库)
 │   └── assets/             # 地图素材: tiny-town-tilemap.png (Kenney CC0) + TinyTown-LICENSE.txt
 ├── tools/
 │   ├── gen_stub_timeline.py   # 生成 stub 时间线 (复用真实引擎, 脚本化决策, 无 LLM)
 │   ├── validate_timeline.ts   # 数据层 schema/不变量校验
+│   ├── mock_live_source.mjs   # 模拟"运行中模拟"逐步写 live.jsonl (E2E 直播段用)
 │   └── e2e_playwright.mjs     # 无头 chromium 端到端验证
 └── src/
     ├── main.ts / config.ts    # Phaser 入口与全局显示约束 (960x540, pixelArt)
-    ├── data/                  # schema.ts, timelineLoader.ts (+ 旧格式归一化), legacyEvents.ts (回退解析), locationAnchors.ts
+    ├── data/                  # schema.ts, timelineLoader.ts (+ 旧格式归一化), legacyEvents.ts (回退解析), liveSource.ts (直播轮询), locationAnchors.ts
     ├── PlaybackController.ts  # 播放/暂停/上一步/下一步/调速 (纯逻辑, 可单测)
     ├── scenes/InazumaScene.ts # 单场景: 地图+实体+HUD+播放+M2交互, 消费 visual_events
     ├── entities/              # AgentSprite (像素角色动画/血条/名牌/移动/活动), AgentRegistry
@@ -89,8 +91,21 @@ npm run e2e
   回退解析中文串（`legacyEvents.ts`）填 `visual_events` + 合成 world，再走统一校验。
 - 用 `?timeline=real_timeline.json` 加载，断言：31 步、day=10、`decree_ended=true`、`persuade=5`、
   note 含"废止"；回退解析后 visual_events 覆盖 move/conversation/help/attack/flee + 致死
-  attack `target_dead` + dead 态（桃音）；对话气泡可见；step20 桃音 dead；**stub + 真实样本
-  两页全程无 console/page 错误**。
+  attack `target_dead` + dead 态（桃音）；对话气泡可见；step20 桃音 dead。
+
+**直播跟随（运行中实时可视化，不只是跑完回放）**
+- 引擎 `examples/world_auto_sim.py` 每跑完一步就 append 一行 JSON 到 `live.jsonl`
+  （首行 meta、每步一个 TimelineStep、末行 done），与最终 `timeline.json` 并存。
+- 前端 `?live` 模式每秒轮询 `live.jsonl`：收到 meta + 首步即建场景，之后每来新步
+  `addStep` + 时间轴增刻度 + 自动跳到最新步跟随，右上角红色脉冲 **LIVE** 标记；
+  收到 done 行停止轮询、隐藏标记，时间线完整可往回拖（切回普通回放）。
+- 用法：先起 `npm run dev`（vite dev 直接 serve `public/`，引擎写入的
+  `public/live.jsonl` 实时可见），再开 `http://localhost:5173/?live`，然后跑模拟
+  （`.venv/bin/python examples/world_auto_sim.py`）即可边跑边看。
+  （`vite preview` 从 `dist/` serve，运行时写入的 `public/live.jsonl` 不在 dist 里，
+  故直播需 dev 模式；E2E 用 `tools/mock_live_source.mjs` 逐步写 `dist/live.jsonl` 模拟。）
+- E2E 断言：LIVE 标记可见；步数随轮询增长（逐步接入）；自动跟随最新步
+  （index = total-1）；done 后时间线完整（14 步）且 LIVE 标记隐藏（切回放）。
 
 截图落在 `e2e_shots/`。
 

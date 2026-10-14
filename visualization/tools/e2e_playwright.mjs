@@ -318,12 +318,60 @@ await sleep(400);
 await page2.screenshot({ path: resolve(SHOTS, "12_real_ending.png") });
 await page2.close();
 
-console.log("\n== 11. 无残留错误 (stub + 真实样本两页) ==");
+console.log("\n== 11. M5 直播跟随 (?live 运行中实时可视化) ==");
+// 模拟"运行中的模拟": mock 源逐步 (700ms/步) append 到 public/live.jsonl, 前端 ?live
+// 每秒轮询逐步接入并自动跟随最新步, LIVE 标记脉冲; 收到 done 行停止轮询、隐藏标记、
+// 时间线完整可往回拖 (切回普通回放)。验证"运行中可视化" (不只是跑完回放)。
+const mock = spawn("node", ["tools/mock_live_source.mjs"], {
+  cwd: resolve(here, ".."), env: { ...process.env, LIVE_DELAY_MS: "700" }, stdio: "ignore",
+});
+await sleep(300);   // 等 mock 写好 meta + 首步
+const page3 = await browser.newPage({ viewport: { width: 980, height: 560 } });
+const errors3 = [];
+page3.on("console", (m) => { if (m.type() === "error") errors3.push("console: " + m.text()); });
+page3.on("pageerror", (e) => errors3.push("pageerror: " + String(e)));
+await page3.goto(`http://localhost:${PORT}/?live`, { waitUntil: "load" });
+// 等直播场景建好 (轮询收到 meta + ≥1 步后 setup, __REPLAY__ 出现且 timeline 非空)
+await page3.waitForFunction(() => window.__REPLAY__ && window.__REPLAY__.timeline
+  && window.__REPLAY__.timeline.steps.length >= 1, { timeout: 20000 });
+await sleep(300);
+// LIVE 标记可见 (场景里 liveBadge 文本含 "LIVE")
+const liveBadgeVisible = await page3.evaluate(() => {
+  const g = window.__PHASER_GAME__;
+  return g.scene.getScene("Inazuma").liveBadge ? g.scene.getScene("Inazuma").liveBadge.visible : false;
+});
+check(liveBadgeVisible === true, "LIVE 直播标记可见");
+// 步数随轮询增长 (mock 每 700ms 写一步, 前端 1s 轮询逐步接入)
+const stepsA = await page3.evaluate(() => window.__REPLAY__.controller.totalSteps);
+await sleep(2500);
+const stepsB = await page3.evaluate(() => window.__REPLAY__.controller.totalSteps);
+check(stepsB > stepsA, "直播逐步接入, 步数增长 (" + stepsA + " → " + stepsB + ")");
+// 自动跟随最新步 (currentIndex === totalSteps - 1)
+const follow = await page3.evaluate(() => {
+  const c = window.__REPLAY__.controller;
+  return { cur: c.currentIndex, total: c.totalSteps };
+});
+check(follow.cur === follow.total - 1, "自动跟随最新步 (index " + follow.cur + " = total-1)");
+await page3.screenshot({ path: resolve(SHOTS, "13_live_follow.png") });
+// 等 mock 写完 done (14 步 × 700ms ≈ 10s, 加上启动; 已过去 ~3s, 再等 ~9s)
+await sleep(9000);
+const liveEnd = await page3.evaluate(() => ({
+  total: window.__REPLAY__.controller.totalSteps,
+  badge: (() => { const s = window.__PHASER_GAME__.scene.getScene("Inazuma"); return s.liveBadge ? s.liveBadge.visible : false; })(),
+}));
+check(liveEnd.total === 14, "直播结束时间线完整 (14 步, 实际 " + liveEnd.total + ")");
+check(liveEnd.badge === false, "收到 done → LIVE 标记隐藏 (切回普通回放)");
+await page3.screenshot({ path: resolve(SHOTS, "14_live_done.png") });
+await page3.close();
+mock.kill();
+
+console.log("\n== 12. 无残留错误 (stub + 真实样本 + 直播三页) ==");
 check(errors.length === 0, "stub 页全程无 console/page 错误" + (errors.length ? " (" + errors.join("; ") + ")" : ""));
 check(errors2.length === 0, "真实样本页全程无 console/page 错误" + (errors2.length ? " (" + errors2.join("; ") + ")" : ""));
+check(errors3.length === 0, "直播页全程无 console/page 错误" + (errors3.length ? " (" + errors3.join("; ") + ")" : ""));
 
 await browser.close();
 preview.kill();
 console.log("\n截图已存: " + SHOTS);
 if (failures) { console.error("\nE2E FAIL — " + failures + " 项未通过"); process.exit(1); }
-console.log("\nE2E PASS — M1(移动/阵亡/结局) + M2(气泡/详情卡/时间轴拖拽) + M3(像素角色动画/y-sort遮挡) + Phase3(视觉活动投影/中断) + M5(真实样本旧格式回放/全事件覆盖/不回归) 全部通过");
+console.log("\nE2E PASS — M1(移动/阵亡/结局) + M2(气泡/详情卡/时间轴拖拽) + M3(像素角色动画/y-sort遮挡) + Phase3(视觉活动投影/中断) + M5(真实样本旧格式回放/全事件覆盖/不回归) + 直播(运行中实时跟随/live.jsonl) 全部通过");

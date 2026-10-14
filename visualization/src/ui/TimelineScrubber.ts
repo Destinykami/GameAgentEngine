@@ -12,6 +12,7 @@ const HEAD_W = 8;
 const HEAD_H = 16;
 
 export class TimelineScrubber {
+  private scene: Phaser.Scene;
   private ctrl: PlaybackController;
   private track!: Phaser.GameObjects.Rectangle;
   private fill!: Phaser.GameObjects.Rectangle;
@@ -24,6 +25,7 @@ export class TimelineScrubber {
   dbg = { pointerDowns: 0, moves: 0, seeks: 0, lastSeekIndex: -1 };
 
   constructor(scene: Phaser.Scene, ctrl: PlaybackController) {
+    this.scene = scene;
     this.ctrl = ctrl;
     const total = ctrl.totalSteps;
     const cx = X0 + W / 2;
@@ -73,6 +75,17 @@ export class TimelineScrubber {
     this.dbg.seeks++;
     this.dbg.lastSeekIndex = idx;
     this.ctrl.seek(idx);
+  }
+
+  // 直播模式: 时间线增长 (addStep) 后重建刻度 (xOf 依赖 totalSteps, 总步数变了旧刻度位置错)。
+  grow(): void {
+    for (const m of this.markers) m.destroy();
+    this.markers = [];
+    const total = this.ctrl.totalSteps;
+    for (let i = 0; i < total; i++) {
+      this.markers.push(this.scene.add.rectangle(this.xOf(i), Y, 2, MARKER_H, 0x666677).setDepth(321));
+    }
+    this.refresh();
   }
 
   // 步/速度变化时刷新填充与播放头位置。
