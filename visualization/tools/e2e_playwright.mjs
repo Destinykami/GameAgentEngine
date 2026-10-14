@@ -233,6 +233,24 @@ const bubblesGone = await page.evaluate(() => ({
   a: window.__REPLAY__.bubbles.actor.isVisible(), r: window.__REPLAY__.bubbles.reply.isVisible(),
 }));
 check(bubblesGone.a === false && bubblesGone.r === false, "跳回 day0 → 对话气泡消失");
+// 气泡跨连续步保留: 直播每秒推进一步, 若每步都清气泡会一闪而过来不及读。
+// 连续推进 (自动播放/直播/手动 next) 保留上一条对话气泡; 只有大跳转 (scrub) 才清。
+const persist = await page.evaluate(async () => {
+  const rep = window.__REPLAY__;
+  const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
+  const sleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
+  let convIdx = -1;
+  for (let i = 0; i < rep.timeline.steps.length; i++) {
+    if (rep.timeline.steps[i].visual_events.some((v) => v.type === "conversation" && v.utterance)) { convIdx = i; break; }
+  }
+  rep.controller.seek(convIdx); await sleep2(300);
+  const afterConv = s.actorBubble.isVisible();
+  rep.controller.seek(convIdx + 1); await sleep2(300);   // 连续下一步 (非对话)
+  const afterNext = s.actorBubble.isVisible();
+  return { convIdx, afterConv, afterNext };
+});
+check(persist.afterConv === true && persist.afterNext === true,
+  "连续推进气泡保留 (对话步后可见 → 下一步仍可见, 直播不再一闪而过)");
 
 console.log("\n== 6. 时间轴拖拽寻址 (M2) ==");
 const idxBefore = await page.evaluate(() => window.__REPLAY__.controller.currentIndex);

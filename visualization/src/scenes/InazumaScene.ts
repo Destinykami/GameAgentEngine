@@ -291,8 +291,8 @@ export class InazumaScene extends Phaser.Scene {
     //        运输态变化 → 冻结/解冻 Tween + 刷新时间轴
     this.controller.subscribe(
       (step) => {
-        this.applyStep(step);
-        this.renderVisualEvents(step);
+        const bigJump = this.applyStep(step);
+        this.renderVisualEvents(step, bigJump);
         this.panel.update(step, tl);
         this.log.update(step.visual_events);
         this.scrubber.refresh();
@@ -303,8 +303,8 @@ export class InazumaScene extends Phaser.Scene {
       },
     );
     // 应用初始步 (day 0)
-    this.applyStep(tl.steps[0]);
-    this.renderVisualEvents(tl.steps[0]);
+    const initialJump = this.applyStep(tl.steps[0]);
+    this.renderVisualEvents(tl.steps[0], initialJump);
     this.panel.update(tl.steps[0], tl);
     this.log.update(tl.steps[0].visual_events);
     this.scrubber.refresh();
@@ -330,7 +330,9 @@ export class InazumaScene extends Phaser.Scene {
     }
   }
 
-  private applyStep(step: TimelineStep): void {
+  // 返回本步是否大跳转 (scrub/拖时间轴)。连续推进 (自动播放/直播/手动 next) 返回 false。
+  // 场景据此决定清不清气泡/横幅: 连续推进保留气泡 (有时间读完), 大跳转清掉防残留。
+  private applyStep(step: TimelineStep): boolean {
     const reg = this.reg;
     const idx = this.controller.currentIndex;
     const bigJump = this.lastAppliedIndex >= 0 && Math.abs(idx - this.lastAppliedIndex) > 1;
@@ -369,6 +371,7 @@ export class InazumaScene extends Phaser.Scene {
     }
     // Phase 3 视觉活动投影: 按 (角色, 地点, 本步是否被中断) 决定各 NPC 日常活动
     this.applyActivities(step);
+    return bigJump;
   }
 
   // Phase 3 视觉活动投影 (计划 §Phase 3): 按角色+地点推断日常活动, 不冒充后端逐分钟模拟。
@@ -432,13 +435,15 @@ export class InazumaScene extends Phaser.Scene {
   }
 
   // 渲染当前步的 visual_events (气泡/伤害/系统效果/世界事件)。
-  // 快速跳步先清掉上一步的气泡与横幅, 不残留 (计划 §7.2-10)。
   // 事件成功后才表现副作用: success===false 的动作不显示完成态 (计划 §2.4)。
-  private renderVisualEvents(step: TimelineStep): void {
-    this.actorBubble.hide();
-    this.replyBubble.hide();
-    this.damagePopup.clear();
-    this.worldBanner.setAlpha(0);
+  // 气泡/横幅只在"大跳转"(scrub/拖时间轴)时清掉防残留; 连续推进 (自动播放/直播/手动
+  // next) 保留上一条对话气泡 —— 直播每秒推进一步, 若每步都清气泡会一闪而过来不及读。
+  private renderVisualEvents(step: TimelineStep, bigJump = false): void {
+    // 对话气泡: 大跳转清掉防残留; 连续推进保留上一条 (直播每秒一步, 清掉会来不及读)。
+    // 新对话出现时会 show() 覆盖旧气泡, 不冲突。
+    if (bigJump) { this.actorBubble.hide(); this.replyBubble.hide(); }
+    this.worldBanner.setAlpha(0);        // 世界事件横幅每步都清 (一次性法令提示, 非对话)
+    this.damagePopup.clear();            // 伤害数字每步都清 (飘字, 无阅读需求)
 
     for (const ve of step.visual_events) {
       if (ve.type === "conversation" && ve.success !== false && ve.utterance) {
