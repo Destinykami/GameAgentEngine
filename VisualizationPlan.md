@@ -874,6 +874,18 @@ persona_agent/
 - 地图、建筑和角色色彩风格统一
 - 明确允许当前项目的使用和修改方式
 
+### 8.3 已选用素材（原型阶段）
+
+- **地图 / 建筑 / 树 / 道具**：Kenney **"Tiny Town"**（16×16 俯视角城镇 tileset，
+  **CC0 公共领域**，无需署名，可自由使用/修改）。许可证已入库 `visualization/public/assets/
+  TinyTown-LICENSE.txt`。tilemap 入库 `public/assets/tiny-town-tilemap.png`，前端
+  `art/townTiles.ts` 定义 tile 下标，`ArtFactory` 烘焙成纹理。
+- **角色（idle/walk 动画）+ 活动点道具（铁砧/病床/书桌/鸟居）**：**原创像素**（代码生成，
+  见 `art/characters.ts` / `art/activityFrames.ts` / `art/palette.ts`）——角色需要行走动画，
+  公开 tile 无动画帧；活动点道具需高辨识度。原创无第三方素材，无许可证风险。
+- 混合策略：地图用公开 CC0 素材（美观、无许可证风险），角色/活动道具用原创（动画、辨识）。
+  符合 §8.1"公共领域或明确允许开发使用的临时素材"标准，且许可证已确认入库。
+
 ---
 
 ## 9. 关键取舍和风险
@@ -964,7 +976,7 @@ persona_agent/
 - [ ] 完整回放现有 9/10 天样本
 - [ ] 覆盖移动、对话、帮助、攻击、逃跑、死亡和结局
 - [ ] 验证旧回放不回归
-- [ ] 记录素材许可证和来源
+- [x] 记录素材许可证和来源（Kenney "Tiny Town" CC0 公共领域, 许可证入库 `public/assets/TinyTown-LICENSE.txt`; 角色/活动道具为原创无第三方素材）
 - [ ] 评估实时 API 或 WebSocket 是否必要
 - [ ] 决定是否需要 Godot 或继续 Phaser
 

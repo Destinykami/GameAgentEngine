@@ -48,8 +48,12 @@ export class EventLog {
   private text: Phaser.GameObjects.Text;
 
   constructor(scene: Phaser.Scene, x: number, y: number, w: number, h: number) {
-    scene.add.rectangle(x, y, w, h, 0x232329).setStrokeStyle(1, 0x333340).setAlpha(0.92).setDepth(1000);
-    this.text = scene.add.text(x - w / 2 + 10, y - h / 2 + 8, "", {
+    scene.add.rectangle(x, y, w, h, 0x1c1c24).setStrokeStyle(1, 0x3a3a48).setAlpha(0.95).setDepth(1000);
+    scene.add.rectangle(x, y - h / 2 + 2, w - 2, 2, 0xd9a441).setDepth(1001);
+    scene.add.text(x - w / 2 + 10, y - h / 2 + 7, "事件记录", {
+      fontFamily: "monospace", fontSize: "12px", color: "#d9a441", fontStyle: "bold",
+    }).setDepth(1001);
+    this.text = scene.add.text(x - w / 2 + 10, y - h / 2 + 26, "", {
       fontFamily: "monospace", fontSize: "12px", color: "#d8d4cc",
       lineSpacing: 3, wordWrap: { width: w - 20 },
     }).setDepth(1001);

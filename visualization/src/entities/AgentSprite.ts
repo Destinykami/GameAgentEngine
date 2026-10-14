@@ -1,5 +1,4 @@
 import Phaser from "phaser";
-import { buildArt } from "../art/ArtFactory";
 
 // AgentSprite: M3 像素角色 —— 带 idle/walk 动画的角色 Sprite + 名字标签 + 血条。
 // 用包装类持有 Container (不继承 Container, 避开基类 setPosition/setVisible/body 签名冲突)。
@@ -34,8 +33,7 @@ export class AgentSprite {
     this.name0 = name;
     this.maxHealth = maxHealth;
 
-    // 确保角色纹理/动画已生成 (幂等)
-    if (!scene.textures.exists(`char_${name}_idleA`)) buildArt(scene);
+    // 角色纹理/动画由场景 setup() 里的 buildArt 统一生成 (早于实体创建)
 
     // 角色动画 Sprite, 原点在脚底, 站在容器原点
     this.char = scene.add.sprite(0, 0, `char_${name}_idleA`).setOrigin(0.5, 1);

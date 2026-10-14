@@ -6,6 +6,18 @@ import type { AgentSprite } from "../entities/AgentSprite";
 import { LOCATION_ANCHORS, anchorOf } from "../data/locationAnchors";
 import { buildArt } from "../art/ArtFactory";
 import { BUILDINGS } from "../art/buildings";
+import { TILEMAP_KEY } from "../art/townTiles";
+
+// 自行 fetch tilemap 为 HTMLImageElement (无头 WebGL 下 Phaser 纹理 source.data 可能为 null,
+// 直接 2D canvas drawImage 更可靠)。
+function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = () => rej(new Error("tilemap 加载失败: " + url));
+    img.src = url;
+  });
+}
 import { defaultActivity, isInterrupted } from "../data/activityProjection";
 import { StatusPanel } from "../ui/StatusPanel";
 import { EventLog } from "../ui/EventLog";
@@ -44,27 +56,31 @@ export class InazumaScene extends Phaser.Scene {
 
   constructor() { super("Inazuma"); }
 
+  // 预加载 Kenney "Tiny Town" (CC0) tilemap, 供 buildArt 烘焙真实 tile。
+  preload(): void {
+    this.load.image(TILEMAP_KEY, "assets/tiny-town-tilemap.png");
+  }
+
   create(): void {
     this.loadingText = this.add.text(480, 270, "加载稻妻城时间线…", {
       fontFamily: "monospace", fontSize: "16px", color: "#b08d57",
       align: "center", wordWrap: { width: 760 },
     }).setOrigin(0.5);
-    loadTimeline("stub_timeline.json")
-      .then((tl) => this.setup(tl))
+    Promise.all([loadTimeline("stub_timeline.json"), loadImage("assets/tiny-town-tilemap.png")])
+      .then(([tl, ttImg]) => this.setup(tl, ttImg))
       .catch((e: unknown) => {
-        this.loadingText.setText("时间线加载失败:\n" + String(e) +
-          "\n\n请确认 public/stub_timeline.json 存在。\n" +
-          "可运行: .venv/bin/python visualization/tools/gen_stub_timeline.py");
+        this.loadingText.setText("加载失败:\n" + String(e) +
+          "\n\n请确认 public/stub_timeline.json 与 public/assets/tiny-town-tilemap.png 存在。");
       });
   }
 
-  private setup(tl: Timeline): void {
+  private setup(tl: Timeline, ttImg: HTMLImageElement): void {
     this.loadingText.destroy();
     const day0 = tl.steps[0].states;
 
     // M3 真实像素地图: 地面 (Ground) + 建筑 (Buildings) + 活动点/前景道具, 全部参与 y-sort。
     // 角色与建筑/道具同处一个深度空间, 按 y 排序 → 角色从屋顶/树后走过时正确遮挡 (计划 §M3)。
-    buildArt(this);
+    buildArt(this, ttImg);
     this.add.image(480, 270, "ground").setOrigin(0.5, 0.5).setDepth(0);
 
     // 建筑: 每地点一栋, 底边锚在地点锚点略后方, 角色站在建筑前。
@@ -88,14 +104,24 @@ export class InazumaScene extends Phaser.Scene {
     this.prop("bed", LOCATION_ANCHORS.治疗堂.x - 10, LOCATION_ANCHORS.治疗堂.y + 4);
     this.prop("desk", LOCATION_ANCHORS.稻妻主城.x - 22, LOCATION_ANCHORS.稻妻主城.y + 4);
     this.prop("torii", LOCATION_ANCHORS.神樱庭.x, LOCATION_ANCHORS.神樱庭.y + 8);
-    // 樱树 (前景遮挡): 神樱庭周边 + 沿路, 角色走过会被花冠遮挡
-    this.prop("tree", LOCATION_ANCHORS.神樱庭.x - 40, LOCATION_ANCHORS.神樱庭.y + 14);
-    this.prop("tree", LOCATION_ANCHORS.神樱庭.x + 44, LOCATION_ANCHORS.神樱庭.y + 10);
-    this.prop("tree", 300, 240);
-    this.prop("tree", 560, 420);
+    // 樱树 (前景遮挡, 2x): 神樱庭成林 + 沿路点缀, 角色走过会被花冠遮挡
+    const sx = LOCATION_ANCHORS.神樱庭.x, sy = LOCATION_ANCHORS.神樱庭.y;
+    this.prop("tree", sx - 48, sy + 16, 2);
+    this.prop("tree", sx - 12, sy - 6, 2);
+    this.prop("tree", sx + 34, sy + 12, 2);
+    this.prop("tree", sx + 62, sy - 2, 2);
+    this.prop("tree", 300, 240, 2);
+    this.prop("tree", 560, 420, 2);
+    this.prop("tree", 760, 200, 2);
+    // 松树 (点缀)
+    this.prop("pine", 120, 300, 2);
+    this.prop("pine", 900, 240, 2);
     // 灯笼 (路边)
     this.prop("lantern", 440, 250);
     this.prop("lantern", 700, 300);
+    // 水井/木箱 (城外官道与主城点缀)
+    this.prop("well", 40, 500);
+    this.prop("crate", 470, 350);
 
     // 实体注册表 (day-0 为初始注册表 + 满血参考), 记录初始地点
     this.reg = new AgentRegistry(this, day0);
@@ -323,8 +349,8 @@ export class InazumaScene extends Phaser.Scene {
   }
 
   // 前景道具 (活动点/樱树/灯笼): 原点在脚底, 参与 y-sort (角色从其前/后走过)。
-  private prop(key: string, x: number, y: number): void {
-    this.add.image(x, y, `prop_${key}`).setOrigin(0.5, 1).setDepth(Math.round(y));
+  private prop(key: string, x: number, y: number, scale = 1): void {
+    this.add.image(x, y, `prop_${key}`).setOrigin(0.5, 1).setScale(scale).setDepth(Math.round(y));
   }
 
   // 时间轴命中区 (避免点时间轴时误收起详情卡)。

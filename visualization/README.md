@@ -15,7 +15,8 @@ visualization/
 ├── tsconfig.json           # strict, noUnusedLocals, bundler resolution
 ├── vite.config.ts          # base "./", 端口 5173
 ├── public/
-│   └── stub_timeline.json  # 确定性 stub 时间线 (由 tools/gen_stub_timeline.py 生成)
+│   ├── stub_timeline.json  # 确定性 stub 时间线 (由 tools/gen_stub_timeline.py 生成)
+│   └── assets/             # 地图素材: tiny-town-tilemap.png (Kenney CC0) + TinyTown-LICENSE.txt
 ├── tools/
 │   ├── gen_stub_timeline.py   # 生成 stub 时间线 (复用真实引擎, 脚本化决策, 无 LLM)
 │   ├── validate_timeline.ts   # 数据层 schema/不变量校验
@@ -27,7 +28,7 @@ visualization/
     ├── scenes/InazumaScene.ts # 单场景: 地图+实体+HUD+播放+M2交互, 消费 visual_events
     ├── entities/              # AgentSprite (像素角色动画/血条/名牌/移动/活动), AgentRegistry
     ├── dialogue/              # SpeechBubble (气泡), DamagePopup (伤害数字弹出)
-    ├── art/                   # M3+P3 原创像素素材: palette/tiles/groundMap/buildings/characters/activityFrames/ArtFactory
+    ├── art/                   # 像素素材: townTiles(真实tile索引) / groundMap / buildings / characters(原创) / activityFrames / ArtFactory
     ├── data/                  # + activityProjection.ts (Phase 3 视觉活动投影映射)
     └── ui/                    # StatusPanel / EventLog / PlaybackControls / DetailCard / TimelineScrubber
 ```
@@ -113,9 +114,17 @@ npm run e2e
 - **M2 伤害弹出**：成功攻击时目标头顶弹出 `-N`（致死红色 `✝` 强化），上飘淡出。
 - **reason_count 源头完整**：引擎 `VisualEvent.to_dict()` 对 `witnessed` 事件也输出
   `reason_count`（此前只输出 `reason_added` 分支），前端不再显示"现 undefined 条"。
-- **M3 原创像素素材**：`art/` 用代码生成全部像素（`palette` 调色板 + `tiles` 地面 +
-  `groundMap` 60×34 确定性布局 + `buildings` 六建筑/活动点 + `characters` 角色 idle/walk 帧），
-  `ArtFactory` 烘焙成 Canvas 纹理。无第三方素材，无许可证风险（计划 §8.1 原型阶段标准）。
+- **M3 像素素材（混合来源，许可证已记录）**：地图改用公开素材 **Kenney "Tiny Town"**
+  （CC0 公共领域，无需署名，许可证见 `public/assets/TinyTown-LICENSE.txt`）——地面/道路/
+  六建筑/樱树/灯笼/井/栅栏/蘑菇/松树全部真实 tile（`art/townTiles.ts` 定义 tile 下标，
+  `ArtFactory` 用 `drawImage` 从 tilemap 烘焙；场景自行 fetch tilemap 为 HTMLImageElement，
+  不依赖 Phaser 纹理解码，因无头 WebGL 下 `texture.source.data` 可能为 null）。
+  **角色帧（idle/walk）与活动点道具（铁砧/病床/书桌/鸟居）保留原创像素**（`characters` /
+  `activityFrames` / `palette`）——角色需要行走动画，公开 tile 无动画。樱树 = 圆树 tile 染粉。
+  混合策略：地图用公开素材（美观、无许可证风险），角色/活动道具用原创（动画、辨识度）。
+- **UI 美化（稻妻主题）**：状态面板加**血量条**（按血量比例变绿/黄/红）+ 金色题头线，
+  旅行者理由/攻移到页脚；事件记录加金色题头；播放按钮加圆角深色底 + 金色描边；详情卡改
+  金色边框（阵亡红边）。统一深底 `0x1c1c24` + 金色 `0xd9a441` 题头，呼应稻妻城风格。
 - **M3 Ground/Buildings 分层 + y-sort 遮挡**：地面是一张整图（depth 0），建筑/活动点/樱树/
   灯笼是独立 Sprite，角色也是独立 Sprite，全部 `setDepth(round(y))` 参与同一深度空间 →
   按 y 排序，角色从屋顶/树后走过时正确遮挡（计划 §M3 前景遮挡与角色层级）。

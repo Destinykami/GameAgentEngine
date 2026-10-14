@@ -25,9 +25,9 @@ export class DetailCard {
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.root = scene.add.container(0, 0).setDepth(300).setVisible(false);
-    this.bg = scene.add.rectangle(0, 0, W, 40, 0x101016, 0.96).setStrokeStyle(2, 0x4a90d9);
+    this.bg = scene.add.rectangle(0, 0, W, 40, 0x14141c, 0.97).setStrokeStyle(2, 0xd9a441);
     this.nameText = scene.add.text(-W / 2 + 10, -14, "", {
-      fontFamily: "monospace", fontSize: "15px", color: "#ffffff", fontStyle: "bold",
+      fontFamily: "monospace", fontSize: "15px", color: "#ffd9a0", fontStyle: "bold",
     });
     this.root.add([this.bg, this.nameText]);
     this.closeHit = scene.add.zone(W / 2 - 12, -12, 16, 16).setInteractive({ useHandCursor: true });
@@ -61,8 +61,8 @@ export class DetailCard {
     this.lastSnapshot = s;
     this.activityLabel = activityLabel;
     this.nameText.setText(`${name}  [${s.dead ? "阵亡" : "存活"}]  ×`);
-    this.nameText.setColor(s.dead ? "#ff6655" : "#ffffff");
-    this.bg.setStrokeStyle(2, s.dead ? 0x883322 : 0x4a90d9);
+    this.nameText.setColor(s.dead ? "#ff6655" : "#ffd9a0");
+    this.bg.setStrokeStyle(2, s.dead ? 0x883322 : 0xd9a441);
 
     for (const t of this.rows) t.destroy();
     this.rows = [];
