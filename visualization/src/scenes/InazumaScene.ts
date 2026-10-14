@@ -2,9 +2,11 @@ import Phaser from "phaser";
 import { loadTimeline } from "../data/timelineLoader";
 import { PlaybackController } from "../PlaybackController";
 import { AgentRegistry } from "../entities/AgentRegistry";
+import type { AgentSprite } from "../entities/AgentSprite";
 import { LOCATION_ANCHORS, anchorOf } from "../data/locationAnchors";
 import { buildArt } from "../art/ArtFactory";
 import { BUILDINGS } from "../art/buildings";
+import { defaultActivity, isInterrupted } from "../data/activityProjection";
 import { StatusPanel } from "../ui/StatusPanel";
 import { EventLog } from "../ui/EventLog";
 import { PlaybackControls } from "../ui/PlaybackControls";
@@ -35,6 +37,10 @@ export class InazumaScene extends Phaser.Scene {
   private detailCard!: DetailCard;      // 点击实体详情卡
   private scrubber!: TimelineScrubber;  // 时间轴拖拽
   private worldBanner!: Phaser.GameObjects.Text;   // 世界事件横幅
+
+  // Phase 3 视觉活动投影状态: 巡逻 (执行官往返两点) + 坐镇特效 (将军光环)
+  private patrol: { name: string; loc: string; a: { x: number; y: number }; b: { x: number; y: number }; atA: boolean } | null = null;
+  private stationAura: Phaser.GameObjects.Arc | null = null;
 
   constructor() { super("Inazuma"); }
 
@@ -118,16 +124,25 @@ export class InazumaScene extends Phaser.Scene {
 
     // 点击实体 → 详情卡 (sprite 的 onClick); 点空白 → 收起。
     // 用几何判定 (指针是否落在某 sprite 命中区内) 而非事件顺序标记, 因为 Phaser 场景级
-    // pointerdown 先于 sprite onClick 触发, 标记会残留误判。
-    this.reg.setClickHandler((name) => {
-      const s = this.controller.current.states[name];
-      if (s) this.detailCard.show(name, s);
-    });
+    // 点选/详情卡: 全在场景级 pointerdown 用几何判定处理 (spriteAt 识别被点 sprite)。
+    // 不用每个 sprite 的 onClick 闭包 —— 闭包捕获名字不可靠 (曾出现点谁都开旅行者卡)。
     this.input.on("pointerdown", (p: Phaser.Input.Pointer) => {
-      if (this.hitAnySprite(p.x, p.y)) return;   // 点的是实体, 交给其 onClick 打开详情卡
-      if (this.detailCard.isOpen() && this.detailCard.containsPoint(p.x, p.y)) return;
       if (this.inScrubber(p.x, p.y)) { this.scrubber.onPointerDown(p.x); return; }   // 时间轴点选/拖拽
-      this.detailCard.hide();
+      if (this.detailCard.isOpen() && this.detailCard.containsPoint(p.x, p.y)) return;   // 点在卡内, 交给卡自身
+      const spr = this.spriteAt(p.x, p.y);
+      if (spr) {
+        const name = spr.name;
+        const s = this.controller.current.states[name];
+        if (!s) return;
+        // Phase 3 活动标签 (视觉投影): 死/被中断 → 无活动; 否则默认活动标签
+        let actLabel: string | null = null;
+        if (!s.dead && !isInterrupted(name, this.controller.current.visual_events)) {
+          actLabel = defaultActivity(name, s.loc)?.label ?? null;
+        }
+        this.detailCard.show(name, s, actLabel);
+        return;
+      }
+      this.detailCard.hide();   // 点空白 → 收起
     });
     // 时间轴拖拽: 场景级 pointermove/up 驱动 (独立游戏对象 input 在此环境不生效)
     this.input.on("pointermove", (p: Phaser.Input.Pointer) => this.scrubber.onPointerMove(p.x));
@@ -169,6 +184,11 @@ export class InazumaScene extends Phaser.Scene {
     if (!this.actorBubble) return;
     this.actorBubble.update();
     this.replyBubble.update();
+    this.updatePatrol();                                  // Phase 3 执行官往返巡逻
+    if (this.stationAura?.visible) {                       // 坐镇光环跟随将军
+      const g = this.reg.get("雷电将军");
+      if (g) this.stationAura.setPosition(g.x, g.y + 4);
+    }
   }
 
   private applyStep(step: TimelineStep): void {
@@ -189,6 +209,68 @@ export class InazumaScene extends Phaser.Scene {
       }
       this.prevLoc.set(name, s.loc);
     }
+    // Phase 3 视觉活动投影: 按 (角色, 地点, 本步是否被中断) 决定各 NPC 日常活动
+    this.applyActivities(step);
+  }
+
+  // Phase 3 视觉活动投影 (计划 §Phase 3): 按角色+地点推断日常活动, 不冒充后端逐分钟模拟。
+  // 死/被中断 (attack/flee/help/hide) → 停止日常活动; 否则播默认活动 (驻道具/巡逻/坐镇)。
+  // talk/move/wait/conversation 不打断日计划。
+  private applyActivities(step: TimelineStep): void {
+    let patrolName = "";
+    let patrolLoc = "";
+    let stationName = "";
+    for (const [name, s] of Object.entries(step.states)) {
+      if (s.dead) { this.reg.applyActivity(name, null); continue; }
+      if (isInterrupted(name, step.visual_events)) { this.reg.applyActivity(name, null); continue; }
+      const act = defaultActivity(name, s.loc);
+      if (!act) { this.reg.applyActivity(name, null); continue; }
+      if (act.animation === "patrol") { patrolName = name; patrolLoc = s.loc; }
+      else if (act.animation === "station") { stationName = name; }
+      else this.reg.applyActivity(name, act);   // 驻道具: hammer/heal/read 活动动画
+    }
+    // 巡逻: 执行官在巡逻地点且未被中断 → 沿两点往返 (moveTo 播 walk + update 驱动)。
+    // 已在巡逻同一地点则保持 (不打断往返), 否则重新布点。
+    if (patrolName) {
+      const spr = this.reg.get(patrolName);
+      if (!spr) { this.patrol = null; }
+      else if (this.patrol && this.patrol.name === patrolName && this.patrol.loc === patrolLoc) {
+        // 保持当前巡逻 (不打断往返)
+      } else {
+        const a = anchorOf(patrolLoc);
+        this.patrol = {
+          name: patrolName, loc: patrolLoc,
+          a: { x: a.x - 24, y: a.y + 6 }, b: { x: a.x + 24, y: a.y + 6 }, atA: true,
+        };
+        spr.clearActivity();
+        spr.moveTo(this.patrol.a.x, this.patrol.a.y, 900);
+      }
+    } else this.patrol = null;
+    // 坐镇: 将军在神樱庭 → idle + 环境光环特效
+    this.showStationAura(stationName || null);
+  }
+
+  // 执行官巡逻: update 里检测停下瞬间切下一个巡逻点, 形成往返巡逻 (moveTo 自动播 walk)。
+  private updatePatrol(): void {
+    if (!this.patrol) return;
+    const spr = this.reg.get(this.patrol.name);
+    if (spr && !spr.isMoving) {
+      const next = this.patrol.atA ? this.patrol.b : this.patrol.a;
+      spr.moveTo(next.x, next.y, 1600);
+      this.patrol.atA = !this.patrol.atA;
+    }
+  }
+
+  // 坐镇环境特效: 将军脚下紫色脉冲光环 (坐镇观望的氛围, 非战斗)。
+  private showStationAura(name: string | null): void {
+    if (!name) { if (this.stationAura) { this.stationAura.setVisible(false); } return; }
+    const spr = this.reg.get(name);
+    if (!spr) return;
+    if (!this.stationAura) {
+      this.stationAura = this.add.circle(0, 0, 16, 0xba68c8, 0.28).setOrigin(0.5).setDepth(1);
+      this.tweens.add({ targets: this.stationAura, scale: 1.6, alpha: 0, duration: 1400, repeat: -1, ease: "Cubic.easeOut" });
+    }
+    this.stationAura.setPosition(spr.x, spr.y + 4).setVisible(true).setScale(1).setAlpha(0.28);
   }
 
   // 渲染当前步的 visual_events (气泡/伤害/系统效果/世界事件)。
@@ -250,13 +332,18 @@ export class InazumaScene extends Phaser.Scene {
     return x >= 30 && x <= 930 && y >= 6 && y <= 36;
   }
 
-  // 指针是否落在某实体命中区内 (与 AgentSprite.onClick 的 hitArea 一致: x半宽10, y -22~+8)。
-  // 用于区分"点实体"(打开详情卡)与"点空白"(收起详情卡), 不依赖事件触发顺序。
-  private hitAnySprite(x: number, y: number): boolean {
+  // 几何识别被点 sprite: 命中区 (x半宽10, y -22~+8) 含指针者, 取 y-sort 最上层 (depth 最大)。
+  // 不依赖 Phaser 的 per-sprite input 闭包 (曾出现命中异常/闭包捕获错名字)。
+  private spriteAt(x: number, y: number): AgentSprite | null {
+    let best: AgentSprite | null = null;
+    let bestDepth = -Infinity;
     for (const spr of this.reg.all()) {
       const dy = y - spr.y;
-      if (Math.abs(x - spr.x) <= 10 && dy >= -22 && dy <= 8) return true;
+      if (Math.abs(x - spr.x) <= 10 && dy >= -22 && dy <= 8 && spr.depth >= bestDepth) {
+        bestDepth = spr.depth;
+        best = spr;
+      }
     }
-    return false;
+    return best;
   }
 }

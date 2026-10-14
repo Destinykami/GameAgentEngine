@@ -20,6 +20,7 @@ export class DetailCard {
   private closeHit: Phaser.GameObjects.Zone;
   private lastName = "";
   private lastSnapshot: AgentSnapshot | null = null;
+  private activityLabel: string | null = null;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -55,9 +56,10 @@ export class DetailCard {
     return y + 26;
   }
 
-  show(name: string, s: AgentSnapshot): void {
+  show(name: string, s: AgentSnapshot, activityLabel: string | null = null): void {
     this.lastName = name;
     this.lastSnapshot = s;
+    this.activityLabel = activityLabel;
     this.nameText.setText(`${name}  [${s.dead ? "阵亡" : "存活"}]  ×`);
     this.nameText.setColor(s.dead ? "#ff6655" : "#ffffff");
     this.bg.setStrokeStyle(2, s.dead ? 0x883322 : 0x4a90d9);
@@ -71,6 +73,10 @@ export class DetailCard {
       { text: `身份    ${s.role || "—"}`, color: "#8fb8e8", size: 13 },
       { text: `类型    ${s.kind}`, color: "#8fb8e8", size: 13 },
     ];
+    // Phase 3 视觉活动投影 (按角色+地点推断, 不冒充后端逐分钟模拟)
+    if (activityLabel && !s.dead) {
+      lines.push({ text: `活动    ${activityLabel} (视觉投影)`, color: "#c8a0e8", size: 13 });
+    }
     if (s.reasons.length > 0) {
       lines.push({ text: `证据理由 (${s.reasons.length} 条):`, color: "#d9a441", size: 13, bold: true });
       for (const r of s.reasons.slice(0, MAX_REASONS)) {
@@ -105,6 +111,7 @@ export class DetailCard {
   // E2E 断言用。
   nameShown(): string { return this.lastName; }
   snapshotShown(): AgentSnapshot | null { return this.lastSnapshot; }
+  activityShown(): string | null { return this.activityLabel; }
   // 点在卡片外时由场景调用 hide。
   containsPoint(px: number, py: number): boolean {
     if (!this.open) return false;

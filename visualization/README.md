@@ -25,9 +25,10 @@ visualization/
     ├── data/                  # schema.ts, timelineLoader.ts, locationAnchors.ts
     ├── PlaybackController.ts  # 播放/暂停/上一步/下一步/调速 (纯逻辑, 可单测)
     ├── scenes/InazumaScene.ts # 单场景: 地图+实体+HUD+播放+M2交互, 消费 visual_events
-    ├── entities/              # AgentSprite (像素角色动画/血条/名牌/移动/点击), AgentRegistry
+    ├── entities/              # AgentSprite (像素角色动画/血条/名牌/移动/活动), AgentRegistry
     ├── dialogue/              # SpeechBubble (气泡), DamagePopup (伤害数字弹出)
-    ├── art/                   # M3 原创像素素材: palette/tiles/groundMap/buildings/characters/ArtFactory
+    ├── art/                   # M3+P3 原创像素素材: palette/tiles/groundMap/buildings/characters/activityFrames/ArtFactory
+    ├── data/                  # + activityProjection.ts (Phase 3 视觉活动投影映射)
     └── ui/                    # StatusPanel / EventLog / PlaybackControls / DetailCard / TimelineScrubber
 ```
 
@@ -72,6 +73,12 @@ npm run e2e
 - 像素角色播 idle 动画（`idle_<name>`），移动途中播 walk（`walk_<name>`），到位回 idle
 - y-sort 深度层级：角色深度 = round(y)，随 y 递增 → 角色与建筑/樱树按 y 排序，
   走过屋顶/树后正确遮挡（前景遮挡排序基础）
+
+**Phase 3 视觉活动投影**
+- 各 NPC 按 (角色+地点) 推断日常活动：刚郎@锻造坊 播锻造锤击、桃音@治疗堂 播治疗、
+  小梅@稻妻主城 播阅读、将军@神樱庭 坐镇待机（均断言实际动画 key）
+- 详情卡显示活动标签（如"锻造武器 (视觉投影)"）
+- 活动中断：step2 桃音被攻击 → 治疗中断（实际回 idle）；刚郎未被攻击 → 继续锻造
 - 全程无残留错误
 
 截图落在 `e2e_shots/`。
@@ -116,3 +123,14 @@ npm run e2e
   与 `walk_<name>`（迈腿两帧）；`moveTo` 途中切 walk、到位回 idle，暂停时 `anims.pause()` 冻结。
 - **M3 活动点**：铁砧/病床/书桌/鸟居是 NPC 日常活动锚点（计划 Phase 3 活动投影的基础），
   作为前景道具参与 y-sort。
+- **Phase 3 视觉活动投影**：`data/activityProjection.ts` 按 (角色, 地点) 映射默认活动
+  （桃音治疗/刚郎锻造/小梅阅读/执行官巡逻/将军坐镇），**明确标记为视觉投影**——按角色+地点+
+  动作推断，不冒充后端已模拟每一分钟连续行为（计划 §Phase 3 重要边界）。活动帧
+  （hammer/heal/read）在 `art/activityFrames.ts` 原创像素，ArtFactory 烘焙成循环动画。
+- **Phase 3 活动中断**：`INTERRUPT_TYPES`（attack/flee/help/hide/counterattack）触发表现切换，
+  attack 对行动者和目标都中断；talk/move/wait/conversation 不打断日计划。死/被中断 → 停活动。
+- **Phase 3 巡逻/坐镇**：执行官在巡逻地点沿两点往返（moveTo 播 walk + update 检测停下切点）；
+  将军坐镇播 idle + 脚下紫色脉冲光环（环境特效，非战斗）。
+- **点选改几何判定**：详情卡点选从"每个 sprite 的 onClick 闭包"改为场景 pointerdown 里
+  `spriteAt()` 几何识别（命中区含指针者取 y-sort 最上层）。per-sprite input 闭包捕获名字不可靠
+  （曾出现点谁都开旅行者卡），几何判定绕开 Phaser 的 per-sprite 命中/闭包异常。

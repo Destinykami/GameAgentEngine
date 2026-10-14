@@ -955,9 +955,9 @@ persona_agent/
 - [x] 实现气泡组件（`dialogue/SpeechBubble.ts`）
 - [x] 实现气泡队列和优先级（成功对话才显示, 跳步清旧气泡, 双方错开）
 - [x] 分离 NPC 回复和系统提示（气泡正文 vs 金色浮动系统提示）
-- [ ] 增加活动投影数据
-- [ ] 实现锻造、治疗、阅读、巡逻、坐镇动画
-- [ ] 实现活动中断和重新规划视觉表现
+- [x] 增加活动投影数据（`data/activityProjection.ts` 按角色+地点映射, 标记视觉投影）
+- [x] 实现锻造、治疗、阅读、巡逻、坐镇动画（hammer/heal/read 帧 + 巡逻往返 + 坐镇光环）
+- [x] 实现活动中断和重新规划视觉表现（attack/flee/help/hide 中断, talk/move/wait 不打断）
 
 ### M5：稳定性和扩展
 

@@ -75,4 +75,14 @@ export class AgentRegistry {
   freezeAll(): void { for (const s of this.sprites.values()) s.freeze(); }
   unfreezeAll(): void { for (const s of this.sprites.values()) s.unfreeze(); }
   stopAllMoves(): void { for (const s of this.sprites.values()) s.stopMove(); }
+
+  // Phase 3: 为某实体设定/清除驻道具活动 (hammer/heal/read, 播活动动画+朝向)。
+  // patrol/station 由场景特殊处理 (巡逻路径/坐镇特效), 不在此。
+  applyActivity(name: string, act: { animation: string; facing?: "left" | "right" } | null): void {
+    const spr = this.sprites.get(name);
+    if (!spr) return;
+    if (act) spr.setActivity(`${act.animation}_${name}`, act.facing);
+    else spr.clearActivity();
+  }
+  activityOf(name: string): string | null { return this.sprites.get(name)?.activityName ?? null; }
 }

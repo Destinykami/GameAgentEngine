@@ -4,6 +4,7 @@
 //   M1: 加载无错 / 6地点6实体 / 移动落锚点 / 桃音阵亡 / 结局废止
 //   M2: 对话气泡 (行动者台词 + 目标回复, 锚定/文本正确) / 点击实体详情卡 / 时间轴拖拽寻址
 //   M3: 像素角色播 idle/walk 动画 / y-sort 深度层级 (前景遮挡排序基础)
+//   Phase3: 视觉活动投影 (刚郎锻造/桃音治疗/小梅阅读/将军坐镇, 被攻击中断, 详情卡活动标签)
 // 游戏坐标→页面坐标: Phaser FIT 缩放, 用 canvas 的 getBoundingClientRect 映射。
 // 关键时刻截图到 e2e_shots/。
 import { chromium } from "playwright";
@@ -86,6 +87,30 @@ check(m3.将军anim === "idle_雷电将军", "将军播 idle 动画 (实际 " + 
 check(m3.depth === Math.round(m3.y), "旅行者深度=round(y) y-sort 层级 (depth " + m3.depth + " = y " + Math.round(m3.y) + ")");
 // 遮挡不变量: y 更大者深度更大 → 角色与建筑/樱树按 y 排序, 走过屋顶/树后正确遮挡。
 check(typeof m3.depth === "number" && m3.depth > 0, "深度为正且随 y 递增 (遮挡排序基础)");
+
+console.log("\n== 2c. Phase 3 视觉活动投影 ==");
+// day0 各 NPC 按 (角色+地点) 推断日常活动: 刚郎锻造/桃音治疗/小梅阅读/将军坐镇, 被攻击则中断。
+await sleep(300);   // 等活动动画起播
+const act0 = await page.evaluate(() => {
+  const r = window.__REPLAY__.sprites;
+  return { 刚郎: r.animKeyOf("刚郎"), 桃音: r.animKeyOf("桃音"), 小梅: r.animKeyOf("小梅"), 将军: r.animKeyOf("雷电将军") };
+});
+check(act0.刚郎 === "hammer_刚郎", "刚郎@锻造坊 播锻造锤击 (实际 " + act0.刚郎 + ")");
+check(act0.桃音 === "heal_桃音", "桃音@治疗堂 播治疗 (实际 " + act0.桃音 + ")");
+check(act0.小梅 === "read_小梅", "小梅@稻妻主城 播阅读 (实际 " + act0.小梅 + ")");
+check(act0.将军 === "idle_雷电将军", "将军@神樱庭 坐镇待机 (实际 " + act0.将军 + ")");
+// 详情卡显示活动 (视觉投影): 点刚郎 → 活动=锻造武器 (视觉投影)
+const gl = await page.evaluate(() => window.__REPLAY__.sprites.posOf("刚郎"));
+const glPage = await gameToPage(page, gl.x, gl.y);
+await page.mouse.click(glPage.px, glPage.py);
+await sleep(150);
+const glCard = await page.evaluate(() => ({ name: window.__REPLAY__.detailCard.nameShown(), act: window.__REPLAY__.detailCard.activityShown() }));
+check(glCard.name === "刚郎", "点刚郎 → 详情卡名字=刚郎 (实际 " + glCard.name + ")");
+check(glCard.act === "锻造武器", "详情卡活动=锻造武器 (视觉投影) (实际 " + glCard.act + ")");
+await page.screenshot({ path: resolve(SHOTS, "08_activity.png") });
+// 收起并回 day0 (不污染后续依赖 day0 坐标的段落)
+await page.evaluate(() => { window.__REPLAY__.detailCard.hide(); window.__REPLAY__.controller.seek(0); });
+await sleep(200);
 
 console.log("\n== 3. 点击实体详情卡 (M2) ==");
 // 点击旅行者 (day0 在稻妻主城), 断言详情卡打开且内容正确
@@ -198,11 +223,20 @@ check(last.note && last.note.includes("废止"), "note 含'废止'眼狩令");
 await sleep(400);
 await page.screenshot({ path: resolve(SHOTS, "04_ending.png") });
 
-console.log("\n== 9. 无残留错误 ==");
+console.log("\n== 9. 活动中断 (Phase 3) ==");
+// step2 桃音被执行官攻击 (非致死) → 治疗活动中断 (attack 中断日计划); 刚郎未被攻击 → 继续锻造。
+await page.evaluate(() => window.__REPLAY__.controller.seek(2));
+await sleep(300);
+const actInt = await page.evaluate(() => ({ 桃音: window.__REPLAY__.sprites.animKeyOf("桃音"), 刚郎: window.__REPLAY__.sprites.animKeyOf("刚郎") }));
+check(actInt.桃音 !== "heal_桃音", "step2 桃音被攻击 → 治疗中断 (实际 " + actInt.桃音 + ")");
+check(actInt.刚郎 === "hammer_刚郎", "step2 刚郎未被攻击 → 继续锻造 (实际 " + actInt.刚郎 + ")");
+await page.evaluate(() => window.__REPLAY__.controller.seek(0));
+
+console.log("\n== 10. 无残留错误 ==");
 check(errors.length === 0, "全程无 console/page 错误" + (errors.length ? " (" + errors.join("; ") + ")" : ""));
 
 await browser.close();
 preview.kill();
 console.log("\n截图已存: " + SHOTS);
 if (failures) { console.error("\nE2E FAIL — " + failures + " 项未通过"); process.exit(1); }
-console.log("\nE2E PASS — M1(移动/阵亡/结局) + M2(气泡/详情卡/时间轴拖拽) + M3(像素角色动画/y-sort遮挡) 全部通过");
+console.log("\nE2E PASS — M1(移动/阵亡/结局) + M2(气泡/详情卡/时间轴拖拽) + M3(像素角色动画/y-sort遮挡) + Phase3(视觉活动投影/中断) 全部通过");

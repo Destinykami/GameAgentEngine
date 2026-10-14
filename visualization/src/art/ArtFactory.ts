@@ -11,11 +11,15 @@ import { TILE_VARIANTS, type TileKind } from "./tiles";
 import { buildGroundGrid, MAP_COLS, MAP_ROWS, TILE_PX } from "./groundMap";
 import { BUILDINGS, PROPS } from "./buildings";
 import { framesFor, bodyColorOf, CHAR_BODY_COLOR, BODY_PLACEHOLDER } from "./characters";
+import { ACTIVITY_FRAMES } from "./activityFrames";
 
 function colorOf(ch: string, bodyColor?: string): string {
   if (ch === BODY_PLACEHOLDER && bodyColor) return bodyColor;
   return PALETTE[ch] ?? null;   // 透明/未知 → null (不画)
 }
+
+// 活动帧用 '#' 表身体色, 渲染前替换成占位 § (再由 drawGrid 换成角色色)。
+const sub = (grid: string[]) => grid.map((row) => row.split("#").join(BODY_PLACEHOLDER));
 
 // 把像素网格画到 ctx 的 (ox,oy), 每格 1px。bodyColor 用于角色身体色替换。
 function drawGrid(ctx: CanvasRenderingContext2D, grid: string[], ox: number, oy: number, bodyColor?: string): void {
@@ -75,6 +79,16 @@ export function buildArt(scene: Phaser.Scene): void {
     }
     if (!scene.anims.exists(`walk_${cn}`)) {
       scene.anims.create({ key: `walk_${cn}`, frames: [{ key: `char_${cn}_walk1` }, { key: `char_${cn}_walk2` }], frameRate: 8, repeat: -1 });
+    }
+    // 6. Phase 3 活动帧 + 活动动画 (hammer/heal/read 循环, 驻道具活动)
+    for (const [ak, [fa, fb]] of Object.entries(ACTIVITY_FRAMES)) {
+      makeTexture(scene, `act_${cn}_${ak}A`, 16, 16, (ctx) => drawGrid(ctx, sub(fa), 0, 0, bc));
+      makeTexture(scene, `act_${cn}_${ak}B`, 16, 16, (ctx) => drawGrid(ctx, sub(fb), 0, 0, bc));
+      const key = `${ak}_${cn}`;
+      if (!scene.anims.exists(key)) {
+        const rate = ak === "hammer" ? 6 : ak === "heal" ? 3 : 2;   // 锤击快/治疗中/阅读慢
+        scene.anims.create({ key, frames: [{ key: `act_${cn}_${ak}A` }, { key: `act_${cn}_${ak}B` }], frameRate: rate, repeat: -1 });
+      }
     }
   }
 }

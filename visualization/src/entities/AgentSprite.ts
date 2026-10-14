@@ -26,11 +26,12 @@ export class AgentSprite {
   private deadOverlay: Phaser.GameObjects.Text;
   private maxHealth: number;
   private activeTween: Phaser.Tweens.Tween | null = null;
-  private name: string;
+  private name0: string;
+  private activity: string | null = null;   // 当前活动动画 key (Phase 3 视觉活动投影)
 
   constructor(scene: Phaser.Scene, name: string, x: number, y: number, maxHealth: number) {
     this.scene = scene;
-    this.name = name;
+    this.name0 = name;
     this.maxHealth = maxHealth;
 
     // 确保角色纹理/动画已生成 (幂等)
@@ -55,12 +56,31 @@ export class AgentSprite {
     this.setHealth(maxHealth);
   }
 
+  get name(): string { return this.name0; }
   get x(): number { return this.container.x; }
   get y(): number { return this.container.y; }
   get gameObject(): Phaser.GameObjects.Container { return this.container; }
-  // 当前播放的动画 key (idle_<name> / walk_<name>), 供 E2E 断言动画生效。
+  // 当前播放的动画 key (idle_<name> / walk_<name> / <activity>_<name>), 供 E2E 断言动画生效。
   get animKey(): string | null { return this.char.anims.currentAnim?.key ?? null; }
   get depth(): number { return this.container.depth; }
+  // 当前活动动画 key (Phase 3), 无活动则 null。
+  get activityName(): string | null { return this.activity; }
+  // 是否正在移动 (巡逻到位检测: 停下的瞬间切下一个巡逻点)。
+  get isMoving(): boolean { return this.activeTween !== null && this.activeTween.isActive(); }
+
+  // Phase 3: 播活动动画 (hammer/heal/read_<name>), 帧默认朝右, facing=left 时水平翻转。
+  setActivity(animKey: string, facing?: "left" | "right"): void {
+    this.activity = animKey;
+    this.char.setFlipX(facing === "left");
+    this.char.anims.play(animKey, true);
+  }
+  // 停止活动, 回 idle (移动/被中断时调用)。
+  clearActivity(): void {
+    if (!this.activity) return;
+    this.activity = null;
+    this.char.setFlipX(false);
+    this.char.play(`idle_${this.name0}`);
+  }
 
   onClick(cb: () => void): void {
     const hit = new Phaser.Geom.Rectangle(-10, -22, 20, 30);
@@ -76,13 +96,15 @@ export class AgentSprite {
     this.killMove();
     this.container.setPosition(Math.round(x), Math.round(y));
     this.container.setDepth(Math.round(y));
-    this.char.play(`idle_${this.name}`);
+    this.clearActivity();
+    this.char.play(`idle_${this.name0}`);
   }
 
   // 地点变化时 Tween 走过去 (连续行走, 不瞬移), 途中播 walk, 到位回 idle。
   moveTo(x: number, y: number, duration: number): void {
     this.killMove();
-    this.char.play(`walk_${this.name}`);
+    this.clearActivity();   // 行走覆盖驻留活动
+    this.char.play(`walk_${this.name0}`);
     this.activeTween = this.scene.tweens.add({
       targets: this.container,
       x: Math.round(x),
@@ -90,11 +112,16 @@ export class AgentSprite {
       duration,
       ease: "Sine.easeInOut",
       onUpdate: () => this.container.setDepth(Math.round(this.container.y)),   // 移动中持续 y-sort
-      onComplete: () => { this.activeTween = null; this.char.play(`idle_${this.name}`); },
+      onComplete: () => {
+        this.activeTween = null;
+        // 到位后: 若已设活动 (场景在移动中设定) 则续播活动, 否则回 idle
+        if (this.activity) this.char.anims.play(this.activity, true);
+        else this.char.play(`idle_${this.name0}`);
+      },
     });
   }
 
-  stopMove(): void { this.killMove(); this.char.play(`idle_${this.name}`); }
+  stopMove(): void { this.killMove(); this.char.play(`idle_${this.name0}`); }
 
   // 暂停/恢复: 冻结 Tween + 暂停动画 (计划 §7.2-9: 暂停时动画和气泡都暂停)。
   freeze(): void {
