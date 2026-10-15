@@ -18,6 +18,10 @@ from .memory import MemoryRecord, MemoryStore
 class PlanningEngine:
     def __init__(self, llm: LLMClient) -> None:
         self._llm = llm
+        # 计划计数 (实验埋点, 纯增量): 日计划生成次数 / 反应后重规划次数,
+        # 供"计划被打断的频率" (Plan Disruption Rate) 直接读取。
+        self.daily_plan_count = 0
+        self.replan_count = 0
 
     # ------------------------------------------------------------- 日计划
     def make_daily_plan(self, store: MemoryStore, persona_traits: dict,
@@ -30,6 +34,7 @@ class PlanningEngine:
         计划只存进记忆流是不够的: 反应决策不走检索, 需要直接拿到块。
         """
         top_blocks = self._llm.generate_plan(persona_traits, previous_day, date, context)
+        self.daily_plan_count += 1   # 每次生成都计 (LLM 返回空计划也花了调用)
         # M4: 新的一天计划**替换**旧的 —— 计划是前瞻性的, 跨日后昨日计划 (含分解
         # 出的子任务) 纯属垃圾, 直接失效而非降权到地板留在流里: 30 天模拟会积
         # 数百条旧计划污染小库检索。观察性记忆才"降权不删", 计划不是经历。
@@ -94,6 +99,7 @@ class PlanningEngine:
                       f"只生成从当前时刻到当天结束的计划, 不要重排已经过去的时间。")
         context = f"{context} {anchor_ctx}".strip() if context else anchor_ctx
         blocks = self._llm.generate_plan(persona_traits, "", "replan", context=context)
+        self.replan_count += 1
         # 规则层锚定: 锚点 = 下一个整点 (当前小时内的剩余不足 1 小时, 不排块)
         anchor = math.ceil(hour - 1e-9)
         clamped: list[tuple[int, int, str]] = []

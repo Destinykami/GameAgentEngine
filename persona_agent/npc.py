@@ -34,7 +34,11 @@ class NPC:
                  llm: LLMClient,
                  embedder: Embedder | None = None,
                  store: MemoryStore | None = None,
-                 reflection_threshold: float = REFLECTION_THRESHOLD) -> None:
+                 reflection_threshold: float = REFLECTION_THRESHOLD,
+                 conflict_policy: str = "full",
+                 evidence_types: tuple[str, ...] = ("observation",),
+                 evidence_min_relevance: float = 0.0,
+                 use_relationship: bool = True) -> None:
         self.name = name
         self.persona_traits = persona_traits
         self.embedder = embedder or HashEmbedder()
@@ -42,9 +46,14 @@ class NPC:
         self.store = store or MemoryStore(self.embedder)
         self._reflection_threshold = reflection_threshold   # 重要性累积到多少触发自我反思 (可调)
         # npc_name 注入: 关系反思兜底问题用本 NPC 真名 (无名退中性 "NPC")
-        self.reflection = ReflectionEngine(self.llm, self.embedder, npc_name=name)
+        # 消融开关原样透传, 缺省全部 = 现行为 (定义见 EvalPlan.md)
+        self.reflection = ReflectionEngine(self.llm, self.embedder, npc_name=name,
+                                           evidence_types=evidence_types,
+                                           conflict_policy=conflict_policy,
+                                           evidence_min_relevance=evidence_min_relevance)
         self.planner = PlanningEngine(self.llm)
-        self.decider = ReactionDecider(self.store, self.llm)
+        self.decider = ReactionDecider(self.store, self.llm,
+                                       use_relationship=use_relationship)
         self.dialogue = DialogueManager(self.llm, self.store, persona_traits,
                                         name=name)
 

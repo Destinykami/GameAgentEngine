@@ -53,10 +53,24 @@ class ReflectionEngine:
     def __init__(self, llm: LLMClient,
                  embedder: Embedder | None = None,
                  dedup_threshold: float = DEDUP_THRESHOLD,
-                 npc_name: str = "") -> None:
+                 npc_name: str = "",
+                 evidence_types: tuple[str, ...] = ("observation",),
+                 conflict_policy: str = "full",
+                 evidence_min_relevance: float = 0.0) -> None:
         self._llm = llm
         self._embedder = embedder
         self._dedup_threshold = dedup_threshold
+        # 证据检索类型限定 (消融开关, 缺省 = 现行为):
+        # ("observation",) = 级联切断, 反思只引用观察;
+        # ("observation", "reflection") = Generative Agents 原始反思 (消融臂)。
+        self._evidence_types = tuple(evidence_types)
+        # 冲突处理策略 (消融开关, 缺省 "full" = 现行为):
+        #   "full"            LLM 判矛盾强度, >=7 失效 / 3-6 衰减
+        #   "heuristic_decay" 关键词方向矛盾, 只衰减不失效, 零 LLM (旧词表机制)
+        #   "off"             不处理矛盾 (消融基线)
+        self._conflict_policy = conflict_policy
+        # 反思证据检索的原始相关性下限 (候选证据限制, 缺省 0.0 = 不过滤)
+        self._evidence_min_relevance = evidence_min_relevance
         # 本引擎所属 NPC 的名字 (关系反思兜底问题需要; 无名时退中性 "NPC",
         # 不写死任何 demo 名字)。
         self._npc_name = npc_name
@@ -92,7 +106,8 @@ class ReflectionEngine:
             # 为证据的观察由"被有效反思引用即保护"单独兜底, 不依赖此副作用。
             evidence = store.retrieve(query=q, now=now,
                                       shared=True, top_k=10,
-                                      types=["observation"],
+                                      types=list(self._evidence_types),
+                                      min_relevance=self._evidence_min_relevance,
                                       mark_accessed=False)
             ev_pairs = [(e["id"], e["content"]) for e in evidence]
             if not ev_pairs:
@@ -130,7 +145,8 @@ class ReflectionEngine:
             # mark_accessed=False: 同 reflect_self, 候选证据不刷新遗忘锚点 (M7)。
             evidence = store.retrieve(query=q, now=now, player_id=player_id,
                                       top_k=10, include_player=player_id,
-                                      types=["observation"],
+                                      types=list(self._evidence_types),
+                                      min_relevance=self._evidence_min_relevance,
                                       mark_accessed=False)
             ev_pairs = [(e["id"], e["content"]) for e in evidence]
             if not ev_pairs:
@@ -148,6 +164,15 @@ class ReflectionEngine:
     # ------------------------------------------------------------- 冲突处理
     def check_conflicts(self, store: MemoryStore, player_id: str,
                         now: float) -> list[int]:
+        """冲突处理入口: 按 _conflict_policy 分派 (消融开关, 缺省 full = 现行为)。"""
+        if self._conflict_policy == "off":
+            return []
+        if self._conflict_policy == "heuristic_decay":
+            return self._check_conflicts_heuristic(store, player_id, now)
+        return self._check_conflicts_llm(store, player_id, now)
+
+    def _check_conflicts_llm(self, store: MemoryStore, player_id: str,
+                             now: float) -> list[int]:
         """检测关系反思与更晚观察的矛盾 (LLM 判矛盾强度), 失效/衰减矛盾反思。
 
         取代词表方向匹配: 让 LLM 判语义矛盾强度 0-10 —— 强背叛推翻强信任 =
@@ -200,6 +225,38 @@ class ReflectionEngine:
             elif decay_count:
                 target = ref.base_confidence * (0.5 ** decay_count)
                 if target < ref.confidence - 1e-9:   # 只写实际下降, 重跑不重复写
+                    store.update_confidence(ref.id, target)
+                    handled.append(ref.id)
+        return handled
+
+    def _check_conflicts_heuristic(self, store: MemoryStore, player_id: str,
+                                   now: float) -> list[int]:
+        """关键词方向矛盾的置信度衰减 (只衰减不失效, 零 LLM 调用)。
+
+        旧词表机制的消融臂: 反思与更晚观察的信任方向相反 (TRUST_WORDS vs
+        DISTRUST_WORDS) 即计一次部分矛盾。衰减是幂等目标水位 (同 LLM 路径, H1):
+        目标 = base_confidence * 0.5 ** 矛盾观察条数, 重跑不复合。不失效 ——
+        本臂隔离"衰减机制本身"与"LLM 判别"。
+        """
+        handled: list[int] = []
+        reflections = store.all_valid(player_id=player_id, types=["reflection"])
+        observations = store.all_valid(player_id=player_id, types=["observation"])
+        for ref in reflections:
+            if ref.confidence < CONFLICT_DECAY_FLOOR:
+                continue   # 已死信念不值得关键词扫描
+            n_conf = 0
+            for obs in observations:
+                if obs.timestamp <= ref.timestamp:
+                    continue   # 只有更晚的观察能削弱旧信念
+                ref_trust = any(w in ref.content for w in TRUST_WORDS)
+                ref_distrust = any(w in ref.content for w in DISTRUST_WORDS)
+                obs_distrust = any(w in obs.content for w in DISTRUST_WORDS)
+                obs_trust = any(w in obs.content for w in TRUST_WORDS)
+                if (ref_trust and obs_distrust) or (ref_distrust and obs_trust):
+                    n_conf += 1
+            if n_conf:
+                target = ref.base_confidence * (0.5 ** n_conf)
+                if target < ref.confidence - 1e-9:   # 只写实际下降, 重跑不重复衰减
                     store.update_confidence(ref.id, target)
                     handled.append(ref.id)
         return handled

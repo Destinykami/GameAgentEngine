@@ -33,9 +33,13 @@ class ReactionDecision:
 class ReactionDecider:
     """基于人格 + 关系状态 + 当前计划 + LLM 事件价值判断的反应决策。"""
 
-    def __init__(self, store: MemoryStore, llm: LLMClient) -> None:
+    def __init__(self, store: MemoryStore, llm: LLMClient,
+                 use_relationship: bool = True) -> None:
         self._store = store
         self._llm = llm
+        # 信任调制开关 (消融, 缺省 True = 现行为): False 时 trust_mod 钉死 1.0,
+        # 同一事件对所有玩家同一效用 —— "无关系权重的效用决策" 消融臂。
+        self._use_relationship = use_relationship
         # 事件价值缓存: (事件文本, 当前计划) → (v_social, v_goal, c_interrupt)。
         # 反应是高频路径, 同一情境不重复调 LLM。
         self._value_cache: dict[tuple[str, str], tuple[float, float, float]] = {}
@@ -84,7 +88,7 @@ class ReactionDecider:
         trust = self.relationship_trust(player_id)
         # 信任度调制社交权重: 信任 → 更愿社交; 警惕/背叛 → 社交价值大幅打折。
         # trust∈[-1,1] → [0, 2], 背叛者(trust≈-1)的社交价值被压到几乎为零。
-        trust_mod = max(0.0, 1.0 + trust)
+        trust_mod = max(0.0, 1.0 + trust) if self._use_relationship else 1.0
         w_social = persona_traits.get("social", 0.5) * trust_mod
         w_goal = persona_traits.get("goal_oriented", 0.5)
 

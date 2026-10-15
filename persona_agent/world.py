@@ -240,7 +240,9 @@ class World:
     def __init__(self, name: str, locations: list[Location],
                  path: str | None = None,
                  perception_radius: float = 1.5,
-                 full_radius: float = 0.5) -> None:
+                 full_radius: float = 0.5,
+                 force_full_tier: bool = False,
+                 decision_tier_gate: bool = False) -> None:
         self.name = name
         self.locations: dict[str, Location] = {loc.name: loc for loc in locations}
         self.entities: dict[str, Entity] = {}
@@ -252,6 +254,13 @@ class World:
         self.clock: float = 0.0            # 游戏内时间 (小时, 单调递增)
         self.perception_radius = perception_radius   # 视距: 玩家距 NPC 超过则感知不到
         self.full_radius = full_radius             # 同区域半径: 玩家距 NPC <= 此值 = full
+        # 消融开关 (缺省 False = 现行为): True 时全员全认知, 跳过距离调度 ——
+        # 调度效率实验的 all-full 基线。
+        self._force_full_tier = force_full_tier
+        # 档位决策门控 (缺省 False = 现行为): True 时 idle 档 NPC 走规则等待
+        # (零 LLM), 不跑 decide_action —— 三级认知调度在决策层的落点: 视距内
+        # 无人时, 远处 NPC 不需要 LLM 战略决策。玩家 agent 不受门控 (玩家不归档)。
+        self._decision_tier_gate = decision_tier_gate
         self.path = path
         self._conn: sqlite3.Connection | None = None
         self._lock = threading.RLock()
@@ -609,6 +618,12 @@ class World:
                 npc = self._npcs[name]
                 mems = [m.content for m in npc.store.all_valid()[-5:]]
                 memory_context = " | ".join(mems)
+                # 档位决策门控 (消融开关, 缺省关): idle NPC 规则等待, 零 LLM。
+                if self._decision_tier_gate and npc._tier == "idle":
+                    decisions[name] = {"action": "wait", "target": "",
+                                       "utterance": "", "dest": "",
+                                       "reason": "idle 档: 视距内无玩家, 规则等待"}
+                    continue
             decisions[name] = self.decide_agent(agent, memory_context)
         # 2. 统一执行 (应用影响)。重置结构化视觉事件缓冲 —— 本步 execute_action
         # 追加的事件执行后恰好等于 self.visual_events, 供回放层读取。
@@ -710,7 +725,7 @@ class World:
         """按距离给所有 NPC 自动设档, 返回 {npc: 档位}。step (阶段5) 每步调用。"""
         result: dict[str, str] = {}
         for name in self._npcs:
-            tier = self.tier_of(name)
+            tier = "full" if self._force_full_tier else self.tier_of(name)
             self._npcs[name].set_tier(tier)
             result[name] = tier
         self.advance(now)

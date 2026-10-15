@@ -99,10 +99,25 @@ class RealLLM(LLMClient):
         self._think = enable_thinking
         self._timeout = timeout
         self._max_retries = max_retries
+        # 用量统计 (实验埋点, 纯增量): 每次 _chat 尝试计一次调用, 从响应读回 usage。
+        # by_method 按推理类别分桶, 供调度效率实验拆解成本。计数器不改任何调用行为。
+        self.stats: dict[str, Any] = {
+            "calls": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_latency_s": 0.0,
+            "by_method": {},
+        }
+
+    def reset_stats(self) -> None:
+        """清零用量统计 (实验跑批之间用)。"""
+        self.stats = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0,
+                      "total_latency_s": 0.0, "by_method": {}}
 
     # ------------------------------------------------------------- 底层请求
     def _chat(self, system: str, user: str, *, think: bool = False,
-              temperature: float = 0.0, max_tokens: int = 512) -> str:
+              temperature: float = 0.0, max_tokens: int = 512,
+              _stats_tag: str = "unspecified") -> str:
         body: dict[str, Any] = {
             "model": self._model,
             "messages": [
@@ -117,6 +132,7 @@ class RealLLM(LLMClient):
         data = json.dumps(body).encode("utf-8")
         last_err: Exception | None = None
         for attempt in range(self._max_retries + 1):
+            t0 = time.monotonic()
             try:
                 req = urllib.request.Request(
                     self._base_url + "/v1/chat/completions",
@@ -126,10 +142,13 @@ class RealLLM(LLMClient):
                                 if self._api_key else {})})
                 with urllib.request.urlopen(req, timeout=self._timeout) as resp:
                     payload = json.loads(resp.read().decode("utf-8"))
+                self._record_stats(_stats_tag, time.monotonic() - t0,
+                                   payload.get("usage") or {})
                 msg = payload["choices"][0]["message"]
                 return msg.get("content") or ""
             except (urllib.error.URLError, urllib.error.HTTPError,
                     TimeoutError, OSError, KeyError, json.JSONDecodeError) as e:
+                self._record_stats(_stats_tag, time.monotonic() - t0, {})
                 last_err = e
                 if attempt < self._max_retries:
                     time.sleep(1.0 * (attempt + 1))
@@ -137,24 +156,43 @@ class RealLLM(LLMClient):
                 raise RuntimeError(f"LLM 请求失败: {e}") from e
         raise RuntimeError(f"LLM 请求失败: {last_err}")
 
+    def _record_stats(self, tag: str, latency_s: float, usage: dict) -> None:
+        """记一次 _chat 尝试 (失败也耗了服务端资源, 同样记账; usage 缺失记 0)。"""
+        p_tok = int(usage.get("prompt_tokens") or 0)
+        c_tok = int(usage.get("completion_tokens") or 0)
+        s = self.stats
+        s["calls"] += 1
+        s["prompt_tokens"] += p_tok
+        s["completion_tokens"] += c_tok
+        s["total_latency_s"] += latency_s
+        per = s["by_method"].setdefault(tag, {"calls": 0, "prompt_tokens": 0,
+                                              "completion_tokens": 0,
+                                              "total_latency_s": 0.0})
+        per["calls"] += 1
+        per["prompt_tokens"] += p_tok
+        per["completion_tokens"] += c_tok
+        per["total_latency_s"] += latency_s
+
     # ------------------------------------------------------------- 通用问答
     def ask(self, question: str, system: str = "", *, think: bool = False,
             temperature: float = 0.0, max_tokens: int = 256) -> str:
         """公开的单轮问答 (供探针裁判、外部逻辑复用)。默认关思考、低温。"""
         return self._chat(system or "你是一个简洁的助手。", question,
                           think=think, temperature=temperature,
-                          max_tokens=max_tokens)
+                          max_tokens=max_tokens, _stats_tag="ask")
 
     def _chat_json(self, system: str, user: str, *, think: bool = False,
-                   temperature: float = 0.0, max_tokens: int = 2048) -> Any:
+                   temperature: float = 0.0, max_tokens: int = 2048,
+                   _stats_tag: str = "unspecified") -> Any:
         """请求模型返回严格 JSON 并解析; 解析失败则重试一次。"""
         raw = self._chat(system, user, think=think, temperature=temperature,
-                         max_tokens=max_tokens)
+                         max_tokens=max_tokens, _stats_tag=_stats_tag)
         try:
             return json.loads(_extract_json(raw))
         except json.JSONDecodeError:
             retry = self._chat(system, user + "\n\n只输出 JSON, 不要任何其他文字。",
-                               think=think, temperature=0.0, max_tokens=max_tokens)
+                               think=think, temperature=0.0, max_tokens=max_tokens,
+                               _stats_tag=_stats_tag)
             return json.loads(_extract_json(retry))
 
     # ------------------------------------------------------------- 对话/反应
@@ -177,7 +215,8 @@ class RealLLM(LLMClient):
                 "引用时语气要留有余地。\n\n对方说: " + ctx.question
                 + "\n\n用第一人称、符合你性格地回应对方。只说一两句。")
         return self._chat(ctx.system or "你是一个游戏 NPC, 只用你记得的事说话。",
-                          user, think=self._think, temperature=0.7, max_tokens=256)
+                          user, think=self._think, temperature=0.7, max_tokens=256,
+                          _stats_tag="complete")
 
     # ------------------------------------------------------------ 重要性打分
     def score_importance(self, text: str, player_id: str | None = None) -> float:
@@ -186,7 +225,8 @@ class RealLLM(LLMClient):
                 "1-3 日常琐事, 4-6 一般事件, 7-8 重要关系/冲突, 9-10 重大事件"
                 + who + "。\n\n记忆: " + text)
         raw = self._chat("你是一个记忆重要性评估器。", user,
-                         think=False, temperature=0.0, max_tokens=8).strip()
+                         think=False, temperature=0.0, max_tokens=8,
+                         _stats_tag="score_importance").strip()
         # 提取第一个数字 (可能多位)
         idx = next((i for i, ch in enumerate(raw) if ch.isdigit()), None)
         if idx is None:
@@ -209,7 +249,8 @@ class RealLLM(LLMClient):
                   '输出 JSON 数组, 例如 ["问题1", "问题2", "问题3"]。')
         # 结构化 JSON 任务关思考: 思考 token 会挤爆 max_tokens 导致 JSON 截断
         data = self._chat_json("你是一个反思问题生成器。", user,
-                               think=False, temperature=0.0)
+                               think=False, temperature=0.0,
+                               _stats_tag="reflection_questions")
         if isinstance(data, list):
             return [str(x) for x in data][:3]
         return []
@@ -223,7 +264,8 @@ class RealLLM(LLMClient):
                 + " 条高层 Insight, 并给出每条所依据的证据编号。\n"
                   '输出 JSON 数组, 例如 [{"insight": "...", "evidence": [1, 3]}]。')
         data = self._chat_json("你是一个从证据归纳 Insight 的推理器。", user,
-                               think=False, temperature=0.0)
+                               think=False, temperature=0.0,
+                               _stats_tag="reflection_insights")
         valid_ids = {int(i) for i, _ in evidence}      # 传入证据的真实记忆 id
         all_ids = [int(i) for i, _ in evidence]
         out: list[tuple[str, list[int]]] = []
@@ -254,7 +296,8 @@ class RealLLM(LLMClient):
                   "输出 JSON 数组, "
                   '例如 [{"start": 7, "end": 9, "activity": "起床"}]。')
         data = self._chat_json("你是一个日程规划器。", user,
-                               think=False, temperature=0.3)
+                               think=False, temperature=0.3,
+                               _stats_tag="generate_plan")
         # 类型容错 + 范围/顺序校验 (0 <= start < end <= 24), 坏块丢弃不崩
         return _parse_blocks(data, "activity", 0, 24)
 
@@ -265,7 +308,8 @@ class RealLLM(LLMClient):
                 + f"{end:02d}" + ":00 分解为小时级子任务。\n"
                 '输出 JSON 数组, 例如 [{"start": 13, "end": 14, "subtask": "构思"}]。')
         data = self._chat_json("你是一个任务分解器。", user,
-                               think=False, temperature=0.0)
+                               think=False, temperature=0.0,
+                               _stats_tag="decompose_activity")
         # 子任务时间必须落在父块 (start, end) 内: 模型常漂回默认 8 点, 越界即丢
         return _parse_blocks(data, "subtask", start, end)
 
@@ -283,7 +327,8 @@ class RealLLM(LLMClient):
                 + "- c_interrupt 打断代价: 放下手头事去响应这件事的损失\n\n"
                 + '输出 JSON, 例如 {"v_social": 8, "v_goal": 1, "c_interrupt": 3}。')
         data = self._chat_json("你是一个事件价值评估器, 只输出 JSON。", user,
-                               think=False, temperature=0.0, max_tokens=128)
+                               think=False, temperature=0.0, max_tokens=128,
+                               _stats_tag="score_event")
         if not isinstance(data, dict):
             return (3.0, 3.0, 2.0)
         def _clip(key: str, default: float) -> float:
@@ -313,7 +358,8 @@ class RealLLM(LLMClient):
                 + "-10 极度不信任/被背叛过, -5 略有戒备, 0 中立/不太了解, "
                 + "+5 比较信任, +10 极度信任/很可靠。")
         raw = self._chat("你是一个关系信任度评估器, 只输出一个整数。", user,
-                         think=False, temperature=0.0, max_tokens=8).strip()
+                         think=False, temperature=0.0, max_tokens=8,
+                         _stats_tag="judge_trust").strip()
         return self._extract_int(raw, -10, 10) / 10.0
 
     # ------------------------------------------------------------ 矛盾强度
@@ -326,7 +372,8 @@ class RealLLM(LLMClient):
                 "0 = 完全一致/无关, 5 = 部分矛盾(有所削弱), 10 = 强烈矛盾(直接推翻)。\n"
                 "只输出整数。")
         raw = self._chat("你是一个记忆矛盾检测器, 只输出一个 0 到 10 的整数。",
-                         user, think=False, temperature=0.0, max_tokens=8).strip()
+                         user, think=False, temperature=0.0, max_tokens=8,
+                         _stats_tag="judge_conflict").strip()
         return self._extract_int(raw, 0, 10, default=0)
 
     # ------------------------------------------------------------ 动作观察
@@ -340,7 +387,8 @@ class RealLLM(LLMClient):
                 + "「" + npc_name + "」, 称玩家为「" + player_name
                 + "」, 只描述动作事实, 不加评价、不揣测动机。直接输出这句话。")
         return self._chat("你是游戏 NPC 的观察者, 客观描述你看到的事, 只输出一句话。",
-                          user, think=False, temperature=0.4, max_tokens=64).strip()
+                          user, think=False, temperature=0.4, max_tokens=64,
+                          _stats_tag="perceive_action").strip()
 
     # ------------------------------------------------------------ Agent 决策
     def decide_action(self, agent_name: str, goal: str,
@@ -359,7 +407,8 @@ class RealLLM(LLMClient):
                 + ' "dest": "若移动去哪区域, 否则空", "reason": "简述理由"}\n'
                 + "action 选一个; 只输出 JSON。")
         data = self._chat_json("你是一个游戏角色决策器, 只输出一个 JSON 对象。",
-                               user, think=False, temperature=0.2)
+                               user, think=False, temperature=0.2,
+                               _stats_tag="decide_action")
         if isinstance(data, dict) and "action" in data:
             return {"action": str(data.get("action", "wait")),
                     "target": str(data.get("target", "")),
