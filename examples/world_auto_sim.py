@@ -5,13 +5,14 @@
 「感知 (非全知) → LLM 决策 → 行动」, 行动相互影响、影响世界。脚本只提供
 初始世界 (区域/NPC/旅行者目标) 和时间推进, 不写任何角色的走位/台词/动作。
 
-目标弧线 (由旅行者的 goal 驱动, LLM 自己走): 打败并说服雷电将军结束眼狩令。
-  前期: 帮桃音藏眼 + 找刚郎锻武器 (变强)
-  中期: 对抗执行官 (搜捕持眼者)
-  后期: 挑战雷电将军 (战斗 + 劝说) → 将军阵亡或被说服 → 眼狩令废止
+目标 (各 agent 的 goal 驱动, LLM 自己走): 旅行者想结束眼狩令, 将军要维护秩序。
+  谁赢、怎么赢、要多久 —— 不由脚本规定, 由两者 (和城里其他人) 的交互涌现。
 
-结局条件: 雷电将军阵亡 (血条打空) 或被说服 (旅行者对TA劝说 >= PERSUADE_N 次)
-  → 触发世界事件 "雷电将军废止眼狩令"。
+结局 (B+ 涌现, 未知):
+  - 战斗结局: 旅行者把将军血条打空 → 眼狩令随将军倒台而废止 (引擎物理, 不变);
+  - 说服结局: 旅行者向将军陈述证据, 是否被说服由 LLM 当场裁决 (看她的信念 +
+    旅行者呈上的全部证据 + 本次往来), 无次数门槛 —— 可能一天就成, 也可能十天都不成。
+  证据本身也由 LLM 从每次对话里生成 (对照已收集证据去重), 不是写死的槽位。
 
 运行: .venv/bin/python examples/world_auto_sim.py   (真 LLM, 需 SGLang)
 步频: 每天 8 个关键时刻 (07:00~21:00, 每 2 小时一步) × 10 天 = 80 步, 每步每个存活
@@ -34,11 +35,11 @@ DATA = os.path.join(os.path.dirname(__file__), "..", "data", "auto_sim")
 LIVE_JSONL = os.path.join(os.path.dirname(__file__), "..", "visualization", "public", "live.jsonl")
 REFLECT_THRESHOLD = 50.0     # 每 2h 一步后交互量约为稀疏步的 2.7 倍, 阈值相应抬高,
                              # 让自我反思的总频率 (和额外 LLM 调用) 大致不变
-PERSUADE_N = 5               # 双关都过之后, 还需当面劝说多少次 → 被说服 (眼狩令废止)
-ONE_PERSUADE_PER_DAY = True  # 将军听完"需要时间考虑", 当天再劝无效
-REASON_NEEDED = 4            # 双关①: 旅行者需积累多少条反眼狩令的理由 (帮持眼者/取证, 来源需分散)
-ATTACK_NEEDED = 20           # 双关②: 旅行者攻击力需达到多少, 将军才肯正眼看
-DAYS = 10                    # 模拟天数 (准备 2-3 天 + 劝说 5 天, 留够空间)
+# B+ 涌现: 不再有脚本层门控 (REASON_NEEDED/ATTACK_NEEDED/PERSUADE_N/ONE_PERSUADE_PER_DAY
+# 全删)。理由由 LLM 从对话里生成 (涌现), 将军是否被说服由 LLM 当场裁决 —— 结局未知。
+# 只保留一个"证据容量"上限 (防旅行者记忆无限膨胀, 不是通关门槛)。
+REASON_CAP = 6               # 旅行者最多持多少条证据 (容量, 非门槛)
+DAYS = 10                    # 模拟天数 (结局由 agent 交互涌现, 可能提前收束也可能不收束)
 STEPS_PER_DAY = 8            # 每天关键时刻数 (每 2 小时一步)
 MOMENTS = [7.0, 9.0, 11.0, 13.0, 15.0, 17.0, 19.0, 21.0]   # 每 2 小时 (07:00~21:00, 保留 09/19 锚点)
 
@@ -63,19 +64,17 @@ NPCS = [
                                       # 劝说弧线中途 (第5-6天) 被磨死; 10 攻下每击 3-7 伤, 全程追而不杀
      "enforcer", "执行眼狩令, 搜捕并制服持有神之眼的人, 见到持眼者就攻击"),
     ("雷电将军", {"social": 0.1, "goal_oriented": 0.9, "stubborn": 0.9}, "神樱庭", 300, 20, 15,
-     "shogun", "坐镇神樱庭, 你是稻妻统治者, 极固执重秩序。空口劝说休想动你 —— "
-     "来者须拿出实证 (眼狩令之弊) 且有实力 (攻不低于20), 你才肯听; 否则击退。"
-     "即便听完也要'容我考虑', 非多次打动不可。留在神樱庭, 击退来犯者"),
+     "shogun", "坐镇神樱庭, 你是稻妻统治者, 极固执、重秩序、视眼狩令为稻妻根基。来劝的多是空口白话, "
+     "你迄今没见到足以撼动你的实证。是否被说服而废止眼狩令, 由你自己权衡判断: 空话动摇不了你, "
+     "但若切实的实证一再打动你, 你也会重新考量。留驻神樱庭, 击退来犯者。"),
 ]
-TRAVELER_GOAL = ("劝雷电将军废止眼狩令, 但将军极固执 —— 空口白话她根本不听, 你得先做足功课:\n"
-                 "① 积累理由 (至少4条, 将军要实证, 证据须来自不同人/不同事): 帮桃音藏好雷神之眼 (help桃音)、找小梅 "
-                 "的孤本典籍中取证眼狩令之弊 (talk小梅)、找桃音谈眼狩令之弊取证言 (talk桃音)、在城里留意并目击执行官收缴神之眼的暴行 "
-                 "(与她同处一地即可)。桃音+刚郎最多凑3条, 必须再找小梅取证或亲眼目击收缴 —— 够到4条再算齐。"
-                  "同一理由只计一次: 重复找同一个人问同样的事不增加条数 (桃音最多给2条: 证言+帮藏匿, "
-                  "刚郎1条, 小梅1条, 目击收缴1条), 凑不齐就去下一个来源。\n"
-                 "② 提升实力 (攻到20): 找刚郎反复 talk 锻武器, 每次攻+3, 锻到够强将军才正眼看你。\n"
-                 "两关都过后再去神樱庭当面劝说, 她听完仍要'容我考虑'、当天再劝无效, 需多日反复 "
-                 "打动。前期先积累理由+锻武器, 别急着去劝; 到神樱庭后留驻别走, 若执行官来扰应付但别离开。")
+TRAVELER_GOAL = ("你想劝雷电将军废止眼狩令, 但她极固执重秩序, 空口白话根本不听。怎么打动她由你定策略:\n"
+                 "城里每个人都在眼狩令下有各自的苦 —— 医者桃音 (持眼, 救助伤者)、学者小梅 (持眼, 典籍载有眼狩令之弊)、"
+                 "铁匠刚郎 (生意受损)。找他们谈 (talk)、帮持眼者藏匿 (help)、在城里留意并目击执行官收缴神之眼的暴行, "
+                 "都能让你拿到她需要的实证。你也可以找刚郎 talk 锻武器变强 (攻会提升), 既是自卫也是底气 —— "
+                 "但变强不等于她就会听, 关键还是拿什么说服她。把这些证据攒起来, 再去神樱庭当面向她陈述, "
+                 "能否废止全看你的陈述和证据够不够打动她。前期先取证、别急着空手去劝; "
+                 "到神樱庭后留驻别走, 若执行官来扰应付但别离开。")
 
 
 def banner(text: str) -> None:
@@ -83,13 +82,13 @@ def banner(text: str) -> None:
 
 
 def status_line(w: World) -> str:
-    """每个存活 agent 的血/位置; 旅行者额外显示理由数/攻 (双关进度)。"""
+    """每个存活 agent 的血/位置; 旅行者额外显示已收集证据数/攻 (涌现, 无门槛)。"""
     parts = []
     for name, e in w.entities.items():
         if e.is_alive():
             base = f"{name}血{e.health}@{e.location.name}"
             if e.kind == "player":
-                base += f"(理由{len(e.reasons)}/{REASON_NEEDED},攻{e.attack}/{ATTACK_NEEDED})"
+                base += f"(证据{len(e.reasons)}条,攻{e.attack})"
             parts.append(base)
         else:
             parts.append(f"{name}✝")
@@ -114,32 +113,98 @@ WEAPON_GAIN = 3    # 与铁匠对话一次, 攻 +N (步频加密后从 4 调到 
 WEAPON_CAP = 24    # 攻的上限
 
 
-def _reason_for_role(target) -> str | None:
-    """固定理由映射 (本提交为行为保持; LLM 从对话生成理由的涌现改法见后续)。"""
-    if "scholar" in target.role:
-        return "从小梅的孤本典籍中取证: 眼狩令令持眼者流离失所"
-    if "healer" in target.role:
-        return "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦"
-    if "blacksmith" in target.role:
-        return "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
-    return None
+def _generate_reason(world, agent, target, utterance: str, reply: str) -> str | None:
+    """B+ 涌现: 让 LLM 从这次对话里提炼一条关于眼狩令之弊的"新证据"。
+
+    新颖性对照: 把已收集的证据喂进去, 要求 LLM 只给"没见过"的; 确无新证据则回 NONE
+    (不硬凑)。去重双保险: LLM 新颖性判断是语义去重, add_reason 的文本去重是兜底。
+    无 LLM / 调用失败 → None (不强行生成)。证据文本从此是活的, 不再是写死的槽位。
+    """
+    llm = world._agent_llms.get(agent.name)
+    if llm is None or not hasattr(llm, "ask"):
+        return None
+    known = " / ".join(agent.reasons) if agent.reasons else "尚无"
+    prompt = (
+        f"旅行者与{target.name} (角色: {target.role or '百姓'}) 交谈。\n"
+        f"旅行者说: {utterance}\n{target.name}答: {reply}\n"
+        f"旅行者已收集的证据: {known}\n"
+        "任务: 从这段对话中提炼旅行者新得到的、关于眼狩令之弊的一条'新证据/看法', "
+        "且必须不在已收集证据里。确无新证据就输出 NONE; 否则用一句第三人称概括 "
+        "(不要照抄对话原文)。"
+    )
+    try:
+        raw = llm.ask(prompt, system="你在提炼证据, 只输出一句概括, 或 NONE。",
+                      max_tokens=80).strip()
+    except Exception:
+        return None
+    if not raw or raw.upper() == "NONE" or raw.startswith("无"):
+        return None
+    return raw
 
 
 def inazuma_talk_effect(world, agent, target, action, ve) -> None:
-    # 理由 (仅玩家积累): 学者取证 / 医者证言 / 铁匠经济之弊
+    # 证据 (仅玩家积累): LLM 从这次对话生成 (涌现), 对照已收集证据做新颖性去重
     if agent.kind == "player":
-        r = _reason_for_role(target)
+        r = _generate_reason(world, agent, target, action.get("utterance", ""), ve.reply)
         if r and agent.add_reason(r, world.reason_cap):
             ve.reason_added = r
             ve.reason_count = len(agent.reasons)
         elif r:
-            # 去重反馈: 同一条理由重复取得不新增, 写入行动者历史让 LLM 看得见,
+            # 去重反馈: 证据重复不新增, 写入行动者历史让 LLM 看得见 "这条没算数",
             # 别把同一来源问到底 (静默丢弃会让 LLM 误以为已积累、原地反复对话)。
-            agent.record(f"向 {target.name} 取的理由已重复, 未新增 (现{len(agent.reasons)}条)")
-    # 铁匠: 对话 = 锻一把武器, 攻提升 (与理由独立, 找铁匠既取证又锻刀)
+            agent.record(f"向 {target.name} 取的证据重复, 未新增 (现{len(agent.reasons)}条)")
+    # 铁匠: 对话 = 锻一把武器, 攻提升 (与证据独立, 找铁匠既取证又锻刀)
     if "blacksmith" in target.role and agent.attack < WEAPON_CAP:
         agent.attack = min(WEAPON_CAP, agent.attack + WEAPON_GAIN)
         ve.weapon_attack = agent.attack
+
+
+def _parse_json_obj(raw: str) -> dict | None:
+    """从模型输出里抠出 JSON 对象 (容忍 markdown 代码围栏与前后杂字); 失败返 None。"""
+    t = raw.strip()
+    if t.startswith("```"):
+        parts = t.split("```")
+        t = parts[1] if len(parts) > 1 else t
+        if t.startswith("json"):
+            t = t[4:]
+        t = t.strip()
+    s, e = t.find("{"), t.rfind("}")
+    if s != -1 and e > s:
+        try:
+            return json.loads(t[s:e + 1])
+        except Exception:
+            return None
+    return None
+
+
+def _judge_shogun(llm, shogun, traveler, utterance: str, reply: str) -> tuple[bool, str]:
+    """B+ 涌现: LLM 当场裁决将军是否被说服到废止眼狩令 (替代计数器)。
+
+    依据 = 她的目标(信念) + 旅行者已呈上的全部证据(累积) + 本次对话往来。极固执、
+    空口白话不动摇、需实证且被反复打动 —— 这些约束写进裁决提示, 由 LLM 综合判断。
+    返回 (是否被说服, 裁决依据)。无 LLM / 解析失败 → (False, ...) 保守不误判。
+    """
+    if llm is None or not hasattr(llm, "ask"):
+        return False, ""
+    evidence = " / ".join(traveler.reasons) if traveler.reasons else "尚未呈上任何证据"
+    prompt = (
+        f"你裁决雷电将军是否已被说服到废止眼狩令。\n"
+        f"她的目标/信念: {shogun.goal}\n"
+        f"旅行者已呈上的证据(累积): {evidence}\n"
+        f"本次对话旅行者说: {utterance}\n将军答: {reply}\n"
+        "综合以上, 她现在是否被充分打动而愿意废止眼狩令? 她极固执重秩序, "
+        "空口白话动摇不了她, 需切实的实证且被反复打动才肯。"
+        '输出严格 JSON: {"revoked": true|false, "reason": "一句话依据"}'
+    )
+    try:
+        raw = llm.ask(prompt, system="你是将军心志的裁决者, 只输出 JSON。",
+                      max_tokens=200)
+    except Exception:
+        return False, ""
+    data = _parse_json_obj(raw)
+    if not data:
+        return False, ""
+    return bool(data.get("revoked", False)), str(data.get("reason", ""))
 
 
 def inazuma_attack_effect(world, agent, target, action, ve) -> None:
@@ -184,10 +249,9 @@ def main() -> int:
     shutil.rmtree(DATA, ignore_errors=True)
     os.makedirs(DATA, exist_ok=True)
     w = World("稻妻城", LOCATIONS, path=os.path.join(DATA, "world.db"))
-    # 理由上限 (引擎通用容量): 抬到 REASON_NEEDED。前 3 条最容易 (桃音证言+帮桃音藏匿+
-    # 刚郎证言), 第 4 条必须来自小梅(典籍取证/帮藏匿)或目击执行官收缴 —— 逼旅行者满城跑。
-    w.reason_cap = REASON_NEEDED
-    register_scenario(w)   # 注入稻妻情境的动作效果 (理由/锻刀/目击)
+    # 证据容量 (引擎通用容量, 非门槛): 限制旅行者持有证据条数, 防记忆无限膨胀。
+    w.reason_cap = REASON_CAP
+    register_scenario(w)   # 注入稻妻情境的动作效果 (证据生成/锻刀/目击)
     llm = RealLLM()
     emb = make_embedder()
 
@@ -209,9 +273,7 @@ def main() -> int:
     print("初始:", status_line(w))
 
     shogun = w.get("雷电将军")
-    persuade_count = 0
     decree_ended = False
-    last_persuade_day = -1   # 上次有效劝说的天 (将军"容我考虑", 当天再劝无效)
     timeline: list[dict] = []   # 结构化时间线 (供回放)
 
     # 直播增量写: 先写 meta 行 (前端用它建 timeline 元数据), 之后每步 append 一行,
@@ -220,8 +282,8 @@ def main() -> int:
     live_f.write(json.dumps({"__meta__": True, "schema_version": 1,
                              "world": {"name": w.name, "coordinate_system": "location-name",
                                        "render_map": "inazuma-v1"},
-                             "reason_needed": REASON_NEEDED, "attack_needed": ATTACK_NEEDED,
-                             "persuade_n": PERSUADE_N}, ensure_ascii=False) + "\n")
+                             "reason_needed": None, "attack_needed": None,
+                             "persuade_n": None}, ensure_ascii=False) + "\n")
     live_f.flush()
     # 开场世界事件: 引擎已产出结构化 VisualEvent, 直接序列化 (不再硬编码字符串)。
     opening_ve = [ve.to_dict() for ve in w.visual_events]
@@ -252,40 +314,25 @@ def main() -> int:
                 t_act = decisions.get("旅行者", {})
                 if t_act.get("action") == "talk" and t_act.get("target") == "雷电将军":
                     trav = w.get("旅行者")
-                    # 双关: 理由不够 或 实力不够 → 将军驳回 (空口白话无效)。
-                    # 驳回必须回喂旅行者历史 (trav.record): 只打印不进决策的话, LLM 看不见
-                    # "现在劝没用", 会在神樱庭原地反复劝 (理由永远差 1 条的僵局)。
-                    if len(trav.reasons) < REASON_NEEDED:
-                        note = (f"雷电将军驳回: '你既无实证, 一派胡言。' "
-                                f"[理由{len(trav.reasons)}/{REASON_NEEDED} 不足]")
-                        momone = w.get("桃音")
-                        momone_loc = f", 她现在在{momone.location.name}" if momone and not momone.dead else ""
-                        xiaomei = w.get("小梅")
-                        xiaomei_loc = f", 她现在在{xiaomei.location.name}" if xiaomei and not xiaomei.dead else ""
-                        trav.record(f"将军驳回劝说: 理由{len(trav.reasons)}/{REASON_NEEDED}不足, "
-                                    f"先去凑齐 (帮桃音藏匿 help桃音{momone_loc} / "
-                                    f"找小梅取证 talk小梅{xiaomei_loc} / 目击执行官收缴), "
-                                    f"别在神樱庭原地再劝")
-                    elif trav.attack < ATTACK_NEEDED:
-                        note = (f"雷电将军驳回: '就凭你这副身板也敢诘问本将军?' "
-                                f"[攻{trav.attack}/{ATTACK_NEEDED} 不足]")
-                        trav.record(f"将军驳回劝说: 攻{trav.attack}/{ATTACK_NEEDED}不足, "
-                                    f"先找刚郎 talk 锻武器, 别在神樱庭原地再劝")
-                    elif ONE_PERSUADE_PER_DAY and day == last_persuade_day:
-                        note = "雷电将军: '本将军今日已听过了, 容我再想想。' 当天再劝无效"
-                        trav.record("将军今日已听过劝说, 当天再劝无效, 留驻等明天再劝")
+                    # B+ 涌现: 将军是否被说服由 LLM 当场裁决 (她的信念+已呈证据+本次往来),
+                    # 无计数器。裁决驳回时回喂旅行者历史, 让它知道"现在劝没成、该去积累
+                    # 更多证据", 避免原地反复劝 (与旧双关同样的防卡死回喂)。
+                    reply = next((ve.reply for ve in w.visual_events
+                                  if ve.type == "conversation" and ve.actor == "旅行者"
+                                  and ve.target == "雷电将军"), "")
+                    revoked, why = _judge_shogun(llm, shogun, trav,
+                                                 t_act.get("utterance", ""), reply)
+                    if revoked:
+                        w.world_event("雷电将军被旅行者说服, 废止眼狩令: 持眼者可保留神之眼",
+                                      now=now)
+                        note = f"★ 雷电将军被说服 ({why}), 废止眼狩令!"
+                        print(f"   {note}")
+                        decree_ended = True
                     else:
-                        persuade_count += 1
-                        last_persuade_day = day
-                        note = (f"双关已过, 旅行者当面劝说, 将军沉吟'容我考虑' "
-                                f"— {persuade_count}/{PERSUADE_N}")
-                    print("   (" + note + ")")
-                if persuade_count >= PERSUADE_N and not shogun.dead:
-                    w.world_event("雷电将军被旅行者说服, 废止眼狩令: 持眼者可保留神之眼",
-                                  now=now)
-                    note = f"★ 雷电将军被说服 (当面劝说 {persuade_count} 次), 废止眼狩令!"
-                    print(f"   {note}")
-                    decree_ended = True
+                        note = f"(将军尚未被说服: {why})" if why else "(将军尚未被说服)"
+                        print("   " + note)
+                        trav.record("将军尚未被说服: 证据还不够打动她, "
+                                    "去城里向更多人取证/目击暴行, 积累更多实证再来劝")
             # 结构化视觉事件 (引擎单一事实源): 本步 execute_action 的事件 +
             # 结局 world_event (若本步触发)。前端回放读它, 不解析中文 events 串。
             visual = [ve.to_dict() for ve in w.visual_events]
@@ -293,7 +340,7 @@ def main() -> int:
             step = {"day": day, "moment": moment, "clock": now,
                     "events": events, "visual_events": visual,
                     "note": note, "states": snapshot(w),
-                    "persuade": persuade_count, "decree_ended": decree_ended,
+                    "persuade": None, "decree_ended": decree_ended,
                     "shogun_dead": shogun.dead}
             timeline.append(step)
             live_f.write(json.dumps(step, ensure_ascii=False) + "\n"); live_f.flush()
@@ -312,18 +359,19 @@ def main() -> int:
     if decree_ended:
         print(f"\n   眼狩令已废止 (将军{'阵亡' if shogun.dead else '被说服'})。旅行者目标达成。")
     else:
-        print(f"\n   {DAYS} 天结束, 眼狩令仍在。将军: 血{shogun.health}, 被劝说 {persuade_count}/{PERSUADE_N} 次。")
+        print(f"\n   {DAYS} 天结束, 眼狩令仍在 (旅程未让将军废止)。将军: 血{shogun.health}, "
+              f"旅行者证据 {len(w.get('旅行者').reasons)} 条。")
     # 存时间线 (供 replay.py 回放)
     tl_path = os.path.join(DATA, "timeline.json")
     with open(tl_path, "w", encoding="utf-8") as f:
-        # 顶层保留旧键 (reason_needed/attack_needed/persuade_n) 兼容 replay.py;
-        # 新增 schema_version + world 供前端 (见 VisualizationPlan §6 数据契约)。
+        # 顶层保留旧键 (reason_needed/attack_needed/persuade_n) 兼容 replay.py, B+ 下为 null
+        # (涌现, 无门控); schema_version + world 供前端 (见 VisualizationPlan §6 数据契约)。
         # 每个 step 的 visual_events 是结构化事实源, events 串为派生兼容产物。
         json.dump({"schema_version": 1,
                    "world": {"name": w.name, "coordinate_system": "location-name",
                              "render_map": "inazuma-v1"},
-                   "reason_needed": REASON_NEEDED, "attack_needed": ATTACK_NEEDED,
-                   "persuade_n": PERSUADE_N, "steps": timeline}, f, ensure_ascii=False,
+                   "reason_needed": None, "attack_needed": None,
+                   "persuade_n": None, "steps": timeline}, f, ensure_ascii=False,
                   indent=2)
     w.close()
     print(f"\n世界状态已存: {os.path.abspath(DATA)}/world.db")
