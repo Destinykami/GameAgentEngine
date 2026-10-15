@@ -59,28 +59,22 @@ def test_move_success_and_failure():
     w.close()
 
 
-def test_talk_structured_with_reason_and_weapon():
+def test_talk_structured_conversation():
+    """引擎只管对话的 VisualEvent 结构; 理由/锻刀等世界行为由情境钩子注入 (见 test_inazuma_scenario)。"""
     w = _world()
     t = w.get("旅行者")
-    # 桃音 (healer+vision_holder) → 有回复 + 积累理由
     s = w.execute_action(t, {"action": "talk", "target": "桃音",
                              "utterance": "你知道眼狩令造成了什么吗？"})
     ve = _last(w)
     assert ve.type == "conversation" and ve.target == "桃音"
     assert ve.utterance == "你知道眼狩令造成了什么吗？"
     assert ve.reply_speaker == "桃音" and ve.reply
-    assert ve.reason_added and ve.reason_count >= 1
     assert "旅行者 对 桃音 说:" in s and "← 桃音:" in s and ve.describe() == s
     d = ve.to_dict()
     assert d["type"] == "conversation" and d["reply_speaker"] == "桃音"
     json.dumps(d, ensure_ascii=False)   # 可序列化
-
-    # 刚郎 (blacksmith) → 锻刀升攻
-    atk0 = t.attack
-    s = w.execute_action(t, {"action": "talk", "target": "刚郎", "utterance": "锻把武器"})
-    ve = _last(w)
-    assert ve.weapon_attack == t.attack and t.attack > atk0
-    assert f"攻升至{t.attack}" in s
+    # 未注册情境钩子 → 无世界行为 (无理由/不锻刀): 引擎保持通用
+    assert not ve.reason_added and t.attack == 12
     w.close()
 
 
@@ -120,13 +114,13 @@ def test_flee_help_hide_wait():
     ve = _last(w)
     assert ve.type == "flee" and ve.to
     assert s == f"旅行者 逃离威胁, 逃到 {ve.to}"
-    # help: 持眼者 → 积累理由
+    # help: 引擎只管 help 的 VisualEvent; "帮持眼者→得理由"是情境钩子 (见 test_inazuma_scenario)
     t.move(w.locations["治疗堂"])
     w.get("桃音").move(w.locations["治疗堂"])
     s = w.execute_action(t, {"action": "help", "target": "桃音"})
     ve = _last(w)
-    assert ve.type == "help" and ve.reason_added and ve.reason_count >= 1
-    assert s == f"旅行者 帮助 桃音 [旅行者积累理由, 现{ve.reason_count}条]"
+    assert ve.type == "help" and not ve.reason_added
+    assert s == "旅行者 帮助 桃音"
     # hide
     s = w.execute_action(t, {"action": "hide", "target": "桃音"})
     ve = _last(w)

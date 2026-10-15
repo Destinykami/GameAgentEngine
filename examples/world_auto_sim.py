@@ -106,18 +106,88 @@ def snapshot(w: World) -> dict:
     }
 
 
+# ===================================================================== 情境层
+# 稻妻·眼狩令 的具体世界行为: 理由(证据)怎么产生、对话铁匠是否锻刀、执行官收缴
+# 持眼者是否算目击。全部经 World 的动作效果钩子注入 —— 引擎(persona_agent)保持
+# 通用 (只出动作空间+物理规则), 不硬编码任何稻妻细节。本层可被别的"世界"替换。
+WEAPON_GAIN = 3    # 与铁匠对话一次, 攻 +N (步频加密后从 4 调到 3, 保前期弧线)
+WEAPON_CAP = 24    # 攻的上限
+
+
+def _reason_for_role(target) -> str | None:
+    """固定理由映射 (本提交为行为保持; LLM 从对话生成理由的涌现改法见后续)。"""
+    if "scholar" in target.role:
+        return "从小梅的孤本典籍中取证: 眼狩令令持眼者流离失所"
+    if "healer" in target.role:
+        return "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦"
+    if "blacksmith" in target.role:
+        return "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
+    return None
+
+
+def inazuma_talk_effect(world, agent, target, action, ve) -> None:
+    # 理由 (仅玩家积累): 学者取证 / 医者证言 / 铁匠经济之弊
+    if agent.kind == "player":
+        r = _reason_for_role(target)
+        if r and agent.add_reason(r, world.reason_cap):
+            ve.reason_added = r
+            ve.reason_count = len(agent.reasons)
+        elif r:
+            # 去重反馈: 同一条理由重复取得不新增, 写入行动者历史让 LLM 看得见,
+            # 别把同一来源问到底 (静默丢弃会让 LLM 误以为已积累、原地反复对话)。
+            agent.record(f"向 {target.name} 取的理由已重复, 未新增 (现{len(agent.reasons)}条)")
+    # 铁匠: 对话 = 锻一把武器, 攻提升 (与理由独立, 找铁匠既取证又锻刀)
+    if "blacksmith" in target.role and agent.attack < WEAPON_CAP:
+        agent.attack = min(WEAPON_CAP, agent.attack + WEAPON_GAIN)
+        ve.weapon_attack = agent.attack
+
+
+def inazuma_attack_effect(world, agent, target, action, ve) -> None:
+    # 执行官收缴持眼者 → 同地点的目击玩家积累一条理由 (亲眼所见)
+    if "enforcer" in agent.role and "vision_holder" in target.role:
+        for witness in world.entities.values():
+            if (witness.kind == "player" and witness is not agent
+                    and witness is not target and witness.is_alive()
+                    and witness.location is target.location):
+                if witness.add_reason(
+                        f"目睹执行官当众收缴 {target.name} 的神之眼, 其家破人亡",
+                        world.reason_cap):
+                    ve.witnessed = True
+                    ve.reason_count = len(witness.reasons)
+                else:
+                    witness.record(f"目睹收缴 {target.name} 的理由已重复, 未新增 "
+                                   f"(现{len(witness.reasons)}条)")
+
+
+def inazuma_help_effect(world, agent, target, action, ve) -> None:
+    # 帮持眼者护住神之眼 = 一条反眼狩令的理由 (仅玩家, 仅 help 动作)
+    if action.get("action") == "help" and agent.kind == "player" \
+            and "vision_holder" in target.role:
+        r = f"助 {target.name} 藏好神之眼, 令其免遭收缴"
+        if agent.add_reason(r, world.reason_cap):
+            ve.reason_added = r
+            ve.reason_count = len(agent.reasons)
+        else:
+            agent.record(f"帮 {target.name} 藏匿的理由已重复, 未新增 "
+                         f"(现{len(agent.reasons)}条)")
+
+
+def register_scenario(world) -> None:
+    """把稻妻情境的动作效果注册进引擎 (引擎与世界行为解耦的注入点)。"""
+    world.add_action_effect("talk", inazuma_talk_effect)
+    world.add_action_effect("attack", inazuma_attack_effect)
+    world.add_action_effect("help", inazuma_help_effect)
+    world.add_action_effect("hide", inazuma_help_effect)
+
+
 def main() -> int:
     shutil.rmtree(DATA, ignore_errors=True)
     os.makedirs(DATA, exist_ok=True)
     w = World("稻妻城", LOCATIONS, path=os.path.join(DATA, "world.db"))
-    # 步频加密后的平衡调整: 锻刀收益 4→3。原来攻12一次 talk +4, 两天内就能够到实力关
-    # (攻20); 每 2h 一步后旅行者一天可能见刚郎多次, 一天内就过了双关, 前期弧线塌掉。
-    # 调到 +3: 12→15→18→21, 需 3 次锻刀、跨 2-3 天, 保住"前期先积累"的节奏。
-    w.weapon_gain = 3
-    # 理由上限与 REASON_NEEDED 同步抬到 4 (World 默认 3, 不同步旅行者永远差 1 条, 双关死锁)。
-    # 前 3 条最容易 (桃音证言+帮桃音藏匿+刚郎证言, 两处一天拿齐), 第 4 条必须来自小梅
-    # (典籍取证/帮藏匿) 或目击执行官收缴 —— 逼旅行者满城跑, 前期弧线从 1 天拉到 2-3 天。
+    # 理由上限 (引擎通用容量): 抬到 REASON_NEEDED。前 3 条最容易 (桃音证言+帮桃音藏匿+
+    # 刚郎证言), 第 4 条必须来自小梅(典籍取证/帮藏匿)或目击执行官收缴 —— 逼旅行者满城跑。
     w.reason_cap = REASON_NEEDED
+    register_scenario(w)   # 注入稻妻情境的动作效果 (理由/锻刀/目击)
     llm = RealLLM()
     emb = make_embedder()
 

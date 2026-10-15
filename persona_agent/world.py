@@ -248,9 +248,7 @@ class World:
         self._npc_data_dirs: dict[str, str] = {}   # NPC → 其独立 db 的 data_dir (持久化注册表)
         self._agent_llms: dict[str, object] = {}   # agent → 其 LLM (决策用, 自治循环)
         self._agent_personas: dict[str, dict] = {}   # agent → 人格特质 (决策用)
-        self.reason_cap = 3          # 一个 agent 最多积累几条理由 (说服用, world_auto_sim)
-        self.weapon_gain = 4         # 与铁匠对话一次, 攻 +N (锻武器)
-        self.weapon_cap = 24         # 攻的上限
+        self.reason_cap = 3          # 一个 agent 最多积累几条理由/证据 (通用容量, 情境可覆盖)
         self.clock: float = 0.0            # 游戏内时间 (小时, 单调递增)
         self.perception_radius = perception_radius   # 视距: 玩家距 NPC 超过则感知不到
         self.full_radius = full_radius             # 同区域半径: 玩家距 NPC <= 此值 = full
@@ -518,28 +516,7 @@ class World:
             ve = VisualEvent("conversation", agent.name, self.clock,
                              location=agent.location.name, target=target.name,
                              utterance=line, reply=reply, reply_speaker=target.name)
-            # 理由 (仅玩家积累): 学者取证 / 医者证言 / 铁匠经济之弊
-            if agent.kind == "player":
-                if "scholar" in target.role:
-                    r = "从小梅的孤本典籍中取证: 眼狩令令持眼者流离失所"
-                elif "healer" in target.role:
-                    r = "听桃音讲述眼狩令下持眼者被迫离散、伤者无依的苦"
-                elif "blacksmith" in target.role:
-                    r = "刚郎作证: 眼狩令收缴神之眼后持眼者离散, 武器生意断绝, 铁匠营生受损"
-                else:
-                    r = None
-                if r and agent.add_reason(r, self.reason_cap):
-                    ve.reason_added = r
-                    ve.reason_count = len(agent.reasons)
-                elif r:
-                    # 去重反馈: 同一条理由重复取得不新增, 显式写入行动者历史, 让 LLM
-                    # 看得见"这条没算数", 别把同一来源问到底 (旧实现静默丢弃, LLM 误以为
-                    # 已积累, 会卡在同一个人身上反复对话)。
-                    agent.record(f"向 {target.name} 取的理由已重复, 未新增 (现{len(agent.reasons)}条)")
-            # 铁匠: 对话 = 锻一把武器, 攻提升 (与理由独立, 玩家找铁匠既取证又锻刀)
-            if "blacksmith" in target.role and agent.attack < self.weapon_cap:
-                agent.attack = min(self.weapon_cap, agent.attack + self.weapon_gain)
-                ve.weapon_attack = agent.attack
+            # 世界层效果 (理由生成/锻刀等具体世界行为) 由情境经钩子注入, 引擎不再硬编码。
             self._run_effects("talk", agent, target, action, ve)
             return emit(ve)
         if a == "attack" and target and target.is_alive():
@@ -566,22 +543,7 @@ class World:
             ve = VisualEvent("attack", agent.name, self.clock,
                              location=agent.location.name, target=target.name,
                              damage=dmg, target_dead=target.dead)
-            # 执行官收缴持眼者 → 同地点的目击玩家积累一条理由 (亲眼所见)
-            if "enforcer" in agent.role and "vision_holder" in target.role:
-                for witness in self.entities.values():
-                    if (witness.kind == "player" and witness is not agent
-                            and witness is not target and witness.is_alive()
-                            and witness.location is target.location):
-                        if witness.add_reason(
-                                f"目睹执行官当众收缴 {target.name} 的神之眼, 其家破人亡",
-                                self.reason_cap):
-                            ve.witnessed = True
-                            ve.reason_count = len(witness.reasons)
-                        else:
-                            # 去重反馈: 同一次收缴的理由已记过, 不新增 (见 talk 分支)。
-                            witness.record(
-                                f"目睹收缴 {target.name} 的理由已重复, 未新增 "
-                                f"(现{len(witness.reasons)}条)")
+            # 世界层效果 (如"执行官收缴持眼者→目击者得理由") 由情境经钩子注入。
             self._run_effects("attack", agent, target, action, ve)
             return emit(ve)
         if a == "flee":
@@ -611,16 +573,7 @@ class World:
             # 惰性上升)。NPC 的"反应"同样由其下一步 decide_agent 行动承担。
             self._observe_target_social(
                 target, agent, "帮助了TA" if a == "help" else "替TA藏匿")
-            # 帮持眼者护住神之眼 = 一条反眼狩令的理由 (仅玩家积累)
-            if a == "help" and agent.kind == "player" and "vision_holder" in target.role:
-                r = f"助 {target.name} 藏好神之眼, 令其免遭收缴"
-                if agent.add_reason(r, self.reason_cap):
-                    ve.reason_added = r
-                    ve.reason_count = len(agent.reasons)
-                else:
-                    # 去重反馈: 同一持眼者只能帮一次 (见 talk 分支)。
-                    agent.record(f"帮 {target.name} 藏匿的理由已重复, 未新增 "
-                                 f"(现{len(agent.reasons)}条)")
+            # 世界层效果 (如"帮持眼者→得理由") 由情境经钩子注入。
             self._run_effects(a, agent, target, action, ve)
             return emit(ve)
         agent.record("观望")
