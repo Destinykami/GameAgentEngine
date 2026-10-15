@@ -509,6 +509,11 @@ class World:
                 if r and agent.add_reason(r, self.reason_cap):
                     ve.reason_added = r
                     ve.reason_count = len(agent.reasons)
+                elif r:
+                    # 去重反馈: 同一条理由重复取得不新增, 显式写入行动者历史, 让 LLM
+                    # 看得见"这条没算数", 别把同一来源问到底 (旧实现静默丢弃, LLM 误以为
+                    # 已积累, 会卡在同一个人身上反复对话)。
+                    agent.record(f"向 {target.name} 取的理由已重复, 未新增 (现{len(agent.reasons)}条)")
             # 铁匠: 对话 = 锻一把武器, 攻提升 (与理由独立, 玩家找铁匠既取证又锻刀)
             if "blacksmith" in target.role and agent.attack < self.weapon_cap:
                 agent.attack = min(self.weapon_cap, agent.attack + self.weapon_gain)
@@ -549,6 +554,11 @@ class World:
                                 self.reason_cap):
                             ve.witnessed = True
                             ve.reason_count = len(witness.reasons)
+                        else:
+                            # 去重反馈: 同一次收缴的理由已记过, 不新增 (见 talk 分支)。
+                            witness.record(
+                                f"目睹收缴 {target.name} 的理由已重复, 未新增 "
+                                f"(现{len(witness.reasons)}条)")
             return emit(ve)
         if a == "flee":
             # 逃到离最近威胁最远的区域
@@ -579,10 +589,14 @@ class World:
                 target, agent, "帮助了TA" if a == "help" else "替TA藏匿")
             # 帮持眼者护住神之眼 = 一条反眼狩令的理由 (仅玩家积累)
             if a == "help" and agent.kind == "player" and "vision_holder" in target.role:
-                if agent.add_reason(f"助 {target.name} 藏好神之眼, 令其免遭收缴",
-                                    self.reason_cap):
-                    ve.reason_added = f"助 {target.name} 藏好神之眼, 令其免遭收缴"
+                r = f"助 {target.name} 藏好神之眼, 令其免遭收缴"
+                if agent.add_reason(r, self.reason_cap):
+                    ve.reason_added = r
                     ve.reason_count = len(agent.reasons)
+                else:
+                    # 去重反馈: 同一持眼者只能帮一次 (见 talk 分支)。
+                    agent.record(f"帮 {target.name} 藏匿的理由已重复, 未新增 "
+                                 f"(现{len(agent.reasons)}条)")
             return emit(ve)
         agent.record("观望")
         return emit(VisualEvent("wait", agent.name, self.clock,
