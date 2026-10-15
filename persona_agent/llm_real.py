@@ -406,9 +406,15 @@ class RealLLM(LLMClient):
                 + ' "target": "对象名或空", "utterance": "若对话说什么, 否则空",'
                 + ' "dest": "若移动去哪区域, 否则空", "reason": "简述理由"}\n'
                 + "action 选一个; 只输出 JSON。")
-        data = self._chat_json("你是一个游戏角色决策器, 只输出一个 JSON 对象。",
-                               user, think=False, temperature=0.2,
-                               _stats_tag="decide_action")
+        try:
+            data = self._chat_json("你是一个游戏角色决策器, 只输出一个 JSON 对象。",
+                                   user, think=False, temperature=0.2,
+                                   _stats_tag="decide_action")
+        except ValueError:
+            # 解析失败 (模型截断 JSON 等) 兜底 wait: 一条坏输出不能拖垮整个
+            # World.step 自治循环 (同 _parse_hour 的防御原则)。
+            return {"action": "wait", "target": "", "utterance": "",
+                    "dest": "", "reason": "决策解析失败"}
         if isinstance(data, dict) and "action" in data:
             return {"action": str(data.get("action", "wait")),
                     "target": str(data.get("target", "")),

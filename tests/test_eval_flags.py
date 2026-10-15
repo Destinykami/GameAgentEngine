@@ -284,6 +284,23 @@ def test_decision_gate_default_off(tmp_path):
     w.close()
 
 
+# ------------------------------------------------- 决策解析兜底
+class _BrokenJsonDecideLLM(RealLLM):
+    """_chat_json 恒抛 JSONDecodeError (模拟模型截断 JSON 的坏输出)。"""
+
+    def _chat_json(self, system, user, **kw):
+        import json
+        raise json.JSONDecodeError("Unterminated string", user, 73)
+
+
+def test_decide_action_falls_back_to_wait_on_bad_json():
+    """一条坏输出不能拖垮整个 World.step: 解析失败兜底 wait 而非抛异常。"""
+    llm = _BrokenJsonDecideLLM()
+    d = llm.decide_action("测试人", "目标", {"social": 0.5}, "(空)", [], "健康")
+    assert d["action"] == "wait"
+    assert d["reason"] == "决策解析失败"
+
+
 # ------------------------------------------------- P7: 规划计数
 def test_planning_counters_increment():
     planner = PlanningEngine(_StubLLM())
