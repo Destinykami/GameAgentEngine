@@ -96,7 +96,7 @@ evals/
 - **LLM Calls / Tokens per Step**：P5 计数器按步快照。
 - **P50 / P95 Step Latency**：每步计时聚合。**本实验独占 LLM 端点跑**（不与实验 1/2 并发，防排队污染延迟数）。
 - **Decision Consistency**：旅行者决策序列逐步比对（action 类型一致率）+ 终局世界状态比对（存活数、旅行者攻值/理由数、将军结局）——多智能体模拟中 NPC 走位会分叉，故关键交互质量量在旅行者这条主线上；另计"漏感知"：NPC 处 idle 时发生的世界事件数 + 两臂自我反思条数差（调度省成本必须明说的代价：远处 NPC 认知深度变浅）。
-- **NPC Count Scaling**：N = 5 / 10 / 20 / 40（all_full 封顶 N≤10——每 NPC 每步至少一次 `score_importance`，N=40×24 步纯存在性调用就 960 次，预算不划算；tiered 臂远处 NPC idle 零调用，跑到 N=40）。
+- **NPC Count Scaling**：tiered 系 N = 5 / 10 / 20 / 40 完整扩展曲线；all_full 只取 N=5 一个线性增长证据点；tiered_capped 取 N=40 单锚点（证据上限的边际收益在大 N 最可见）。**预算修正（跑批中定）**：`decide_action` 是重调用（大 prompt + 结构化生成），all_full 下每 NPC 每步一次——N=5 约 144 次决策调用 ≈ 50 分钟，N=10 翻倍到 ≈ 90 分钟，原 6 配置全范围 ≈ 6 小时不可行。收敛后 7 个配置×N ≈ 3 小时，脚本改增量保存（每配置×N 完成即落盘 runs_partial.json，中断不丢进度）。决策一致性在 N=5 双臂可比（all_full 与 tiered 同 N 的旅行者决策序列逐步一致率）。
 - 产出 trade-off 散点：x = 成本降幅，y = 关键交互决策一致率。
 
 ## 五、执行顺序与 git 提交规范
@@ -122,17 +122,18 @@ evals/
 - [x] P7 planning.py：daily_plan_count / replan_count
 - [x] P8 world.py：decision_tier_gate 决策门控
 - [x] tests/test_eval_flags.py 离线测试
-- [x] 闸门：离线测试 (136 全绿) + 6 探针 (85s 全绿)
-- [ ] 提交 1
-- [ ] evals/common.py（NPC 工厂 / 轨迹构造 / 裁判 / 指标 / 落盘）
-- [ ] evals/scenarios.py（人格×信任×事件矩阵 + 期望响应表）
-- [ ] evals/memory_consistency.py
-- [ ] evals/decision_ablation.py
-- [ ] evals/scheduling_efficiency.py
-- [ ] evals/README.md 方法学（结果表留空待回填）
-- [ ] 三脚本 --smoke 冒烟通过
-- [ ] 提交 2
-- [ ] 全量跑批：实验 3（独占）
-- [ ] 全量跑批：实验 1 + 实验 2（并发）
-- [ ] 结果汇总 + OVERVIEW.md 更新
+- [x] 闸门：离线测试 (138 全绿) + 6 探针 (85s 全绿)
+- [x] 提交 1 (044290e 实验基建)
+- [x] evals/common.py（NPC 工厂 / 轨迹构造 / 裁判 / 指标 / 落盘）
+- [x] evals/scenarios.py（人格×信任×事件矩阵 + 54 格期望响应表）
+- [x] evals/memory_consistency.py
+- [x] evals/decision_ablation.py
+- [x] evals/scheduling_efficiency.py
+- [x] evals/README.md 方法学（结果表留空待回填）
+- [x] 三脚本 --smoke 冒烟通过（信号符合设计：记忆四臂梯度/决策三方法分化/调度成本阶梯）
+- [x] 提交 2 (ec378d2)
+- [x] 跑批暴露包缺陷 → 单独修复提交：decide_action 解析失败兜底 wait (e87b4cb, 回归闸门全绿)
+- [x] 全量跑批：实验 3（独占；tiered N=20 暴露解析崩溃 → 修复后增量续跑）
+- [x] 全量跑批：实验 1（34 分钟）+ 实验 2（19 分钟，并发）
+- [x] 结果汇总回填 evals/README 三张表 + OVERVIEW 验证体系挂评测
 - [ ] 提交 3

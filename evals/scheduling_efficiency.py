@@ -65,8 +65,12 @@ CONFIGS = {
     "tiered":        dict(force_full_tier=False, decision_tier_gate=True,  capped=False),
     "tiered_capped": dict(force_full_tier=False, decision_tier_gate=True,  capped=True),
 }
-NS_FULL = (5, 10)        # all-full 基线封顶 (每 NPC 每步决策 LLM, 成本线性)
+# N 范围预算 (decide_action 是重调用, all_full 下每 NPC 每步一次, 线性增长):
+# all_full 只取 N=5 一个线性增长证据点; tiered 跑完整扩展曲线; capped 取 N=40
+# 单锚点 (证据上限的边际收益在大 N 处最可见)。决策一致性在 N=5 双臂可比特定。
+NS_FULL = (5,)
 NS_TIERED = (5, 10, 20, 40)
+NS_CAPPED = (40,)
 DAYS, MOMENTS = 3, (7, 9, 11, 13, 15, 17, 19, 21)
 REFLECT_THRESHOLD = 50.0
 CAP_MIN_RELEVANCE = 0.5
@@ -203,6 +207,9 @@ def percentile(values: list, p: float) -> float:
 
 def main() -> int:
     smoke = "--smoke" in sys.argv
+    only_arg = next((a.split("=", 1)[1] for a in sys.argv
+                     if a.startswith("--only=")), None)
+    configs = only_arg.split(",") if only_arg else list(CONFIGS)
     tl = [7.0, 9.0] if smoke else timeline()   # 冒烟: 压缩时间轴
     ns_cfg = (2,) if smoke else tuple(dict.fromkeys(NS_FULL + NS_TIERED))
     days_label = "冒烟(2步)" if smoke else f"全量({DAYS}天×{len(MOMENTS)}步)"
@@ -213,11 +220,12 @@ def main() -> int:
     out = run_dir("scheduling_efficiency")
     runs = []
     t_start = time.time()
-    for config in CONFIGS:
+    for config in configs:
         if smoke:
             ns = (2,)
         else:
-            ns = NS_FULL if config == "all_full" else NS_TIERED
+            ns = {"all_full": NS_FULL, "tiered": NS_TIERED,
+                  "tiered_capped": NS_CAPPED}[config]
         for n in ns:
             t0 = time.monotonic()
             run = run_config(config, n, emb, tl)
@@ -225,6 +233,11 @@ def main() -> int:
             calls = [s["calls"] for s in run["steps"]]
             toks = [s["prompt_tokens"] + s["completion_tokens"] for s in run["steps"]]
             runs.append(run)
+            # 增量保存: 每个配置×N 完成即落盘, 中途被打断不丢已完成进度
+            save_json(os.path.join(out, "runs_partial.json"),
+                      [{k: r[k] for k in ("config", "n", "steps",
+                                          "traveler_actions", "outcome",
+                                          "total_usage")} for r in runs])
             print(f"  {config} N={n}: 总调用={run['total_usage']['calls']} "
                   f"总token={sum(toks)} P50={percentile(lat, .5):.1f}s "
                   f"P95={percentile(lat, .95):.1f}s "
@@ -281,10 +294,10 @@ def main() -> int:
               [{k: r[k] for k in ("config", "n", "steps", "traveler_actions",
                                   "outcome", "total_usage")} for r in runs])
     save_json(os.path.join(out, "metrics.json"),
-              {"config": {"configs": CONFIGS, "n": {c: (NS_FULL if c == 'all_full'
-                                                       else NS_TIERED)
-                                                   for c in CONFIGS}
-                          if not smoke else {"smoke": True},
+              {"config": {"configs": CONFIGS,
+                          "n": {"all_full": NS_FULL, "tiered": NS_TIERED,
+                                "tiered_capped": NS_CAPPED} if not smoke
+                          else {"smoke": True},
                           "days": DAYS if not smoke else None},
                "metrics": metrics,
                "decision_consistency": consistency,
