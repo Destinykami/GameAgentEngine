@@ -266,6 +266,11 @@ class World:
         # step_autonomous 每步执行前重置。前端回放读它 (序列化为 visual_events),
         # 不再解析中文事件串。旧调用方忽略本字段不受影响。
         self.visual_events: list[VisualEvent] = []
+        # 世界层动作效果钩子: {action: [fn(world, agent, target, action, ve), ...]}。
+        # 引擎只负责动作空间+物理规则 (移动/伤害/历史/视觉事件), "这个动作在本世界
+        # 还引发什么" (理由生成/锻刀/世界事件等具体世界行为) 全部由世界层经此注入,
+        # 引擎不硬编码任何具体世界的行为。默认空 = 纯物理引擎, 行为不变。
+        self.action_effects: dict[str, list] = {}
         if path is not None:
             self._open(path)
 
@@ -445,6 +450,23 @@ class World:
             norm["utterance"] = str(utterance)
         return norm
 
+    def add_action_effect(self, action: str, fn) -> None:
+        """注册世界层动作效果钩子 (引擎与世界行为解耦的扩展点)。
+
+        引擎执行完 `action` 的通用语义后, 依次调用本动作注册的所有 fn,
+        签名 fn(world, agent, target, action, ve)。fn 可改 agent (如 add_reason /
+        attack) 和 ve (如 reason_added / weapon_attack), 把"这个动作在本世界还引发
+        什么具体效果" (理由生成/锻刀/目击/世界事件) 留给世界层决定 —— 引擎不硬编码
+        任何具体世界的行为。target 对 move/flee/wait 等无目标动作为 None。
+        """
+        self.action_effects.setdefault(action, []).append(fn)
+
+    def _run_effects(self, action: str, agent: Entity, target: "Entity | None",
+                     action_dict: dict, ve: VisualEvent) -> None:
+        """依次执行本动作注册的所有世界层效果钩子 (无注册则什么都不做)。"""
+        for eff in self.action_effects.get(action, []):
+            eff(self, agent, target, action_dict, ve)
+
     def execute_action(self, agent: Entity, action: dict) -> str:
         """执行动作并应用影响, 返回发生了什么 (供打印/记录)。非全知: 只影响直接相关方。
 
@@ -518,6 +540,7 @@ class World:
             if "blacksmith" in target.role and agent.attack < self.weapon_cap:
                 agent.attack = min(self.weapon_cap, agent.attack + self.weapon_gain)
                 ve.weapon_attack = agent.attack
+            self._run_effects("talk", agent, target, action, ve)
             return emit(ve)
         if a == "attack" and target and target.is_alive():
             dmg = max(0, agent.attack - target.defense + random.randint(-2, 2))
@@ -559,6 +582,7 @@ class World:
                             witness.record(
                                 f"目睹收缴 {target.name} 的理由已重复, 未新增 "
                                 f"(现{len(witness.reasons)}条)")
+            self._run_effects("attack", agent, target, action, ve)
             return emit(ve)
         if a == "flee":
             # 逃到离最近威胁最远的区域
@@ -597,6 +621,7 @@ class World:
                     # 去重反馈: 同一持眼者只能帮一次 (见 talk 分支)。
                     agent.record(f"帮 {target.name} 藏匿的理由已重复, 未新增 "
                                  f"(现{len(agent.reasons)}条)")
+            self._run_effects(a, agent, target, action, ve)
             return emit(ve)
         agent.record("观望")
         return emit(VisualEvent("wait", agent.name, self.clock,
