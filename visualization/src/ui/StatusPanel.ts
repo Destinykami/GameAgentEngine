@@ -147,8 +147,16 @@ export class StatusPanel {
     // 按页脚高度截断, 长结局说明不再顶出框。
     const player = step.states["旅行者"];
     const lines: string[] = [];
-    if (player && !player.dead) lines.push(`理由${player.reasons.length}/${tl.reason_needed} 攻${player.attack}/${tl.attack_needed} 劝说${step.persuade}/${tl.persuade_n}`);
-    else lines.push(`劝说 ${step.persuade}/${tl.persuade_n}`);
+    if (tl.reason_needed == null) {
+      // B+ 涌现: 无门控/无劝说计数器, 只显示证据数与攻 (结局由 LLM 裁决, 见 note)。
+      lines.push(player && !player.dead
+        ? `证据${player.reasons.length}条 攻${player.attack}`
+        : "证据 —");
+    } else if (player && !player.dead) {
+      lines.push(`理由${player.reasons.length}/${tl.reason_needed} 攻${player.attack}/${tl.attack_needed} 劝说${step.persuade}/${tl.persuade_n}`);
+    } else {
+      lines.push(`劝说 ${step.persuade}/${tl.persuade_n}`);
+    }
     if (step.shogun_dead) lines[0] += " · 将军阵亡";
     if (step.decree_ended) lines.push("★ 眼狩令已废止");
     if (step.note) lines.push("★ " + step.note);

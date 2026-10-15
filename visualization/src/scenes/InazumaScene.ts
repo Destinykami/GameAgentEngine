@@ -163,9 +163,10 @@ export class InazumaScene extends Phaser.Scene {
     return {
       schema_version: meta.schema_version ?? 1,
       world: meta.world ?? { name: "稻妻城", coordinate_system: "location-name", render_map: "inazuma-v1" },
-      reason_needed: meta.reason_needed ?? 3,
-      attack_needed: meta.attack_needed ?? 20,
-      persuade_n: meta.persuade_n ?? 3,
+      // 缺键 (旧 meta) → 默认门槛; 键为 null (B+ 涌现) → 保留 null。
+      reason_needed: meta.reason_needed === undefined ? 3 : meta.reason_needed,
+      attack_needed: meta.attack_needed === undefined ? 20 : meta.attack_needed,
+      persuade_n: meta.persuade_n === undefined ? 3 : meta.persuade_n,
       steps: [...this.live!.allSteps],
     };
   }

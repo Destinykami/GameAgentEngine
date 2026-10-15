@@ -11,9 +11,10 @@ import type { TimelineStep } from "./schema";
 export interface LiveMeta {
   schema_version?: number;
   world?: { name: string; coordinate_system: string; render_map: string };
-  reason_needed?: number;
-  attack_needed?: number;
-  persuade_n?: number;
+  // B+ 涌现: 无门控, 这三个门槛为 null (旧时间线为数字)。
+  reason_needed?: number | null;
+  attack_needed?: number | null;
+  persuade_n?: number | null;
 }
 
 export interface LivePollResult {

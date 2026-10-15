@@ -57,8 +57,11 @@ def render_step(step: dict, cfg: dict) -> str:
         b = bar(s["health"], max_hp[name])
         extra = ""
         if s["kind"] == "player":
-            extra = (f"  理由{len(s['reasons'])}/{cfg['reason_needed']} "
-                     f"攻{s['attack']}/{cfg['attack_needed']}")
+            if cfg.get("reason_needed") is None:   # B+ 涌现: 无门控, 只显示证据数/攻
+                extra = f"  证据{len(s['reasons'])}条 攻{s['attack']}"
+            else:
+                extra = (f"  理由{len(s['reasons'])}/{cfg['reason_needed']} "
+                         f"攻{s['attack']}/{cfg['attack_needed']}")
         lines.append(f"   {name:<6} {b} {s['health']:>3} @{s['loc']}{extra}")
     lines.append("")
     return "\n".join(lines)
@@ -79,8 +82,11 @@ def play_terminal(tl: dict, delay: float, no_delay: bool) -> None:
         tag = "✝" if s["dead"] else f"血{s['health']}@{s['loc']}"
         print(f"   {name:<6} {tag}")
     if last["decree_ended"]:
-        how = "阵亡" if last["shogun_dead"] else f"被劝说 {last['persuade']} 次"
+        how = "阵亡" if last["shogun_dead"] else "被说服 (LLM 裁决)"
         print(f"\n   ★ 眼狩令已废止 (将军{how})。旅行者目标达成。")
+    elif cfg.get("persuade_n") is None:
+        print(f"\n   眼狩令仍在 (旅程未让将军废止)。旅行者证据 "
+              f"{len(last['states']['旅行者']['reasons'])} 条。")
     else:
         print(f"\n   眼狩令仍在。将军被劝说 {last['persuade']}/{cfg['persuade_n']} 次。")
 
@@ -106,8 +112,12 @@ def render_html(tl: dict) -> str:
             pct = int(round(100 * s["health"] / max_hp[name]))
             extra = ""
             if s["kind"] == "player":
-                extra = (f"<span class='meta'>理由{len(s['reasons'])}/{cfg['reason_needed']}"
-                         f" 攻{s['attack']}/{cfg['attack_needed']}</span>")
+                if cfg.get("reason_needed") is None:   # B+ 涌现: 无门控
+                    extra = (f"<span class='meta'>证据{len(s['reasons'])}条 "
+                             f"攻{s['attack']}</span>")
+                else:
+                    extra = (f"<span class='meta'>理由{len(s['reasons'])}/{cfg['reason_needed']}"
+                             f" 攻{s['attack']}/{cfg['attack_needed']}</span>")
             rows.append(f"<div class='row'><span class='nm'>{name}</span>"
                         f"<span class='hpbar'><i style='width:{pct}%'></i></span>"
                         f"<span class='hp'>{s['health']} @{s['loc']}</span>{extra}</div>")
@@ -116,10 +126,21 @@ def render_html(tl: dict) -> str:
                      f"{int(step['moment']):02d}:00</h2>{evs}{note}"
                      f"<div class='rows'>{''.join(rows)}</div></section>")
     last = steps[-1]
-    ending = ("眼狩令已废止 (将军" + ("阵亡" if last["shogun_dead"]
-             else f"被劝说 {last['persuade']} 次") + ")。旅行者目标达成。"
-              if last["decree_ended"] else
-              f"眼狩令仍在。将军被劝说 {last['persuade']}/{cfg['persuade_n']} 次。")
+    if last["decree_ended"]:
+        how = "阵亡" if last["shogun_dead"] else "被说服 (LLM 裁决)"
+        ending = f"眼狩令已废止 (将军{how})。旅行者目标达成。"
+    elif cfg.get("persuade_n") is None:
+        ending = (f"眼狩令仍在 (旅程未让将军废止)。旅行者证据 "
+                   f"{len(last['states']['旅行者']['reasons'])} 条。")
+    else:
+        ending = f"眼狩令仍在。将军被劝说 {last['persuade']}/{cfg['persuade_n']} 次。"
+    if cfg.get("reason_needed") is None:   # B+ 涌现副标题
+        subtitle = ("<div class='sub'>旅行者目标: 说服雷电将军废止眼狩令 (B+ 涌现: "
+                    "证据由 LLM 从对话生成, 是否被说服由 LLM 当场裁决, 结局未知)</div>")
+    else:
+        subtitle = (f"<div class='sub'>旅行者目标: 打败并说服雷电将军结束眼狩令 "
+                    f"(双关: 理由≥{cfg['reason_needed']} 且攻≥{cfg['attack_needed']}, "
+                    f"再当面劝说 {cfg['persuade_n']} 次)</div>")
     return f"""<!doctype html><html lang='zh'><head><meta charset='utf-8'>
 <title>稻妻城 · 多智能体自治回放</title><style>
 body{{font-family:system-ui,'PingFang SC',sans-serif;background:#1a1a1f;color:#e8e6e3;
@@ -134,8 +155,7 @@ block;height:100%;background:linear-gradient(90deg,#c0563a,#d99a3c)}} .hp{{width
 color:#9a9aa2}} .meta{{color:#7fb0c9;font-size:12px}} .ending{{background:#2a2419;border:1px
 solid #b08d57;border-radius:10px;padding:14px 18px;margin-top:16px;color:#e0b34d;font-weight:600}}
 </style></head><body><h1>稻妻城 · 多智能体自治回放</h1>
-<div class='sub'>旅行者目标: 打败并说服雷电将军结束眼狩令 (双关: 理由≥{cfg['reason_needed']}
-且攻≥{cfg['attack_needed']}, 再当面劝说 {cfg['persuade_n']} 次)</div>
+{subtitle}
 {''.join(cards)}<div class='ending'>{ending}</div></body></html>"""
 
 

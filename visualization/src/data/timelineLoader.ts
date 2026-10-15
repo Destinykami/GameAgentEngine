@@ -25,9 +25,10 @@ export function normalizeTimeline(tl: unknown): Timeline {
   return {
     schema_version: 1,
     world: { name: "稻妻城", coordinate_system: "top_down_2d", render_map: "inazuma_town" },
-    reason_needed: (o.reason_needed as number) ?? 3,
-    attack_needed: (o.attack_needed as number) ?? 20,
-    persuade_n: (o.persuade_n as number) ?? 3,
+    // 缺键 (旧格式) → 默认门槛; 键为 null (B+ 涌现) → 保留 null, 别误回退成假门槛。
+    reason_needed: o.reason_needed === undefined ? 3 : (o.reason_needed as number | null),
+    attack_needed: o.attack_needed === undefined ? 20 : (o.attack_needed as number | null),
+    persuade_n: o.persuade_n === undefined ? 3 : (o.persuade_n as number | null),
     steps: steps.map((s) => ({
       ...s,
       visual_events: parseLegacyEvents(s as unknown as { events?: string[]; clock: number }),

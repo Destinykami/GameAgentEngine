@@ -63,7 +63,8 @@ export interface TimelineStep {
   activities?: unknown[];
   states: Record<string, AgentSnapshot>;
   note?: string;
-  persuade: number;
+  // B+ 涌现: 无劝说计数器, 该字段为 null (旧时间线为数字)。
+  persuade: number | null;
   decree_ended: boolean;
   shogun_dead: boolean;
 }
@@ -71,8 +72,9 @@ export interface TimelineStep {
 export interface Timeline {
   schema_version: number;
   world: WorldMeta;
-  reason_needed: number;
-  attack_needed: number;
-  persuade_n: number;
+  // B+ 涌现: 无门控, 这三个门槛为 null (旧时间线为数字)。
+  reason_needed: number | null;
+  attack_needed: number | null;
+  persuade_n: number | null;
   steps: TimelineStep[];
 }
