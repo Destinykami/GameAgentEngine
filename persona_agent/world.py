@@ -242,7 +242,8 @@ class World:
                  perception_radius: float = 1.5,
                  full_radius: float = 0.5,
                  force_full_tier: bool = False,
-                 decision_tier_gate: bool = False) -> None:
+                 decision_tier_gate: bool = False,
+                 social_perception: bool = False) -> None:
         self.name = name
         self.locations: dict[str, Location] = {loc.name: loc for loc in locations}
         self.entities: dict[str, Entity] = {}
@@ -261,6 +262,13 @@ class World:
         # (零 LLM), 不跑 decide_action —— 三级认知调度在决策层的落点: 视距内
         # 无人时, 远处 NPC 不需要 LLM 战略决策。玩家 agent 不受门控 (玩家不归档)。
         self._decision_tier_gate = decision_tier_gate
+        # S2 社交在场感知 (缺省 False = 现行为): NPC 感知视距内其他 NPC 的**出现**,
+        # 生成 per-entity 关系观察 (与 E16 社交动作观察同流, 信任/关系反思机制复用)。
+        # 过渡驱动: 只对"新出现在视距内"的 NPC 产生观察, 重复在场不重复入库
+        # (离开后重现会再触发)。idle 档经 perceive 入口早退自动排除。
+        self._social_perception = social_perception
+        # 每 NPC 当前视距内的 NPC 名集合 (出现检测的内存态, 同 _plan_blocks 不持久化)
+        self._social_seen: dict[str, set[str]] = {}
         self.path = path
         self._conn: sqlite3.Connection | None = None
         self._lock = threading.RLock()
@@ -343,6 +351,31 @@ class World:
             else:   # compressed
                 content = f"{ent.name} 在 {me.location.name}"
             ids.append(npc.observe(content, now, player_id=ent.name))
+        # S2 社交在场感知 (缺省关): NPC 感知视距内其他 NPC 的**出现**。
+        # 过渡驱动而非逐步重放: 只对新进入视距的 NPC 产生观察 (重复在场不重复
+        # 入库, 0.92 去重仍是兜底); 离开视距即移出 seen, 重现会再触发。
+        # 档位同玩家感知: full=富细节, compressed=仅在场, idle 经入口早退无感知。
+        # 新观察同时登记 _step_social —— 关系反思走 E16 的 flush_social 路径
+        # (full 档且新观察才反思, 幂等/异常安全), 信任度随之惰性更新。
+        if self._social_perception:
+            seen = self._social_seen.setdefault(npc_name, set())
+            current: set[str] = set()
+            for ent in self.entities.values():
+                if (ent.kind != "npc" or ent is me or ent.dead
+                        or distance(me, ent) > r):
+                    continue
+                current.add(ent.name)
+            for other in sorted(current - seen):
+                if npc._tier == "full":
+                    content = f"{other} 出现在 {me.location.name}, 靠近 {npc_name}"
+                else:   # compressed
+                    content = f"{other} 在 {me.location.name}"
+                ids.append(npc.observe(content, now, player_id=other))
+                self._step_social.append((npc, other))
+            # 就地更新 seen 为当前在场集合 (不能 seen &= current: 首步 seen 为空,
+            # 交集恒空, 出现集合记不住, 每步都当"新出现")。离开者自然移出, 重现再触发。
+            seen.clear()
+            seen.update(current)
         return ids
 
     def player_action(self, player_name: str, action: str, target_npc: str,
