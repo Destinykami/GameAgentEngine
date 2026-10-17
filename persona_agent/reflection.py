@@ -161,6 +161,52 @@ class ReflectionEngine:
                     new_ids.append(new_id)
         return new_ids
 
+    # ------------------------------------------------------------- 身份层信念
+    def reflect_identity(self, store: MemoryStore, now: float,
+                         recent_n: int = 50) -> list[int]:
+        """身份层信念 (M3): 跨玩家泛化 —— "综合我对待不同玩家的经历, 我是
+        什么样的人, 今后该如何对待来往的人"。产物 type="identity", 写共享流
+        (player_id=None), 对所有玩家生效。
+
+        证据刻意**跨流**: 关系反思 (各玩家面, 泛化原料) + 共享流观察 (世界/
+        自我经历)。这是 E8 "自我反思只吃共享流" 的有意例外 —— 身份信念要回答的
+        正是"跨玩家的泛化", 只吃共享流会把不同玩家的经历排除在外, 泛化无从谈
+        起。安全边界: 身份信念在独立 type 池, 证据约束链 (evidence_types 锁
+        observation) 不会把 identity 当证据引用, 级联风险被类型隔离封死。
+        """
+        # 跨流证据: 各玩家面的关系反思 (泛化原料) + 共享流观察 (世界/自我经历)
+        rel = store.all_valid(types=["reflection"])[-recent_n:]
+        world_obs = store.all_valid(shared=True, types=["observation"])[-recent_n:]
+        ev_pairs = [(m.id, m.content) for m in rel + world_obs if m.id is not None]
+        if not ev_pairs:
+            return []
+        who = self._npc_name or "NPC"
+        # 单一固定身份问题 (不生成问题: 身份反思问的就是这一件事, 生成问题只会
+        # 漂移回"我最近做了什么"的伪身份反思)
+        question = (f"综合{who}对待不同玩家的经历与所处世界, {who}是是什么样"
+                    f"的人, 今后该如何对待来往的人?")
+        # 证据检索: 只从共享流 (世界/自我观察) 检索 —— 与 E8 "自我反思只吃共享
+        # 流" 同向; 各玩家面的关系反思不走检索, 由 ev_pairs 直接注入当泛化原料。
+        evidence = store.retrieve(query=question, now=now, top_k=10, shared=True,
+                                  types=["observation"],
+                                  min_relevance=self._evidence_min_relevance,
+                                  mark_accessed=False)
+        ev_ids = [(e["id"], e["content"]) for e in evidence]
+        # 合并顺序: 跨流关系反思在前 (泛化原料是身份信念的核心证据),
+        # 共享流世界观察在后 (补充情境)。不重复 (世界观察已在 ev_ids)。
+        merged = ev_pairs + [x for x in ev_ids
+                             if x[0] not in {i for (i, _c) in ev_pairs}]
+        if not merged:
+            return []
+        new_ids: list[int] = []
+        for insight, ev_used in self._llm.reflection_insights(merged, n=3):
+            new_id = self._save(store, now, content=insight,
+                                evidence=ev_used, player_id=None,
+                                confidence=0.8, rtype="identity")
+            if new_id is not None:
+                new_ids.append(new_id)
+        return new_ids
+
     # ------------------------------------------------------------- 冲突处理
     def check_conflicts(self, store: MemoryStore, player_id: str,
                         now: float) -> list[int]:
@@ -194,7 +240,13 @@ class ReflectionEngine:
         """
         handled: list[int] = []
         reflections = store.all_valid(player_id=player_id, types=["reflection"])
-        observations = store.all_valid(player_id=player_id, types=["observation"])
+        # M1 固化后: 已固化的原始观察退出扫描 (被情节摘要吸收, 再由 episode 顶替
+        # "更晚证据"角色) —— 一条 episode 顶 N 条观察, 冲突检查从 O(反思×观察)
+        # 降为 O(反思×(情节+未固化观察))。未固化的观察照旧参与 (固化只走显式
+        # 触发, 缺省世界里 consolidated 恒 0, 行为不变)。
+        observations = (store.all_valid(player_id=player_id, types=["observation"],
+                                        consolidated=False)
+                        + store.all_valid(player_id=player_id, types=["episode"]))
 
         for ref in reflections:
             if ref.confidence < CONFLICT_DECAY_FLOOR:
@@ -240,7 +292,10 @@ class ReflectionEngine:
         """
         handled: list[int] = []
         reflections = store.all_valid(player_id=player_id, types=["reflection"])
-        observations = store.all_valid(player_id=player_id, types=["observation"])
+        # 同 LLM 路径: 已固化观察退出扫描, episode 顶替 (M1)
+        observations = (store.all_valid(player_id=player_id, types=["observation"],
+                                        consolidated=False)
+                        + store.all_valid(player_id=player_id, types=["episode"]))
         for ref in reflections:
             if ref.confidence < CONFLICT_DECAY_FLOOR:
                 continue   # 已死信念不值得关键词扫描
@@ -264,10 +319,13 @@ class ReflectionEngine:
     # --------------------------------------------------------------- 内部
     def _save(self, store: MemoryStore, now: float, content: str,
               evidence: Sequence[int], player_id: str | None,
-              confidence: float) -> int | None:
-        """保存反思; 与同玩家已有反思几乎同义 (>= 阈值) 时跳过, 返回 None。"""
+              confidence: float,
+              rtype: str = "reflection") -> int | None:
+        """保存反思; 与同玩家已有反思几乎同义 (>= 阈值) 时跳过, 返回 None。
+        rtype: 记忆类型 (缺省 reflection; 身份信念传 "identity", 与常规反思
+        分池去重, 也避免身份信念被当成关系反思被证据约束链误引)。"""
         if self._embedder is not None and self._dedup_threshold > 0:
-            existing = store.all_valid(player_id=player_id, types=["reflection"])
+            existing = store.all_valid(player_id=player_id, types=[rtype])
             if existing:
                 v_new = self._embedder.embed([content])[0]   # 新洞察嵌入一次 (不可避免)
                 # L1: 已有反思取 store 缓存向量 (add 时已嵌入缓存), 不再整批重嵌入 ——
@@ -276,7 +334,7 @@ class ReflectionEngine:
                 if max(cosine_similarity(v_new, v) for v in v_ex) >= self._dedup_threshold:
                     return None   # 同一条认知的又一次复述, 不入库
         rec = MemoryRecord(
-            content=content, timestamp=now, type="reflection",
+            content=content, timestamp=now, type=rtype,
             player_id=player_id, evidence=list(evidence),
             confidence=confidence, base_confidence=confidence, valid=True,
         )

@@ -246,7 +246,10 @@ class World:
                  force_full_tier: bool = False,
                  decision_tier_gate: bool = False,
                  social_perception: bool = False,
-                 rumor_spread: bool = False) -> None:
+                 rumor_spread: bool = False,
+                 consolidation: bool = False,
+                 use_identity_beliefs: bool = False,
+                 consolidate_hour: float = 23.0) -> None:
         self.name = name
         self.locations: dict[str, Location] = {loc.name: loc for loc in locations}
         self.entities: dict[str, Entity] = {}
@@ -280,6 +283,12 @@ class World:
         self._rumor_spread = rumor_spread
         self._chain_rules: dict[str, tuple[int, str]] = {}
         self._chain_counters: dict[str, dict[tuple[str, str], int]] = {}
+        # M1 记忆固化 (缺省关): 每晚 consolidate_hour 把当天观察压缩成 episode。
+        # M3 身份信念注入 (缺省关): 开启后 decide_agent 把身份信念拼进感知上下文。
+        self._consolidation = consolidation
+        self._use_identity_beliefs = use_identity_beliefs
+        self._consolidate_hour = consolidate_hour
+        self._last_consolidate_day = -1
         self.path = path
         self._conn: sqlite3.Connection | None = None
         self._lock = threading.RLock()
@@ -463,6 +472,13 @@ class World:
                 trust_bits.append(f"{other.name} {trust:+.2f}")
             if trust_bits:
                 perception += " | 对视距内对象的信任度: " + ", ".join(trust_bits)
+            # M3 身份信念注入 (缺省关): 身份信念是跨玩家泛化的自我认知
+            # (type=identity, 共享流), 进决策上下文 —— 影响 NPC 对一切来往者的
+            # 行为基调。只取最新一条 (身份是稳定的, 旧的被新泛化取代)。
+            if self._use_identity_beliefs:
+                ident = npc.store.all_valid(shared=True, types=["identity"])
+                if ident:
+                    perception += " | 身份信念: " + ident[-1].content
         return llm.decide_action(agent.name, agent.goal,
                                  self._agent_personas.get(agent.name, {}),
                                  perception, agent.history, self.agent_state(agent))
@@ -734,6 +750,7 @@ class World:
                 npc.generate_daily_plan(previous_day=f"第{day}天",
                                         date=f"第{day+1}天", now=self.clock)
             self._last_plan_day = day
+        self._maybe_consolidate(now, day)   # M1 夜间固化 (缺省关 = no-op)
         # 1. 所有存活 agent 先决策 (基于同一时刻感知)
         decisions: dict[str, dict] = {}
         for name, agent in self.entities.items():
@@ -793,6 +810,22 @@ class World:
         if self._conn is not None:
             self.save()
         return events, decisions
+
+    def _maybe_consolidate(self, now: float, day: int) -> None:
+        """M1 夜间固化 (缺省关): 到达 consolidate_hour 且该天未固化过时, 对每个
+        存活 NPC 跑 consolidate (当天观察 → episode, 幂等)。与早晨日计划同族:
+        同一天只触发一次, 死亡检查同计划波。"""
+        if not self._consolidation:
+            return
+        if day == self._last_consolidate_day:
+            return
+        if self.clock % 24 < self._consolidate_hour:
+            return
+        for name, npc in self._npcs.items():
+            if self.entities[name].dead:
+                continue   # 死去的 NPC 不再固化 (生命止于死亡那一刻)
+            npc.consolidate(self.clock)
+        self._last_consolidate_day = day
 
     def flush_social(self, now: float) -> None:
         """消费本步社交交互 (_step_social), 对目标 NPC 跑关系反思 (E16)。
@@ -911,6 +944,7 @@ class World:
                 npc.generate_daily_plan(previous_day=f"第{day}天",
                                         date=f"第{day+1}天", now=self.clock)
             self._last_plan_day = day
+        self._maybe_consolidate(now, day)   # M1 夜间固化 (缺省关 = no-op)
         new_obs: dict[str, int] = {}
         for name, npc in self._npcs.items():
             ids = self.perceive(name, now)

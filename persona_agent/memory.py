@@ -80,6 +80,7 @@ class MemoryRecord:
     last_accessed: float | None = None
     hearsay: bool = False              # S4: 传闻记忆 (非亲见, 检索按 hop 打折)
     hop: int = 0                       # S4: 传播跳数 (0=亲见, 上限 HEARSAY_MAX_HOP)
+    consolidated: bool = False         # M1: 已被固化进情节摘要 (仍 valid 可检索, 退出冲突扫描)
     id: int | None = None              # 由数据库分配
 
 
@@ -117,7 +118,8 @@ class MemoryStore:
                     base_confidence REAL DEFAULT 1.0,
                     base_importance REAL,
                     hearsay INTEGER DEFAULT 0,
-                    hop INTEGER DEFAULT 0
+                    hop INTEGER DEFAULT 0,
+                    consolidated INTEGER DEFAULT 0
                 )
                 """
             )
@@ -148,6 +150,11 @@ class MemoryStore:
                 self._conn.execute(
                     "ALTER TABLE memory ADD COLUMN hop INTEGER DEFAULT 0"
                 )
+            # 旧库迁移 (M1): consolidated 是固化标记, 旧行全部未固化 (0)
+            if "consolidated" not in cols:
+                self._conn.execute(
+                    "ALTER TABLE memory ADD COLUMN consolidated INTEGER DEFAULT 0"
+                )
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_player ON memory(player_id)"
             )
@@ -172,8 +179,9 @@ class MemoryStore:
                 INSERT INTO memory
                     (type, content, timestamp, importance, player_id,
                      evidence, confidence, valid, last_accessed,
-                     base_confidence, base_importance, hearsay, hop)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     base_confidence, base_importance, hearsay, hop,
+                     consolidated)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     rec.type,
@@ -189,6 +197,7 @@ class MemoryStore:
                     base_imp,
                     1 if rec.hearsay else 0,
                     rec.hop,
+                    1 if rec.consolidated else 0,
                 ),
             )
             new_id = int(cur.lastrowid)
@@ -213,7 +222,8 @@ class MemoryStore:
 
     def all_valid(self, player_id: str | None = None,
                   types: Sequence[str] | None = None,
-                  shared: bool = False) -> list[MemoryRecord]:
+                  shared: bool = False,
+                  consolidated: bool | None = None) -> list[MemoryRecord]:
         """取全部有效记忆 (可按玩家/类型过滤), 用于反思与展示。
 
         E2 语义拆分: `player_id=None` 是"不过滤" (返回所有玩家+共享流, 供衰减/
@@ -237,6 +247,9 @@ class MemoryStore:
             placeholders = ",".join("?" for _ in types)
             sql += f" AND type IN ({placeholders})"
             args.extend(types)
+        if consolidated is not None:   # M1: None=不过滤(现行为), True/False 按固化标记筛
+            sql += " AND consolidated = ?"
+            args.append(1 if consolidated else 0)
         sql += " ORDER BY id"
         with self._lock:
             rows = self._conn.execute(sql, args).fetchall()
@@ -248,7 +261,7 @@ class MemoryStore:
             importance=row[4], player_id=row[5], evidence=json.loads(row[6]),
             confidence=row[7], valid=bool(row[8]), last_accessed=row[9],
             base_confidence=row[10], base_importance=row[11],
-            hearsay=bool(row[12]), hop=row[13],
+            hearsay=bool(row[12]), hop=row[13], consolidated=bool(row[14]),
         )
 
     # ------------------------------------------------------------------ 检索
@@ -452,6 +465,20 @@ class MemoryStore:
                     "base_importance = ? WHERE id = ?",
                     (now, new_imp, new_imp, mem_id))
             return new_imp
+
+    def mark_consolidated(self, mem_ids: Iterable[int]) -> int:
+        """M1 固化标记: 把被情节摘要 (episode) 吸收的原始观察标 consolidated=1。
+        记忆仍 valid、仍可检索, 只是退出冲突扫描 (由 episode 顶替"更晚证据"角色)。
+        返回标记的条数。"""
+        ids = [i for i in mem_ids if i is not None]
+        if not ids:
+            return 0
+        q = ",".join("?" for _ in ids)
+        with self._lock, self._conn:
+            cur = self._conn.execute(
+                f"UPDATE memory SET consolidated = 1 WHERE id IN ({q}) AND consolidated = 0",
+                ids)
+            return cur.rowcount
 
     def all_invalid(self) -> list[MemoryRecord]:
         """取全部已失效记忆 (冲突失效), 按时间排序, 供审查。

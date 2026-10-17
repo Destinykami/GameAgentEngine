@@ -164,6 +164,52 @@ class NPC:
         self.reflection.check_conflicts(self.store, player_id, now)
         return ids
 
+    def reflect_identity(self, now: float) -> list[int]:
+        """身份层信念 (M3): 跨玩家泛化, 写共享流 (type=identity)。显式触发。"""
+        self._advance(now)
+        return self.reflection.reflect_identity(self.store, now)
+
+    def consolidate(self, now: float) -> list[int]:
+        """夜间记忆固化 (M1): 把当天未固化的原始观察按流压缩成情节摘要 (episode),
+        源观察标 consolidated (仍 valid 可检索, 退出冲突扫描)。
+
+        - 按流分组 (共享流 + 各玩家面), 每流一次 LLM 调用, 产物 episode 留在
+          同流 (冲突扫描按流进行, episode 必须和被吸收的观察同流才顶得替)。
+        - 摘要置信度取源观察最低 confidence (保守: 摘要不比其原料更可信)。
+        - 幂等: consolidated 观察不再被捡起, 同一天重跑不产生新 episode。
+        - 显式触发 (世界层 consolidation 开关 + 每日时刻), 不进 observe 路径。
+        """
+        self._advance(now)
+        day_start = now - 24.0
+        new_ids: list[int] = []
+        # 流分组 (确定性顺序): 共享流先, 各玩家面按名字排序。
+        # E2 陷阱: all_valid(player_id=None) 是"不过滤"不是共享流 —— 共享流必须
+        # shared=True, 否则共享流的循环会把全部观察 (含玩家面) 一次全吃掉。
+        player_ids = sorted({m.player_id for m in
+                             self.store.all_valid(types=["observation"])
+                             if m.player_id is not None})
+        for shared, pid in [(True, None)] + [(False, p) for p in player_ids]:
+            obs = [m for m in self.store.all_valid(shared=shared, player_id=pid,
+                                                   types=["observation"],
+                                                   consolidated=False)
+                   if m.timestamp >= day_start]
+            if len(obs) < 2:   # 单条观察本身已是摘要, 无需压缩
+                continue
+            summary = self.llm.consolidate_observations(
+                [m.content for m in obs], pid)
+            if not summary or not summary.strip():
+                continue
+            ep = MemoryRecord(content=summary.strip(), timestamp=now,
+                              type="episode", player_id=pid,
+                              evidence=[m.id for m in obs if m.id is not None],
+                              confidence=min(m.confidence for m in obs),
+                              base_confidence=min(m.confidence for m in obs),
+                              importance=max(m.importance for m in obs))
+            ep_id = self.store.add(ep)
+            self.store.mark_consolidated([m.id for m in obs])
+            new_ids.append(ep_id)
+        return new_ids
+
     # ---------------------------------------------------------------- 对话
     def speak(self, player_id: str, utterance: str, now: float) -> str:
         """对玩家发言作出回应 (非全知, 只用自己记忆流)。"""

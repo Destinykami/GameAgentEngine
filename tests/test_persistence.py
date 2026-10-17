@@ -68,6 +68,10 @@ class _StubLLM(LLMClient):
         return {"action": "wait", "target": "", "utterance": "",
                 "dest": "", "reason": "stub-wait"}
 
+    def consolidate_observations(self, observations, player_id=None):
+        # 离线确定性: 固定摘要 (条数可辨), 供固化逻辑测试 (不联网)。
+        return f"stub-episode ({len(observations)} obs)"
+
 
 TRAITS = {"social": 0.7, "goal_oriented": 0.5}
 

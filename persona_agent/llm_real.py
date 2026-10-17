@@ -424,6 +424,25 @@ class RealLLM(LLMClient):
         return {"action": "wait", "target": "", "utterance": "",
                 "dest": "", "reason": "解析失败"}
 
+    # ------------------------------------------------------------ 记忆固化
+    def consolidate_observations(self, observations: Sequence[str],
+                                 player_id: str | None = None) -> str:
+        """记忆固化 (第 12 类推理, M1): 一天的原始观察 → 1-3 句情节摘要。
+
+        有损压缩: 保事件/对象/因果, 丢措辞细节。摘要进 episode 记忆, 顶替被吸收
+        观察在冲突扫描里的"更晚证据"角色。temperature 0.2 取稳定, max_tokens 96
+        够 1-3 句中文。
+        """
+        scope = ("关于" + player_id) if player_id else "世界与自我"
+        obs = "\n".join(f"- {o}" for o in observations) or "(无)"
+        user = ("下面是游戏 NPC 今天" + scope + "的原始观察记录:\n" + obs
+                + "\n\n把这一天压缩成 1 到 3 句情节摘要: 保留发生的事件、涉及的"
+                + "对象和因果关系, 用第三人称客观叙述 (称 NPC 为其名字, 称玩家为"
+                + "其名字), 不新增事实、不加评价。直接输出摘要文本。")
+        return self._chat("你是游戏 NPC 的记忆整理者, 把一天的观察压成情节摘要, 只输出摘要。",
+                          user, think=False, temperature=0.2, max_tokens=96,
+                          _stats_tag="consolidate_observations").strip()
+
     @staticmethod
     def _extract_int(raw: str, lo: int, hi: int, default: int = 0) -> int:
         """提取第一个整数并夹到 [lo, hi]; 支持负号; 提不出给 default。"""

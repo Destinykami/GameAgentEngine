@@ -1,6 +1,6 @@
 """LLM 层: LLMClient 抽象接口 + LLMContext 上下文。
 
-框架让 LLM 承担十一类推理, 全部抽象成接口方法:
+框架让 LLM 承担十二类推理, 全部抽象成接口方法:
 - complete(ctx)                       对话/反应回复
 - score_importance(text, player_id)   记忆重要性打分 (1-10)
 - reflection_questions(recent)        生成反思用的 3 个高层问题
@@ -12,6 +12,7 @@
 - judge_conflict(reflection, obs)     判断更晚观察与反思的矛盾强度 (0-10)
 - perceive_action(npc, player, action)  NPC 把玩家的动作观察成自己的描述
 - decide_action(agent, goal, perception, ...)  Agent 决策下一步动作 (非全知)
+- consolidate_observations(obs)       记忆固化: 把一天的原始观察压缩成情节摘要 (M1)
 
 实现: persona_agent.llm_real.RealLLM (OpenAI 兼容, SGLang 部署)。
 实现者只应使用传入的记忆内容 —— 这是"非全知"原则的体现。
@@ -123,4 +124,15 @@ class LLMClient(ABC):
          "target": "对象名(可空)", "utterance": "对话内容(可空)",
          "dest": "移动目的地区域名(可空)", "reason": "理由"}
         只决定做什么/对谁/说什么 (战略层), 数值由规则层执行。
+        """
+
+    @abstractmethod
+    def consolidate_observations(self, observations: Sequence[str],
+                                 player_id: str | None = None) -> str:
+        """记忆固化 (第 12 类推理, M1): 把一天的原始观察压缩成 1-3 句情节摘要。
+
+        摘要有损: 丢细节、保事件/对象/因果。产物是 episode 记忆 (type="episode"),
+        顶替被吸收的原始观察在冲突扫描里的"更晚证据"角色 (N 条 → 1 条,
+        冲突检查从 O(反思×观察) 降为 O(反思×情节)), 同时作为长期检索的凝练认知。
+        player_id 指明摘要归属的关系流 (None = 共享流)。
         """
