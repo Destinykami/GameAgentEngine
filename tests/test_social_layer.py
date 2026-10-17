@@ -82,11 +82,12 @@ def test_npc_to_npc_social_reflection(tmp_path):
     w.flush_social(10.5)
     refs = w.npc("B").store.all_valid(player_id="A", types=["reflection"])
     assert len(refs) >= 1
-    # 回复回流后: A 的 B 面恰好是 B 的回复 (stub-reply), 不是 A 自己的话。
-    # 这验证对话双向落记忆 —— 接收方 (B) 记得 A 的话, 说话方 (A) 也记得 B 的回复。
+    # 自观察+回复回流后: A 的 B 面有两条 —— 自己说的 ("我对 B 说: 今天天气不错")
+    # 和 B 的回复 ("B 说: stub-reply")。对话双向+自洽落记忆。
     a_about_b = w.npc("A").store.all_valid(player_id="B", types=["observation"])
-    assert len(a_about_b) == 1
-    assert "stub-reply" in a_about_b[0].content
+    assert len(a_about_b) == 2
+    contents = " | ".join(m.content for m in a_about_b)
+    assert "我对 B 说" in contents and "stub-reply" in contents
     w.close()
 
 
@@ -97,12 +98,43 @@ def test_reply_flows_back_to_speaker(tmp_path):
     _setup(w, tmp_path)
     w.execute_action(w.get("A"), {"action": "talk", "target": "B",
                                   "utterance": "你最近怎么样?"})
-    # A 的 B 面有且仅有 B 的回复 (stub-reply)
+    # A 的 B 面有两条: 自己说的 (自观察回流) + B 的回复 (回复回流)
     a_about_b = w.npc("A").store.all_valid(player_id="B", types=["observation"])
-    assert len(a_about_b) == 1 and "stub-reply" in a_about_b[0].content
-    # 说话者下一步决策的记忆上下文能看到这条回复 (all_valid()[-5:] 含最新观察)
+    assert len(a_about_b) == 2
+    contents = " | ".join(m.content for m in a_about_b)
+    assert "你最近怎么样" in contents and "stub-reply" in contents
+    # 说话者下一步决策的记忆上下文能看到回复 (all_valid()[-5:] 含最新观察)
     mems = [m.content for m in w.npc("A").store.all_valid()[-5:]]
     assert any("stub-reply" in m for m in mems)
+    w.close()
+
+
+def test_self_utterance_flows_back_to_speaker(tmp_path):
+    """自观察回流: NPC A 说话时, 自己这句话 observe 进自己记忆流 (player_id=B,
+    "我对 B 说: X") —— NPC 有了"我说过什么"的记忆, 不只记得对方说的。"""
+    w = _world(tmp_path)
+    _setup(w, tmp_path)
+    w.execute_action(w.get("A"), {"action": "talk", "target": "B",
+                                  "utterance": "帮我看看炉子"})
+    a_about_b = w.npc("A").store.all_valid(player_id="B", types=["observation"])
+    self_obs = [m for m in a_about_b if "我对 B 说" in m.content]
+    assert len(self_obs) == 1
+    assert "帮我看看炉子" in self_obs[0].content
+    # 自观察与回复回流共存, 各一条
+    reply_obs = [m for m in a_about_b if "stub-reply" in m.content]
+    assert len(reply_obs) == 1
+    w.close()
+
+
+def test_no_self_utterance_for_player_speaker(tmp_path):
+    """说话者是玩家时不自观察 (玩家无认知对象/记忆流), 目标 NPC 照常记得玩家的话。"""
+    w = _world(tmp_path)
+    _setup(w, tmp_path)
+    w.execute_action(w.get("玩家"), {"action": "talk", "target": "B",
+                                     "utterance": "你好"})
+    # B 记得玩家说的 (既有 perceive_action, player_id=玩家)
+    b_about_player = w.npc("B").store.all_valid(player_id="玩家", types=["observation"])
+    assert any("你好" in m.content for m in b_about_player)
     w.close()
 
 

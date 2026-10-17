@@ -658,6 +658,19 @@ class World:
                         location=agent.location.name, target=target.name,
                         utterance=line, success=False,
                         failure_reason="认知事件生成失败"))
+            # 自观察回流: 说话者是 NPC 时, 把自己这句话 observe 进自己记忆流
+            # (player_id=目标, "我对 B 说: X")。与"回复回流"对称 —— 此前自己的话只进
+            # 动作历史 (decide_action 的临时近期事件), 不进长期记忆流, NPC 没有"我说过
+            # 什么"的记忆 (例如答应过什么)。现在说话者既记得对方说的 (回复回流), 也记得
+            # 自己说的 (本行), 对话双向+自洽落记忆。说话者是玩家 (无认知对象) 时跳过。
+            # best-effort: 失败不中止已成功的对话。自观察的反馈风险 (反复读自己的话)
+            # 由 0.92 去重 + 夜间固化消化, 不在此处特判。
+            if line and agent.name in self._npcs:
+                try:
+                    self._npcs[agent.name].observe(f"我对 {target.name} 说: {line}",
+                                                   self.clock, player_id=target.name)
+                except Exception:
+                    pass
             # 回复回流: 说话者是 NPC 时, 把对方回复 observe 进自己记忆流 (player_id=目标)。
             # 闭合此前的非对称 —— 旧实现里回复只进回放事件, 说话者的后续决策看不到
             # 对方答了什么, NPC 间"对话"退化成各自基于自己记忆的一串独白 (LLM 靠
