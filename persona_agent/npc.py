@@ -97,13 +97,16 @@ class NPC:
 
     # ---------------------------------------------------------------- 观察
     def observe(self, content: str, now: float,
-                player_id: str | None = None) -> int:
+                player_id: str | None = None,
+                hearsay: bool = False, hop: int = 0) -> int:
         """记录一条观察 (世界事件或关系事件), 按玩家参照系打重要性分。
 
         观察层去重: 同玩家的近义观察 (>= 0.92) 合并进已有记录 ——
         刷新 last_accessed (重复发生强化记忆) 并提升 importance,
         不新增。防止事件重放灌水: 信任度不再被重复计分,
         重要性累积不再被重复观察反复抬高。返回 (可能已存在的) 记忆 id。
+
+        hearsay/hop (S4, 缺省亲见): 传闻观察标记传播身份, 检索按 hop 打折。
         """
         self._advance(now)
         importance = self.llm.score_importance(content, player_id)
@@ -118,9 +121,11 @@ class NPC:
             # 零新信息几步就顶满反思阈值, 产出"1 条观察、6 步 6 条反思"的膨胀
             # (E6 那张 48:9 反思表的直接生成机制)。强化已由 merge 的 +1 importance
             # 承担 (抬高显著度, 检索排名上升), 那是显著度信号, 不是反思信号。
+            # 传闻重听同理: 合并保留原记录的 hop (不升级传播身份)。
             return dup.id
         rec = MemoryRecord(content=content, timestamp=now, type="observation",
-                           player_id=player_id, importance=importance)
+                           player_id=player_id, importance=importance,
+                           hearsay=hearsay, hop=hop)
         mem_id = self.store.add(rec)
         # 累积重要性, 驱动反思 (近处才累积, 远处/空闲不累积)
         if self._tier != "idle":

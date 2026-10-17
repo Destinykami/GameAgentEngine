@@ -18,6 +18,8 @@ import sqlite3
 import threading
 from dataclasses import dataclass, field
 
+from .memory import HEARSAY_MAX_HOP   # 传闻链上限 (S4); memory 不依赖 world, 无循环
+
 
 # --------------------------------------------------------------------- 区域
 @dataclass(frozen=True)
@@ -243,7 +245,8 @@ class World:
                  full_radius: float = 0.5,
                  force_full_tier: bool = False,
                  decision_tier_gate: bool = False,
-                 social_perception: bool = False) -> None:
+                 social_perception: bool = False,
+                 rumor_spread: bool = False) -> None:
         self.name = name
         self.locations: dict[str, Location] = {loc.name: loc for loc in locations}
         self.entities: dict[str, Entity] = {}
@@ -269,6 +272,14 @@ class World:
         self._social_perception = social_perception
         # 每 NPC 当前视距内的 NPC 名集合 (出现检测的内存态, 同 _plan_blocks 不持久化)
         self._social_seen: dict[str, set[str]] = {}
+        # S4 谣言传播 (缺省 False = 现行为): talk 的话语被范围内第三方 NPC 听到
+        # (传闻观察 hop=1), 持有未封顶传闻的 NPC 下次谈吐时转述给对话者 (hop+1)。
+        # S5 内生事件钩子: {action: (阈值, 描述)} —— 同一 actor 对同一 target 连续
+        # 同型动作达阈值触发世界事件 (链断重置), 与 add_action_effect 同族:
+        # 引擎只计数分派, 规则语义由世界层注册, 缺省无规则 = 现行为。
+        self._rumor_spread = rumor_spread
+        self._chain_rules: dict[str, tuple[int, str]] = {}
+        self._chain_counters: dict[str, dict[tuple[str, str], int]] = {}
         self.path = path
         self._conn: sqlite3.Connection | None = None
         self._lock = threading.RLock()
@@ -469,6 +480,46 @@ class World:
         self._step_social.append((npc, agent.name))
         return npc
 
+    def _spread_rumor(self, speaker: Entity, listener: Entity, line: str) -> None:
+        """S4 谣言传播 (缺省关): 两条路径, 都只产生传闻观察 (hearsay=True)。
+
+        (1) 听见: 对话发生区域内、除说话者与对话者外的存活 NPC 听到这句话 ——
+            观察进"说话者"的关系流 (player_id=说话者: 这是"他说了什么"的认知),
+            hop=1。第三方不关心对话者是谁, 只关心谁说了话。
+        (2) 转述: 说话者若是 NPC 且持有未封顶 (hop < HEARSAY_MAX_HOP) 的传闻记忆,
+            把它转述给对话者 —— 对话者收到同内容、同说话者流、hop+1 的传闻。
+            这就是"听说听说听说"的链: 每经一个 NPC 之口 +1 跳, 3 跳封顶不再传。
+            内容/说话者流相同 → 与已有传闻去重合并 (不升级 hop), 所以三角传回
+            自己不会无限加跳。
+
+        两条路径的观察都登记 _step_social, 听者/转述接收者会对说话者跑关系反思
+        (复用 E16 flush 路径, full 档且新观察才反思)。
+        """
+        # (1) 听见
+        for name, npc in self._npcs.items():
+            ent = self.entities.get(name)
+            if ent is None or ent.dead or ent is speaker or ent is listener:
+                continue
+            if location_distance(speaker.location, ent) > self.perception_radius:
+                continue
+            npc.observe(f"{speaker.name} 说: {line}", self.clock,
+                        player_id=speaker.name, hearsay=True, hop=1)
+            self._step_social.append((npc, speaker.name))
+        # (2) 转述
+        speaker_npc = self._npcs.get(speaker.name)
+        listener_npc = self._npcs.get(listener.name)
+        if speaker_npc is None or listener_npc is None:
+            return
+        pending = [m for m in speaker_npc.store.all_valid(types=["observation"])
+                   if m.hearsay and m.hop < HEARSAY_MAX_HOP]
+        if not pending:
+            return
+        latest = max(pending, key=lambda m: (m.timestamp, m.id or 0))
+        listener_npc.observe(latest.content, self.clock,
+                             player_id=latest.player_id, hearsay=True,
+                             hop=latest.hop + 1)
+        self._step_social.append((listener_npc, latest.player_id or ""))
+
     @staticmethod
     def _norm_action(action) -> dict:
         """R7: 动作输入在入口做 schema 校验/降级, 防非法值流进对话/LLM prompt 链。
@@ -507,6 +558,40 @@ class World:
         for eff in self.action_effects.get(action, []):
             eff(self, agent, target, action_dict, ve)
 
+    # ----------------------------------------------------- S5 内生事件 (行为链)
+    def add_chain_rule(self, action: str, threshold: int, description: str) -> None:
+        """注册行为链规则 (S5 内生事件): 同一 actor 对同一 target 连续做出
+        threshold 次同型动作 (链: 期间做任何别的带目标动作即断链清零), 触发
+        世界事件 description (在 actor 所在区域, 触发后该链计数清零重新累积)。
+
+        与 add_action_effect 同族: 引擎只计数与分派, "什么算链、触发什么事件"
+        的语义由世界层注册 (如"搜查连空三次→署内问责")。缺省无规则 = 现行为。
+        """
+        self._chain_rules[action] = (threshold, description)
+
+    def _chain_update(self, agent: Entity, action: str, target: Entity) -> None:
+        """带目标动作执行后更新行为链计数; 达阈触发世界事件。
+
+        断链语义: "连续同型动作"——同一 actor 的任何**别的**带目标动作 (哪怕
+        该动作类型没有注册规则, 如 talk) 都会打断其余链。先无条件清掉非本键的
+        计数, 再看本键有没有规则: 无规则的动作只断链不累积。
+        """
+        key = (action, target.name)
+        counters = self._chain_counters.get(agent.name)
+        if counters:
+            for other in [k for k in counters if k != key]:
+                del counters[other]   # 断链
+        rule = self._chain_rules.get(action)
+        if rule is None:
+            return   # 无规则: 只断链, 不累积
+        threshold, description = rule
+        if counters is None:
+            counters = self._chain_counters[agent.name] = {}
+        counters[key] = counters.get(key, 0) + 1
+        if counters[key] >= threshold:
+            counters[key] = 0     # 触发后清零, 下一轮链重新累积
+            self.world_event(description, self.clock, at=agent.location.name)
+
     def execute_action(self, agent: Entity, action: dict) -> str:
         """执行动作并应用影响, 返回发生了什么 (供打印/记录)。非全知: 只影响直接相关方。
 
@@ -517,6 +602,10 @@ class World:
         action = self._norm_action(action)   # R7: 入口 schema 校验/降级
         a = action.get("action", "wait")
         target = self.get(action.get("target", "")) if action.get("target") else None
+        # S5 行为链计数: 任何对存活目标的动作都过链检查 (无注册规则 = no-op,
+        # 缺省行为不变)。放在分支前, talk/attack/help/hide 等一律覆盖。
+        if target is not None and target.is_alive():
+            self._chain_update(agent, a, target)
 
         def emit(ve: VisualEvent) -> str:
             """追加结构化事件并返回其派生字符串。"""
@@ -555,6 +644,10 @@ class World:
                         failure_reason="认知事件生成失败"))
             agent.record(f"对 {target.name} 说: {line}")
             target.record(f"{agent.name} 对TA说: {line}")
+            # S4 谣言传播 (缺省关): 这句话被范围内第三方听到 + 说话者 NPC 可能
+            # 把持有的传闻转述给对话者。关时零行为。
+            if self._rumor_spread and line:
+                self._spread_rumor(agent, target, line)
             ve = VisualEvent("conversation", agent.name, self.clock,
                              location=agent.location.name, target=target.name,
                              utterance=line, reply=reply, reply_speaker=target.name)

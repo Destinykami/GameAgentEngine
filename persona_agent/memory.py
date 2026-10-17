@@ -45,6 +45,13 @@ OBS_DEDUP_THRESHOLD = 0.92
 # - 半衰期: 原始观察最先淡去, 反思(高阶认知)留存最久, 计划隔夜即过期
 # - FORGET_FLOOR 是强度(0-1)下限; MIN_IMPORTANCE = FORGET_FLOOR*10 是
 #   对应的 importance(0-10)下限 —— 降权到此为止, 不再删。
+# 传闻折扣 (S4): 传闻记忆的检索分数按传播跳数打折 (每跳 ×0.8) —— 谣言不是亲见,
+# 离源头越远, 检索排名越低。非传闻记忆 (hop=0) 折扣恒 1.0, 现行为不变。
+HEARSAY_DECAY = 0.8
+# 传闻链上限: 超过 3 跳的转述不再入库 (谣言到第三手就该停, 否则世界会被
+# "听说听说听说……" 灌满)。
+HEARSAY_MAX_HOP = 3
+
 FORGET_FLOOR = 0.15
 MIN_IMPORTANCE = FORGET_FLOOR * 10.0   # = 1.5, importance 降权下限
 FORGET_HALF_LIVES: dict[str, float] = {
@@ -71,6 +78,8 @@ class MemoryRecord:
     base_importance: float | None = None
     valid: bool = True
     last_accessed: float | None = None
+    hearsay: bool = False              # S4: 传闻记忆 (非亲见, 检索按 hop 打折)
+    hop: int = 0                       # S4: 传播跳数 (0=亲见, 上限 HEARSAY_MAX_HOP)
     id: int | None = None              # 由数据库分配
 
 
@@ -106,7 +115,9 @@ class MemoryStore:
                     valid INTEGER DEFAULT 1,
                     last_accessed REAL,
                     base_confidence REAL DEFAULT 1.0,
-                    base_importance REAL
+                    base_importance REAL,
+                    hearsay INTEGER DEFAULT 0,
+                    hop INTEGER DEFAULT 0
                 )
                 """
             )
@@ -127,6 +138,15 @@ class MemoryStore:
                 self._conn.execute(
                     "UPDATE memory SET base_importance = importance "
                     "WHERE base_importance IS NULL"
+                )
+            # 旧库迁移 (S4): hearsay/hop 是传闻链状态, 旧行全是亲见 (0/0)
+            if "hearsay" not in cols:
+                self._conn.execute(
+                    "ALTER TABLE memory ADD COLUMN hearsay INTEGER DEFAULT 0"
+                )
+            if "hop" not in cols:
+                self._conn.execute(
+                    "ALTER TABLE memory ADD COLUMN hop INTEGER DEFAULT 0"
                 )
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_player ON memory(player_id)"
@@ -152,8 +172,8 @@ class MemoryStore:
                 INSERT INTO memory
                     (type, content, timestamp, importance, player_id,
                      evidence, confidence, valid, last_accessed,
-                     base_confidence, base_importance)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     base_confidence, base_importance, hearsay, hop)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     rec.type,
@@ -167,6 +187,8 @@ class MemoryStore:
                     rec.last_accessed,
                     rec.base_confidence,
                     base_imp,
+                    1 if rec.hearsay else 0,
+                    rec.hop,
                 ),
             )
             new_id = int(cur.lastrowid)
@@ -226,6 +248,7 @@ class MemoryStore:
             importance=row[4], player_id=row[5], evidence=json.loads(row[6]),
             confidence=row[7], valid=bool(row[8]), last_accessed=row[9],
             base_confidence=row[10], base_importance=row[11],
+            hearsay=bool(row[12]), hop=row[13],
         )
 
     # ------------------------------------------------------------------ 检索
@@ -299,6 +322,9 @@ class MemoryStore:
             # 削弱的信念检索排名随之下降 (博客 2.2.5 "防不可靠推断被放大" 的落点)。
             # 观察/计划的 confidence 恒 1.0, 不受影响。
             score *= c.confidence
+            # 传闻折扣 (S4): 按传播跳数打折 —— 亲见 (hop=0) 恒 1.0, 现行为不变。
+            if c.hearsay and c.hop > 0:
+                score *= HEARSAY_DECAY ** c.hop
             # 千人千面: 属于当前玩家的记忆获得额外加权
             if include_player and c.player_id == include_player:
                 score += 0.5
@@ -322,6 +348,8 @@ class MemoryStore:
                 "player_id": c.player_id,
                 "confidence": c.confidence,
                 "evidence": c.evidence,
+                "hearsay": c.hearsay,   # S4: 下游 (对话 prompt 等) 可显传闻身份
+                "hop": c.hop,
                 "score": score,
             })
         return results
