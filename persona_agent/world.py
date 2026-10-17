@@ -658,6 +658,19 @@ class World:
                         location=agent.location.name, target=target.name,
                         utterance=line, success=False,
                         failure_reason="认知事件生成失败"))
+            # 回复回流: 说话者是 NPC 时, 把对方回复 observe 进自己记忆流 (player_id=目标)。
+            # 闭合此前的非对称 —— 旧实现里回复只进回放事件, 说话者的后续决策看不到
+            # 对方答了什么, NPC 间"对话"退化成各自基于自己记忆的一串独白 (LLM 靠
+            # 脑补补出"我确认过了")。现在双方对称: 接收方记得说话者的话 (既有
+            # perceive_action), 说话者也记得接收方的回复 (本行)。说话者是玩家 (无认知
+            # 对象) 时跳过。best-effort: 回流 observe 失败不中止已成功的对话 (回复
+            # 仍在回放事件里), 只丢这条记忆写入。
+            if reply and agent.name in self._npcs:
+                try:
+                    self._npcs[agent.name].observe(f"{target.name} 说: {reply}",
+                                                   self.clock, player_id=target.name)
+                except Exception:
+                    pass
             agent.record(f"对 {target.name} 说: {line}")
             target.record(f"{agent.name} 对TA说: {line}")
             # S4 谣言传播 (缺省关): 这句话被范围内第三方听到 + 说话者 NPC 可能

@@ -82,8 +82,39 @@ def test_npc_to_npc_social_reflection(tmp_path):
     w.flush_social(10.5)
     refs = w.npc("B").store.all_valid(player_id="A", types=["reflection"])
     assert len(refs) >= 1
-    # A 对 B 无观察 (B 没对 A 做过动作), A 的 B 面是空的 —— 双向独立
-    assert w.npc("A").store.all_valid(player_id="B", types=["observation"]) == []
+    # 回复回流后: A 的 B 面恰好是 B 的回复 (stub-reply), 不是 A 自己的话。
+    # 这验证对话双向落记忆 —— 接收方 (B) 记得 A 的话, 说话方 (A) 也记得 B 的回复。
+    a_about_b = w.npc("A").store.all_valid(player_id="B", types=["observation"])
+    assert len(a_about_b) == 1
+    assert "stub-reply" in a_about_b[0].content
+    w.close()
+
+
+def test_reply_flows_back_to_speaker(tmp_path):
+    """回复回流: NPC A 问 NPC B, B 的回复 observe 进 A 的记忆流 (player_id=B),
+    且出现在 A 下一步决策的记忆上下文里 —— 对话双向落记忆, 不再是一串独白。"""
+    w = _world(tmp_path)
+    _setup(w, tmp_path)
+    w.execute_action(w.get("A"), {"action": "talk", "target": "B",
+                                  "utterance": "你最近怎么样?"})
+    # A 的 B 面有且仅有 B 的回复 (stub-reply)
+    a_about_b = w.npc("A").store.all_valid(player_id="B", types=["observation"])
+    assert len(a_about_b) == 1 and "stub-reply" in a_about_b[0].content
+    # 说话者下一步决策的记忆上下文能看到这条回复 (all_valid()[-5:] 含最新观察)
+    mems = [m.content for m in w.npc("A").store.all_valid()[-5:]]
+    assert any("stub-reply" in m for m in mems)
+    w.close()
+
+
+def test_reply_not_backflowed_for_player_speaker(tmp_path):
+    """说话者是玩家时不回流 (玩家无认知对象/记忆流), 目标 NPC 照常回复。"""
+    w = _world(tmp_path)
+    _setup(w, tmp_path)
+    w.execute_action(w.get("玩家"), {"action": "talk", "target": "B",
+                                     "utterance": "你好"})
+    # B 回复了 (回放事件带 reply), 但"回流"只针对 NPC 说话者, 玩家侧无记忆流可写
+    conv = [ve for ve in w.visual_events if ve.type == "conversation"]
+    assert conv and conv[-1].reply == "stub-reply"
     w.close()
 
 
