@@ -922,6 +922,23 @@ no_rel 关系一致 0% → full 100%，但 full 的准确率优势在单切片�
 实验 1 的 ours 背叛后信任 +0.80 与 2026-10-15 smoke 同值（单轨迹噪声），
 P1 后 stale/冲突指标仍保持 ours 最优；全量结果表建议随最终全量重跑一起更新。
 
+### Eval 全量校准记录：decision_ablation（2026-10-18）
+
+产物：`data/eval/decision_ablation/20261018-131629/`（耗时 1143s，修正臂全量）。
+
+| 方法 | ERR | GCR | 关系一致 | 人格一致 | 计划打断率 | 人格符合(裁判) | 关系符合(裁判) |
+|---|---|---|---|---|---|---|---|
+| fixed | 44.4% | 22.2% | 0.0%(9) | 0.0%(2) | 100.0% | 16.7% | 0.0% |
+| no_relationship | 57.4% | 0.0% | 0.0%(9) | 100.0%(2) | 166.7% | 50.0% | 38.9% |
+| full | 64.8% | 11.1% | 44.4%(9) | 50.0%(2) | 133.3% | 61.1% | 77.8% |
+
+修正 `no_relationship` 臂后结论与旧表相反：full 的 ERR（64.8% > 57.4%）、
+关系一致（44.4% > 0%）、裁判关系符合（77.8% > 38.9%）都优于无信任臂；
+计划打断率更低（133.3% < 166.7%）。人格一致只有 2 对（full 50% vs no_rel
+100%），属单点噪声，不作为结论。旧表"full 准确率低于 no_rel"是缺陷臂造成的，
+已在 `evals/README.md` 重写实验 2 全表与结论。实验 3 的成本曲线仍为 F2-3 前
+数据（世界事件已单次打分），已在 README 标注待重跑。
+
 ### 阶段 0
 - [x] F0-1 稳定 HashEmbedder + 跨进程测试 + 修 flaky 用例
 
@@ -967,5 +984,7 @@ P1 后 stale/冲突指标仍保持 ours 最优；全量结果表建议随最终�
 - [x] 6 探针通过（P0 全量 212 / P1 全量 237 passed）
 - [x] `evals/memory_consistency.py --smoke` 跑通（P1 后 smoke）
 - [x] `evals/decision_ablation.py --smoke` 跑通（修正 no_rel 臂后 smoke）
-- [ ] 两项 eval 的**全量**结果表按修正臂/新行为重跑
-- [x] 在本文件勾选 P0/P1 完成并登记 eval smoke（本记录）
+- [x] `evals/decision_ablation.py` 全量按修正臂重跑（2026-10-18，1143s）
+- [ ] `evals/memory_consistency.py` 全量按 P1 后行为重跑
+- [ ] `evals/scheduling_efficiency.py` 全量重跑（F2-3 改变世界事件打分成本）
+- [x] 在本文件勾选 P0/P1 完成并登记 eval smoke/full（本记录）
