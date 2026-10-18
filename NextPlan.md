@@ -3,7 +3,7 @@
 配套 [EvalPlan.md](EvalPlan.md)：那个是"把现有机制量化"，这个是"让系统长出缺的东西"。
 方向来自评测暴露的缺口 + 架构留好的缝。每相独立可交付、可回滚，铁律不变：
 **包改动纯增量（缺省=现行为）、依赖单向、提交前回归闸门全绿**
-（139 离线 + 6 探针，`.venv/bin/python -m pytest tests/ -q` + `tests/test_probes.py -v`）。
+（全量离线测试 + 6 探针，`.venv/bin/python -m pytest tests/ -q` + `tests/test_probes.py -v`）。
 
 ## 四相总览与排序理由
 

@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import Sequence
 
 from .embeddings import Embedder, cosine_similarity
@@ -40,6 +41,7 @@ CONFLICT_DECAY = 3
 #   陆续跌破地板退出活跃集, 每条新观察的配对成本随衰减递减。
 CONFLICT_RECENT_OBS = 10
 CONFLICT_DECAY_FLOOR = 0.1
+CONFLICT_CACHE_LIMIT = 512   # F6-2: (反思, 观察) 判定缓存上限
 
 # 冲突检测词表 (启发式, 自包含)。check_conflicts 已升级为 LLM 判矛盾强度,
 # 这些词表现仅供离线测试 stub 与语义文档用途, 生产冲突判定不再依赖它们。
@@ -76,7 +78,7 @@ class ReflectionEngine:
         self._npc_name = npc_name
         # 冲突判断缓存: (反思内容, 观察内容) → 矛盾强度。反思与观察内容稳定,
         # 重复检查同一对零 LLM 成本 (check_conflicts 可能被多次触发)。
-        self._conflict_cache: dict[tuple[str, str], int] = {}
+        self._conflict_cache: OrderedDict[tuple[str, str], int] = OrderedDict()
 
     # ------------------------------------------------------------- 自我反思
     def reflect_self(self, store: MemoryStore, now: float,
@@ -183,7 +185,7 @@ class ReflectionEngine:
         who = self._npc_name or "NPC"
         # 单一固定身份问题 (不生成问题: 身份反思问的就是这一件事, 生成问题只会
         # 漂移回"我最近做了什么"的伪身份反思)
-        question = (f"综合{who}对待不同玩家的经历与所处世界, {who}是是什么样"
+        question = (f"综合{who}对待不同玩家的经历与所处世界, {who}是什么样"
                     f"的人, 今后该如何对待来往的人?")
         # 证据检索: 只从共享流 (世界/自我观察) 检索 —— 与 E8 "自我反思只吃共享
         # 流" 同向; 各玩家面的关系反思不走检索, 由 ev_pairs 直接注入当泛化原料。
@@ -202,7 +204,8 @@ class ReflectionEngine:
         for insight, ev_used in self._llm.reflection_insights(merged, n=3):
             new_id = self._save(store, now, content=insight,
                                 evidence=ev_used, player_id=None,
-                                confidence=0.8, rtype="identity", shared=True)
+                                confidence=0.8, rtype="identity", shared=True,
+                                cross_stream=True)
             if new_id is not None:
                 new_ids.append(new_id)
         return new_ids
@@ -278,10 +281,13 @@ class ReflectionEngine:
                 key = (ref.content, obs.content)
                 cached = self._conflict_cache.get(key)
                 if cached is not None:
+                    self._conflict_cache.move_to_end(key)
                     severity = cached
                 else:
                     severity = self._llm.judge_conflict(ref.content, obs.content)
                     self._conflict_cache[key] = severity
+                    while len(self._conflict_cache) > CONFLICT_CACHE_LIMIT:
+                        self._conflict_cache.popitem(last=False)
                 if severity >= CONFLICT_INVALIDATE:
                     store.invalidate(ref.id)   # 强烈矛盾 → 直接推翻, 反思失效
                     invalidated = True
@@ -347,7 +353,8 @@ class ReflectionEngine:
               evidence: Sequence[int], player_id: str | None,
               confidence: float,
               rtype: str = "reflection",
-              shared: bool | None = None) -> int | None:
+              shared: bool | None = None,
+              cross_stream: bool = False) -> int | None:
         """保存反思; 与同流已有反思几乎同义 (>= 阈值) 时跳过, 返回 None。
 
         rtype: 记忆类型 (缺省 reflection; 身份信念传 "identity", 与常规反思
@@ -356,6 +363,9 @@ class ReflectionEngine:
         shared: 去重池的流归属。None 时按 `player_id is None` 推断 ——
         **不能**把 None 直接传给 `all_valid(player_id=None)`: 那是"不过滤"
         不是"共享流" (E2 陷阱), 会让自我反思与所有玩家的关系反思互相去重。
+
+        cross_stream: identity 信念的证据刻意跨流 (关系反思是泛化原料), 校验
+        证据 id 时放宽到全部有效记忆; 普通自我/关系反思仍严格同流。
         """
         if shared is None:
             shared = player_id is None
@@ -368,9 +378,19 @@ class ReflectionEngine:
                 v_new = self._embedder.embed([content])[0]   # 新洞察嵌入一次 (不可避免)
                 # L1: 已有反思取 store 缓存向量 (add 时已嵌入缓存), 不再整批重嵌入 ——
                 # RealEmbedder (无自缓存) 下每存一条反思的 O(n) 网络嵌入降为 O(1)。
-                v_ex = [store.vector(m) for m in existing]
+                v_ex = store.vectors(existing)   # F6-8: 批量取已有反思向量
                 if max(cosine_similarity(v_new, v) for v in v_ex) >= self._dedup_threshold:
                     return None   # 同一条认知的又一次复述, 不入库
+        # F6-3: 引擎层二次校验证据 id —— 只保留同流、仍有效、真实存在的记忆。
+        # RealLLM.reflection_insights 已过滤一次, 但 stub/自定义 LLM 会绕过它,
+        # 幻影/跨玩家/失效 id 会污染证据链与遗忘保护集。
+        if evidence:
+            if cross_stream:
+                allowed = {m.id for m in store.all_valid()}
+            else:
+                allowed = {m.id for m in store.all_valid(
+                    shared=shared, player_id=player_id)}
+            evidence = [i for i in evidence if i in allowed]
         rec = MemoryRecord(
             content=content, timestamp=now, type=rtype,
             player_id=player_id, evidence=list(evidence),

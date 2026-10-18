@@ -6,7 +6,7 @@
   关思考用 SGLang 的 chat_template_kwargs={"enable_thinking": false}。
 - 结构化输出 (问题/洞察/计划) 要求模型返回严格 JSON, 并做容错解析。
 
-实现 LLMClient 接口的全部 6 个方法。
+实现 LLMClient 接口的全部 12 个抽象方法。
 注意: 凡含 JSON 示例的 prompt 行用普通字符串拼接, 不用 f-string,
 避免 f-string 把 JSON 的 {} 当成表达式。
 """
@@ -380,12 +380,12 @@ class RealLLM(LLMClient):
     # ------------------------------------------------------------ 动作观察
     def perceive_action(self, npc_name: str, player_name: str, action: str,
                         context: str = "") -> str:
-        """NPC 把玩家的动作观察成自己的描述 (第三人称)。观察内容由 NPC 生成。"""
+        """NPC 把对方的动作观察成自己的描述 (第三人称)。观察内容由 NPC 生成。"""
         ctx_line = ("你目前关于" + player_name + "的记忆: " + context + "\n") if context else ""
-        user = ("你是游戏 NPC「" + npc_name + "」。玩家「" + player_name
+        user = ("你是游戏 NPC「" + npc_name + "」。「" + player_name
                 + "」刚刚对你做了这样一件事: " + action + "。\n" + ctx_line
                 + "\n用第三人称客观描述你观察到的这件事 (一句话): 称自己为你的名字"
-                + "「" + npc_name + "」, 称玩家为「" + player_name
+                + "「" + npc_name + "」, 称对方为「" + player_name
                 + "」, 只描述动作事实, 不加评价、不揣测动机。直接输出这句话。")
         return self._chat("你是游戏 NPC 的观察者, 客观描述你看到的事, 只输出一句话。",
                           user, think=False, temperature=0.4, max_tokens=64,
@@ -439,7 +439,7 @@ class RealLLM(LLMClient):
         obs = "\n".join(f"- {o}" for o in observations) or "(无)"
         user = ("下面是游戏 NPC 今天" + scope + "的原始观察记录:\n" + obs
                 + "\n\n把这一天压缩成 1 到 3 句情节摘要: 保留发生的事件、涉及的"
-                + "对象和因果关系, 用第三人称客观叙述 (称 NPC 为其名字, 称玩家为"
+                + "对象和因果关系, 用第三人称客观叙述 (称 NPC 为其名字, 称对方为"
                 + "其名字), 不新增事实、不加评价。直接输出摘要文本。")
         return self._chat("你是游戏 NPC 的记忆整理者, 把一天的观察压成情节摘要, 只输出摘要。",
                           user, think=False, temperature=0.2, max_tokens=96,

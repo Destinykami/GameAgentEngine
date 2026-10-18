@@ -30,7 +30,7 @@ def test_cached_reject_is_not_misread_as_accept():
     assert second.react is False, "缓存命中不得把婉拒误读成接受"
     assert second.action == first.action
     assert second.utility == first.utility, "缓存应保留原效用, 不丢成 0"
-    assert second.reason == "语义缓存命中"
+    assert second.reason == "决策缓存命中"
 
 
 def test_cached_accept_still_accepts():

@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass
 
 from .llm import LLMClient
@@ -27,6 +28,7 @@ from .memory import MemoryStore
 #   - observation 最多 20 条 (近期证据)
 # 关系流较短时行为不变; 超窗时旧观察被排除 (episode 应承担长期凝练)。
 JUDGE_TRUST_MAX_MEMORIES = 30
+EVENT_VALUE_CACHE_LIMIT = 256   # F6-2: 事件价值缓存上限
 
 
 @dataclass
@@ -49,7 +51,8 @@ class ReactionDecider:
         self._use_relationship = use_relationship
         # 事件价值缓存: (事件文本, 当前计划) → (v_social, v_goal, c_interrupt)。
         # 反应是高频路径, 同一情境不重复调 LLM。
-        self._value_cache: dict[tuple[str, str], tuple[float, float, float]] = {}
+        self._value_cache: OrderedDict[
+            tuple[str, str], tuple[float, float, float]] = OrderedDict()
         # 信任度缓存: 玩家 → (信任值, 关系记忆签名)。签名 = (条数, 最新时间戳),
         # 只有该玩家的关系记忆真正变化 (新增观察/反思、被遗忘) 才重判。
         # 信任是高频读取 (react 建缓存键就要用), 必须缓存, 否则每次都烧 LLM。
@@ -146,9 +149,12 @@ class ReactionDecider:
         """LLM 判断事件价值, 按 (事件, 计划) 缓存。"""
         key = (event, current_plan)
         if key in self._value_cache:
+            self._value_cache.move_to_end(key)
             return self._value_cache[key]
         val = self._llm.score_event(event, persona_traits, current_plan)
         self._value_cache[key] = val
+        while len(self._value_cache) > EVENT_VALUE_CACHE_LIMIT:
+            self._value_cache.popitem(last=False)
         return val
 
     def clear_cache(self) -> None:

@@ -10,12 +10,13 @@
 
 成本闸门 (论文 blog 里"问题一"的落地):
 - 分级认知: 近处 NPC 走完整循环, 远处只压缩更新, 空闲只做记忆。
-- 语义缓存: 相似情境复用反应, 命中缓存不重复调 LLM。
+- 决策缓存: 相同情境复用反应, 命中缓存不重复调 LLM (精确键, 有上限)。
 """
 
 from __future__ import annotations
 
 import os
+from collections import OrderedDict
 
 from .dialogue import DialogueManager
 from .embeddings import Embedder, HashEmbedder
@@ -27,6 +28,7 @@ from .reflection import ReflectionEngine
 
 REFLECTION_THRESHOLD = 150.0   # 重要性累积阈值, 触发反思 (同论文)
 SWEEP_INTERVAL = 6.0           # 游戏时钟每推进 6h 自动做一次遗忘清扫
+NPC_CACHE_LIMIT = 512          # 决策缓存条数上限 (F6-2, 防长模拟无界增长)
 
 
 class NPC:
@@ -63,10 +65,10 @@ class NPC:
         self._current_plan = ""        # 反应后重规划的中断原因覆盖 (如"处理火灾"), 优先于日计划块
         self._plan_blocks: list[tuple[int, int, str]] = []   # 当日计划块 (start, end, activity)
         self._tier: str = "full"        # full | compressed | idle
-        # 语义缓存: 键 → 完整 ReactionDecision (F5-2: 不再只存 action 字符串,
+        # 决策缓存: 键 → 完整 ReactionDecision (F5-2: 不再只存 action 字符串,
         # 否则缓存命中时要从自然语言反解析 react/utility, 事件文本含"接受"就会
-        # 把婉拒误判成接受)。
-        self._cache: dict[str, ReactionDecision] = {}
+        # 把婉拒误判成接受)。F6-2: OrderedDict + 上限, 长模拟不无界增长。
+        self._cache: OrderedDict[str, ReactionDecision] = OrderedDict()
         # 每玩家"上次关系反思时的观察数": 用于门控, 避免每次对话都重跑反思
         # 导致反思无限增殖、信任度漂移 (只有出现新观察才值得再反思)
         self._reflected_obs: dict[str, int] = {}
@@ -125,7 +127,8 @@ class NPC:
             # 不传 importance —— 事件重要性已在首次入库时计入, 重复合并再加
             # 全量是双重计分 (M6 死参数已删)。
             self.store.merge_observation(dup.id, now,
-                                         new_hearsay=hearsay, new_hop=hop)
+                                         new_hearsay=hearsay, new_hop=hop,
+                                         new_content=content)
             # E7: 合并的重复是零新信息, 不累积到反思触发器。反思该由**新信息**
             # 驱动, 不是旧信息的反复强化 —— 世界层每步 perceive→observe→去重合并
             # 重放位置观察, 若 merge 分支仍累加原始 importance (世界感知常 8-10),
@@ -272,7 +275,7 @@ class NPC:
     # ---------------------------------------------------------------- 反应
     def react(self, event: str, player_id: str, now: float,
               current_plan: str | None = None) -> ReactionDecision:
-        """决定是否响应事件。带语义缓存: 相似情境复用反应。"""
+        """决定是否响应事件。带决策缓存: 相同情境复用反应。"""
         self._advance(now)
         # 计划上下文: 显式参数 > 当前时刻正在进行的计划块 > 重规划中断覆盖。
         # 不再用"日计划已生成"空话 —— score_event 需要知道 NPC 正忙什么才能
@@ -281,7 +284,7 @@ class NPC:
             plan = current_plan
         else:
             plan = self._current_activity(now) or self._current_plan
-        # 语义缓存: 按事件+玩家+关系档位缓存 (关系档位粗粒度, 避免过度失效)。
+        # 决策缓存: 按事件+玩家+关系档位缓存 (关系档位粗粒度, 避免过度失效)。
         # F5-4: use_relationship=False 的消融臂不应计算 trust, 缓存键也不带
         # trust 维度 (固定 "-"), 否则同一事件仍会因信任不同而拆缓存。
         if self.decider.use_relationship:
@@ -292,14 +295,18 @@ class NPC:
         cache_key = f"{event}|{player_id}|{trust_bucket}|{plan[:20]}"
         cached = self._cache.get(cache_key)
         if cached is not None:
+            self._cache.move_to_end(cache_key)   # LRU 命中提权
             # F5-2: 完整复用原决策 (react/action/utility), 只把 reason 换成
             # 缓存命中标记; 不再从 action 文本反解析"接受"。
             return ReactionDecision(react=cached.react, action=cached.action,
                                     utility=cached.utility,
-                                    reason="语义缓存命中")
+                                    reason="决策缓存命中")
         decision = self.decider.decide(event, player_id, self.persona_traits, plan)
         if self._tier == "full":
             self._cache[cache_key] = decision
+            self._cache.move_to_end(cache_key)
+            while len(self._cache) > NPC_CACHE_LIMIT:
+                self._cache.popitem(last=False)
         return decision
 
     # ---------------------------------------------------------------- 规划
@@ -372,7 +379,9 @@ class NPC:
         self._tier = tier
 
     def clear_cache(self) -> None:
+        """清空决策缓存与 Decider 的事件价值/信任缓存 (F6-9)。"""
         self._cache.clear()
+        self.decider.clear_cache()
 
     # ---------------------------------------------------------------- 统计
     def memory_count(self, player_id: str | None = None) -> int:
@@ -428,9 +437,18 @@ class NPC:
                   reflection_threshold=threshold)
         npc._data_path = path
         npc._game_time = float(store.get_meta("game_time", 0.0))
-        # _reflected_obs 留空: 加载后若某玩家有观察但未反思, speak 会补跑
-        # _plan_blocks 不持久化: 加载后当日计划块未知, react 的计划上下文退回空串
-        # (score_event 按"当前没有特别重要的计划"判断), 直到下一次 generate_daily_plan
+        # F6-7: 恢复瞬态。旧库没有这两个 meta 时回退为空/空串 (旧行为)。
+        reflected = store.get_meta("reflected_obs", {}) or {}
+        npc._reflected_obs = {str(k): int(v) for k, v in reflected.items()}
+        blocks = store.get_meta("plan_blocks", []) or []
+        restored: list[tuple[int, int, str]] = []
+        for b in blocks:
+            if (isinstance(b, (list, tuple)) and len(b) == 3
+                    and isinstance(b[0], (int, float))
+                    and isinstance(b[1], (int, float))):
+                restored.append((int(b[0]), int(b[1]), str(b[2])))
+        npc._plan_blocks = restored
+        npc._last_sweep = npc._game_time
         return npc
 
     def save(self) -> None:
@@ -443,5 +461,10 @@ class NPC:
                                     "reflection_threshold":
                                         self._reflection_threshold})
         self.store.set_meta("game_time", self._game_time)
+        # F6-7: 瞬态 (关系反思门控/当前计划块) 一并持久化, 重载后不重复反思、
+        # 不丢当前时刻的计划上下文。
+        self.store.set_meta("reflected_obs", dict(self._reflected_obs))
+        self.store.set_meta("plan_blocks",
+                            [list(b) for b in self._plan_blocks])
         if self._data_path is None:
             self._data_path = self.store.db_path()

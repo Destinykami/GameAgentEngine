@@ -259,7 +259,9 @@ class World:
                  rumor_spread: bool = False,
                  consolidation: bool = False,
                  use_identity_beliefs: bool = False,
-                 consolidate_hour: float = 23.0) -> None:
+                 consolidate_hour: float = 23.0,
+                 threat_filter=None,
+                 player_perception_transition: bool = False) -> None:
         self.name = name
         self.locations: dict[str, Location] = {loc.name: loc for loc in locations}
         self.entities: dict[str, Entity] = {}
@@ -299,6 +301,13 @@ class World:
         self._use_identity_beliefs = use_identity_beliefs
         self._consolidate_hour = consolidate_hour
         self._last_consolidate_day = -1
+        # F6-6: 引擎没有敌意模型, flee 默认把视距内所有活实体都当威胁 (旧行为);
+        # 世界层可注入 threat_filter(agent, other)->bool 缩小威胁集。
+        self.threat_filter = threat_filter
+        # F6-11 (可选, 缺省关): 玩家感知改过渡驱动 —— 只在玩家新进入视距/
+        # 换区域/档位变化时生成观察, 重复在场不再每步 observe+merge。
+        self._player_perception_transition = player_perception_transition
+        self._player_seen: dict[str, dict[str, tuple[str, str]]] = {}
         self.path = path
         self._conn: sqlite3.Connection | None = None
         self._lock = threading.RLock()
@@ -396,14 +405,26 @@ class World:
             return []   # 死去的 NPC 不再感知 (同 world_event/step 的死亡检查)
         r = self.perception_radius if radius is None else radius
         ids: list[int] = []
+        transition = self._player_perception_transition
+        seen = self._player_seen.setdefault(npc_name, {}) if transition else None
+        current: set[str] = set()
         for ent in self.entities.values():
             if ent.kind != "player" or ent.dead or distance(me, ent) > r:
                 continue   # 非玩家 / 死者 / 视距外
+            if transition:
+                current.add(ent.name)
+                key = (ent.location.name, npc._tier)
+                if seen.get(ent.name) == key:
+                    continue   # F6-11: 过渡驱动, 同一在场状态不重复 observe
+                seen[ent.name] = key
             if npc._tier == "full":
                 content = f"{ent.name} 出现在 {me.location.name}, 靠近 {npc_name}"
             else:   # compressed
                 content = f"{ent.name} 在 {me.location.name}"
             ids.append(npc.observe(content, now, player_id=ent.name))
+        if transition:
+            for pname in [n for n in seen if n not in current]:
+                seen.pop(pname, None)   # 离开视距 → 重进时重新观察
         # S2 社交在场感知 (缺省关): NPC 感知视距内其他 NPC 的**出现**。
         # 过渡驱动而非逐步重放: 只对新进入视距的 NPC 产生观察 (重复在场不重复
         # 入库, 0.92 去重仍是兜底); 离开视距即移出 seen, 重现会再触发。
@@ -694,11 +715,6 @@ class World:
                 and not self._within_reach(agent, target)):
             return self._emit_failure(
                 a, agent, target, action.get("target", ""), "不在可交互范围")
-        # S5 行为链计数: 任何对存活目标的动作都过链检查 (无注册规则 = no-op,
-        # 缺省行为不变)。放在距离校验之后, 隔空动作不计链。
-        if target is not None and target.is_alive():
-            self._chain_update(agent, a, target)
-
         def emit(ve: VisualEvent) -> str:
             """追加结构化事件并返回其派生字符串。"""
             self.visual_events.append(ve)
@@ -774,6 +790,8 @@ class World:
                              utterance=line, reply=reply, reply_speaker=target.name)
             # 世界层效果 (理由生成/锻刀等具体世界行为) 由情境经钩子注入, 引擎不再硬编码。
             self._run_effects("talk", agent, target, action, ve)
+            # F6-5: 行为链只在动作成功提交后计数 (失败/中止不推进)。
+            self._chain_update(agent, a, target)
             return emit(ve)
         if a == "attack" and target and target.is_alive():
             dmg = max(0, agent.attack - target.defense + random.randint(-2, 2))
@@ -801,12 +819,16 @@ class World:
                              damage=dmg, target_dead=target.dead)
             # 世界层效果 (如"执行官收缴持眼者→目击者得理由") 由情境经钩子注入。
             self._run_effects("attack", agent, target, action, ve)
+            # F6-5: 行为链只在攻击成功提交后计数。
+            self._chain_update(agent, a, target)
             return emit(ve)
         if a == "flee":
             # 逃到离最近威胁最远的区域
             threats = [o for o in self.entities.values()
                        if o is not agent and not o.dead
-                       and distance(agent, o) <= self.perception_radius]
+                       and distance(agent, o) <= self.perception_radius
+                       and (self.threat_filter is None
+                            or self.threat_filter(agent, o))]
             if threats:
                 def farthest(loc: Location) -> float:
                     return min(((loc.x - t.location.x) ** 2 +
@@ -837,6 +859,8 @@ class World:
             # 惰性上升)。目标非 NPC 时 _observe_target_social 返回 None, 无认知事件。
             # 世界层效果 (如"帮持眼者→得理由") 由情境经钩子注入。
             self._run_effects(a, agent, target, action, ve)
+            # F6-5: 行为链只在帮助/藏匿成功提交后计数。
+            self._chain_update(agent, a, target)
             return emit(ve)
         agent.record("观望")
         return emit(VisualEvent("wait", agent.name, self.clock,
@@ -1097,7 +1121,8 @@ class World:
           idle 只记录不反思。关系反思由 speak (玩家对话) 触发, 不在此。
         - 遗忘: observe/advance 已按 SWEEP_INTERVAL 自动清扫 (降权不删除)。
         - 持久化: 世界状态自动落库 (仅持久化世界)。
-        返回 {clock, tiers, new_observations}。
+        返回 {clock, tiers, new_observations}; new_observations 是**净新增**
+        观察数 (merge 的重复观察不计入, 见 F6-4)。
         """
         self.advance(now)
         tiers = self.schedule_tiers(now)
@@ -1118,12 +1143,15 @@ class World:
         for name, npc in self._npcs.items():
             if self.entities[name].dead:
                 continue   # 死去的 NPC 不再感知/反思 (同 step_autonomous)
+            before = npc.memory_count()
             try:
-                ids = self.perceive(name, now)
+                self.perceive(name, now)
             except Exception:
-                ids = []   # 单个 NPC 感知失败不阻塞其余 (F3-5)
-            if ids:
-                new_obs[name] = len(ids)
+                pass   # 单个 NPC 感知失败不阻塞其余 (F3-5)
+            # F6-4: 只统计**净新增**记忆, merge 的重复观察不算 new_observations。
+            added = npc.memory_count() - before
+            if added > 0:
+                new_obs[name] = added
             try:
                 if npc._tier != "idle":
                     npc.maybe_reflect_self(now)   # 重要性超阈值才反思 (内部门控)
@@ -1210,6 +1238,20 @@ class World:
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('agent_npcs', ?)",
                 (json.dumps(sorted(n for n in self._agent_llms
                                    if n in self._npcs)),))
+            # F6-7: 调度/固化的日锚点, 避免重载后重复规划/固化。
+            self._conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('last_plan_day', ?)",
+                (json.dumps(self._last_plan_day),))
+            self._conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES "
+                "('last_consolidate_day', ?)",
+                (json.dumps(self._last_consolidate_day),))
+            # F6-7: 各 NPC 的瞬态 (reflected_obs/plan_blocks/game_time) 一并落库。
+            for npc in self._npcs.values():
+                try:
+                    npc.save()
+                except Exception:
+                    continue
 
     def load(self, llm=None, embedder=None, agent_llms: dict | None = None) -> None:
         """从 world.db 恢复世界状态 (实体全量状态 + 时钟 + NPC 注册表)。
@@ -1246,6 +1288,15 @@ class World:
                 "SELECT value FROM meta WHERE key='clock'").fetchone()
             if row:
                 self.clock = float(json.loads(row[0]))
+            for key, attr, default in (("last_plan_day", "_last_plan_day", -1),
+                                       ("last_consolidate_day",
+                                        "_last_consolidate_day", -1)):
+                row = self._conn.execute(
+                    "SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+                if row:
+                    setattr(self, attr, int(json.loads(row[0])))
+                else:
+                    setattr(self, attr, default)
             # 恢复 NPC: 按注册表从各自独立 db 重新加载 (记忆流 + 面全部恢复)
             row = self._conn.execute(
                 "SELECT value FROM meta WHERE key='npcs'").fetchone()
@@ -1268,6 +1319,12 @@ class World:
                     self.register_agent(name, chosen)
 
     def close(self) -> None:
+        """关闭世界库与各 NPC 的记忆库 (F6-9: 不留 sqlite 句柄)。"""
+        for npc in self._npcs.values():
+            try:
+                npc.store.close()
+            except Exception:
+                pass
         if self._conn is not None:
             self._conn.close()
             self._conn = None

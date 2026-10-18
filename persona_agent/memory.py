@@ -10,11 +10,18 @@
 - confidence:  反思置信度 0-1
 - valid:       反思是否仍有效 (冲突时失效)
 - last_accessed: 上次被检索的时间 (用于 recency)
+- base_confidence/base_importance: 幂等衰减/冲突衰减的重算基线
+- hearsay/hop: 传闻来源 (hop=0 亲见; 检索按 0.8^hop 打折)
+- consolidated: 已被情节摘要吸收 (仍 valid 可检索, 退出冲突扫描)
+- last_reinforced: 上次 importance 强化时间 (merge 限速锚点)
 
 检索评分 (论文方法, 权重均为 1):
 score(m, q) = recency(m) + importance(m) + relevance(m, q)
-其中 recency = 0.995 ** Δt (Δt 为距上次被检索的游戏内小时数),
-三者各自 Min-Max 归一化后相加。
+其中 recency = 0.995 ** Δt (Δt 为距上次被检索的游戏内小时数);
+recency 与 relevance 在候选集内 Min-Max 归一化, importance 用**绝对**
+importance/10 (不归一化)。这是有意取舍: importance 是 1-10 的绝对显著度
+(与论文的候选集内相对排序不同), 保留"绝对重要"语义; recency/relevance
+仍是相对排序。若要做论文严格对齐, 单独开评测再改。
 """
 
 from __future__ import annotations
@@ -240,10 +247,36 @@ class MemoryStore:
             self._vec_cache[rec.id] = vec
         return vec
 
+    def vectors(self, recs: Sequence[MemoryRecord]) -> list[list[float]]:
+        """批量取向量 (F6-8): 只对缓存 miss 的记忆发一次 embed 批量请求。
+
+        RealEmbedder 下从磁盘恢复大世界后, 首波检索若逐条嵌入就是 O(n) 次网络
+        请求; 这里把 miss 收集成一批。已入库记忆的向量在 add 时已缓存, 通常全命中。
+        """
+        return self._ensure_vecs(list(recs))
+
     def vector(self, rec: MemoryRecord) -> list[float]:
         """取某记忆的向量 (命中缓存则不重嵌入)。供反思去重等需比较既有记忆的
         向量场景使用 (L1): 已入库记忆的向量在 add 时已缓存, 此处零嵌入成本。"""
         return self._vec(rec)
+
+    def _ensure_vecs(self, recs: Sequence[MemoryRecord]) -> list[list[float]]:
+        """确保 recs 的向量都在缓存里, 返回与 recs 对齐的向量列表 (批量 miss)。"""
+        recs = list(recs)
+        missing = [r for r in recs
+                   if r.id is None or r.id not in self._vec_cache]
+        if missing:
+            encoded = self._embedder.embed([r.content for r in missing])
+            for rec, vec in zip(missing, encoded):
+                if rec.id is not None:
+                    self._vec_cache[rec.id] = vec
+        out: list[list[float]] = []
+        for rec in recs:
+            if rec.id is not None and rec.id in self._vec_cache:
+                out.append(self._vec_cache[rec.id])
+            else:
+                out.append(self._embedder.embed([rec.content])[0])
+        return out
 
     def all_valid(self, player_id: str | None = None,
                   types: Sequence[str] | None = None,
@@ -352,7 +385,8 @@ class MemoryStore:
         deltas = [max(0.0, now - t) for t in recs]
         recency = [RECENCY_DECAY ** d for d in deltas]
         importance = [c.importance / 10.0 for c in cands]
-        relevance = [cosine_similarity(self._vec(c), q_vec) for c in cands]
+        c_vecs = self._ensure_vecs(cands)   # F6-8: 批量补 miss
+        relevance = [cosine_similarity(v, q_vec) for v in c_vecs]
 
         # 相关性下限 (M7): 归一化前按原始余弦剔除无关候选, 挡住 min-max 把
         # "小存储里最不差的那条"抬成满分塞进 top_k 的灌水。
@@ -477,17 +511,19 @@ class MemoryStore:
         if not cands:
             return None
         v_new = self._embedder.embed([content])[0]
+        cand_vecs = self._ensure_vecs(cands)   # F6-8: 批量补 miss
         best: MemoryRecord | None = None
         best_s = 0.0
-        for c in cands:
-            s = cosine_similarity(self._vec(c), v_new)
+        for c, c_vec in zip(cands, cand_vecs):
+            s = cosine_similarity(c_vec, v_new)
             if s >= threshold and s > best_s:
                 best, best_s = c, s
         return best
 
     def merge_observation(self, mem_id: int, now: float,
                           new_hearsay: bool | None = None,
-                          new_hop: int = 0) -> float:
+                          new_hop: int = 0,
+                          new_content: str | None = None) -> float:
         """合并重复观察: 刷新 last_accessed (重复发生 = 被回忆, 抗遗忘),
         并按时间窗 (+1, 上限 10) 强化 importance。
 
@@ -504,6 +540,10 @@ class MemoryStore:
         强化时同步抬高 base_importance (E1): 衰减基线必须跟上, 否则
         decay_and_forget 会从旧基线重算、把增益抹掉。返回新 importance。
 
+        F6-10 内容合并: new_content 比旧记录更丰富 (更长) 时替换 content 并清
+        向量缓存 —— 否则 compressed 档的"P 在 L"会永久压住 full 档的
+        "P 出现在 L, 靠近 NPC", 细节丢失。等长/更短不替换, 避免抖动。
+
         F4-2 来源合并: new_hearsay 为 None 时不动来源 (直接调用/测试兼容);
         传入 False (亲见) 且旧记录是传闻 → 升级为亲见 (hop=0); 旧记录已是
         亲见则不降级; 两者都是传闻时保留更近的 hop。这样"先听传闻、后亲眼
@@ -512,12 +552,12 @@ class MemoryStore:
         with self._lock:
             row = self._conn.execute(
                 "SELECT importance, base_importance, last_reinforced, "
-                "hearsay, hop FROM memory WHERE id = ?", (mem_id,)
+                "hearsay, hop, content FROM memory WHERE id = ?", (mem_id,)
             ).fetchone()
             if row is None:
                 raise ValueError(f"观察 {mem_id} 不存在")
             (importance, base_importance, last_reinforced,
-             old_hearsay, old_hop) = row
+             old_hearsay, old_hop, old_content) = row
             # F2-1: importance 强化按时间窗限速; 无强化时仍刷新 last_accessed
             # (重复发生 = 被回忆, 抗遗忘), 但不抬高 importance/base。
             reinforce = (last_reinforced is None
@@ -527,6 +567,10 @@ class MemoryStore:
                         else (base_importance if base_importance is not None
                               else importance))
             new_reinforced = now if reinforce else last_reinforced
+            out_content = old_content
+            if new_content is not None and len(new_content) > len(old_content):
+                out_content = new_content
+                self._vec_cache.pop(mem_id, None)   # 内容变了, 向量缓存失效
             out_hearsay, out_hop = bool(old_hearsay), old_hop
             if new_hearsay is not None:
                 if old_hearsay and not new_hearsay:
@@ -539,9 +583,9 @@ class MemoryStore:
                 self._conn.execute(
                     "UPDATE memory SET last_accessed = ?, importance = ?, "
                     "base_importance = ?, last_reinforced = ?, "
-                    "hearsay = ?, hop = ? WHERE id = ?",
+                    "hearsay = ?, hop = ?, content = ? WHERE id = ?",
                     (now, new_imp, new_base, new_reinforced,
-                     int(out_hearsay), out_hop, mem_id))
+                     int(out_hearsay), out_hop, out_content, mem_id))
             return new_imp
 
     def mark_consolidated(self, mem_ids: Iterable[int]) -> int:
@@ -561,17 +605,15 @@ class MemoryStore:
     def all_invalid(self) -> list[MemoryRecord]:
         """取全部已失效记忆 (冲突失效), 按时间排序, 供审查。
 
-        注意: 遗忘改为降权后不再产生失效记录, 这里只剩冲突失效的反思。"""
+        注意: 遗忘改为降权后不再产生失效记录, 这里只剩冲突失效的反思。
+        F6-9: 复用 _row_to_rec 读全列, 新加字段 (hearsay/hop/consolidated/
+        last_reinforced) 不再被截断或默认化。
+        """
         with self._lock:
             rows = self._conn.execute(
                 "SELECT * FROM memory WHERE valid = 0 ORDER BY timestamp, id"
             ).fetchall()
-        cols = ("id", "type", "content", "timestamp", "importance", "player_id",
-                "evidence", "confidence", "valid", "last_accessed",
-                "base_confidence", "base_importance")
-        return [MemoryRecord(**{**dict(zip(cols, r)),
-                                "evidence": json.loads(r[6] or "[]")})
-                for r in rows]
+        return [self._row_to_rec(r) for r in rows]
 
     # ------------------------------------------------------------------ 遗忘
     def decay_and_forget(self, now: float,
