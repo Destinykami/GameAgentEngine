@@ -905,6 +905,16 @@ P0 闸门实测：`206` 离线测试在 `PYTHONHASHSEED=0/24` 下全绿；全量
 P1 闸门实测：`231` 离线测试在 `PYTHONHASHSEED=0/24` 下全绿；全量
 `pytest tests/ -q`（含 6 真实 LLM 探针）`237 passed`。
 
+### P2 完成记录（2026-10-18）
+
+| 范围 | commit |
+|---|---|
+| F6-1 ~ F6-12 记忆/世界/文档卫生 | `836a60d` |
+
+P2 闸门实测：`245` 离线测试在 `PYTHONHASHSEED=0/24` 下全绿；全量
+`pytest tests/ -q`（含 6 真实 LLM 探针）`251 passed`。F6-11 过渡驱动感知
+已实现但缺省关（`player_perception_transition=False`），旧行为不变。
+
 ### Eval smoke 校准记录（2026-10-18）
 
 | smoke | 产物 | 结果 |
@@ -977,7 +987,18 @@ P1 后 stale/冲突指标仍保持 ours 最优；全量结果表建议随最终�
 - [x] F5-4 `use_relationship` 真正跳过 trust
 
 ### 阶段 6
-- [ ] F6-1 ~ F6-12 卫生项与文档对齐
+- [x] F6-1 检索注释校正
+- [x] F6-2 决策缓存更名 + LRU 上限
+- [x] F6-3 反思证据二次校验
+- [x] F6-4 `new_observations` 只计净新增
+- [x] F6-5 行为链成功后才计数
+- [x] F6-6 `flee` threat_filter 钩子
+- [x] F6-7 NPC/World 瞬态持久化
+- [x] F6-8 批量补向量 miss
+- [x] F6-9 `World.close` / `all_invalid` 收尾
+- [x] F6-10 merge 富内容覆盖
+- [x] F6-11 过渡驱动感知（可选，缺省关）
+- [x] F6-12 文档对齐
 
 ### 阶段验收
 - [x] 三个种子下离线测试全绿（P0 206 / P1 231 passed）
@@ -987,4 +1008,5 @@ P1 后 stale/冲突指标仍保持 ours 最优；全量结果表建议随最终�
 - [x] `evals/decision_ablation.py` 全量按修正臂重跑（2026-10-18，1143s）
 - [ ] `evals/memory_consistency.py` 全量按 P1 后行为重跑
 - [ ] `evals/scheduling_efficiency.py` 全量重跑（F2-3 改变世界事件打分成本）
-- [x] 在本文件勾选 P0/P1 完成并登记 eval smoke/full（本记录）
+- [x] P2 全量闸门（245 离线 + 6 探针 = 251 passed）
+- [x] 在本文件勾选 P0/P1/P2 完成并登记 eval smoke/full（本记录）
