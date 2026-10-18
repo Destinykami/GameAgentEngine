@@ -179,7 +179,8 @@ def test_social_perception_full_tier_rich(tmp_path):
                                           types=["observation"])) == 1
 
     # B 离开视距 → 重现 → 再触发。重现内容与首次相同, 0.92 去重把它合并进原
-    # 记录 (重复发生 = 记忆强化: 刷新 last_accessed + importance +1), 记录数不增。
+    # 记录 (重复发生 = 被回忆: 刷新 last_accessed; importance 按 6h 时间窗限速,
+    # 3h 内不 +1), 记录数不增。
     w.move("B", "神樱庭", now=12.0)
     w.schedule_tiers(12.0)
     w.perceive("A", 12.0)
@@ -191,7 +192,7 @@ def test_social_perception_full_tier_rich(tmp_path):
     obs2 = w.npc("A").store.all_valid(player_id="B", types=["observation"])
     assert len(obs2) == 1
     assert obs2[0].last_accessed == 13.0   # 合并刷新了遗忘锚点
-    assert obs2[0].importance == obs[0].importance + 1.0   # 合并 +1 强化
+    assert obs2[0].importance == obs[0].importance         # 3h 内在限速窗内, 不 +1
     w.close()
 
 
@@ -231,7 +232,7 @@ def test_social_perception_llm_cost(tmp_path):
     w.perceive("A", 10.0)
     assert counting.importance_calls == 2      # 玩家在场 + B 出现
     w.perceive("A", 11.0)
-    assert counting.importance_calls == 3      # 仅玩家重复 (去重前的打分), B 零增量
+    assert counting.importance_calls == 2      # 重复在场先去重, 零 LLM 增量
     w.close()
 
 

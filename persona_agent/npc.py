@@ -110,20 +110,25 @@ class NPC:
         hearsay/hop (S4, 缺省亲见): 传闻观察标记传播身份, 检索按 hop 打折。
         """
         self._advance(now)
-        importance = self.llm.score_importance(content, player_id)
+        # F2-2: 先去重再打分。重复在场走 merge 分支, 不需要 importance
+        # (merge 已不读取它), 这样重复观察零 LLM 成本; 旧顺序让 0.92 去重
+        # 只能省存储, 省不掉每次 observe 的 score_importance 调用。
         dup = self.store.find_similar_observation(content, player_id)
         if dup is not None:
-            # 合并 = 固定 +1 强化 (重复计数), 不传 importance —— 事件重要性已
-            # 在首次入库时计入, 重复合并再加全量是双重计分 (M6 死参数已删)。
+            # 合并 = 时间窗内 +1 强化 (见 memory.MERGE_REINFORCE_INTERVAL),
+            # 不传 importance —— 事件重要性已在首次入库时计入, 重复合并再加
+            # 全量是双重计分 (M6 死参数已删)。
             self.store.merge_observation(dup.id, now)
             # E7: 合并的重复是零新信息, 不累积到反思触发器。反思该由**新信息**
             # 驱动, 不是旧信息的反复强化 —— 世界层每步 perceive→observe→去重合并
             # 重放位置观察, 若 merge 分支仍累加原始 importance (世界感知常 8-10),
             # 零新信息几步就顶满反思阈值, 产出"1 条观察、6 步 6 条反思"的膨胀
-            # (E6 那张 48:9 反思表的直接生成机制)。强化已由 merge 的 +1 importance
-            # 承担 (抬高显著度, 检索排名上升), 那是显著度信号, 不是反思信号。
+            # (E6 那张 48:9 反思表的直接生成机制)。强化已由 merge 的限速 +1
+            # importance 承担 (抬高显著度, 检索排名上升), 那是显著度信号,
+            # 不是反思信号。
             # 传闻重听同理: 合并保留原记录的 hop (不升级传播身份)。
             return dup.id
+        importance = self.llm.score_importance(content, player_id)
         rec = MemoryRecord(content=content, timestamp=now, type="observation",
                            player_id=player_id, importance=importance,
                            hearsay=hearsay, hop=hop)

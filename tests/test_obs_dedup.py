@@ -21,12 +21,13 @@ def test_identical_observation_merged(tmp_path):
     """同文观察重放 → 合并不新增, importance 提升, last_accessed 刷新。"""
     npc = _make(tmp_path)
     id1 = npc.observe("Aria 帮 Fade 修好了咖啡机", 0.0, player_id="Aria")
-    id2 = npc.observe("Aria 帮 Fade 修好了咖啡机", 5.0, player_id="Aria")
+    # F2-1: importance 强化按 6h 时间窗限速, 用 >=6h 的间隔验证强化
+    id2 = npc.observe("Aria 帮 Fade 修好了咖啡机", 7.0, player_id="Aria")
     obs = npc.store.all_valid(player_id="Aria", types=["observation"])
     assert len(obs) == 1, "重复观察应合并, 不新增"
     assert id1 == id2
-    assert obs[0].importance > 5.0, "合并应提升 importance"
-    assert obs[0].last_accessed == 5.0, "合并应刷新 last_accessed"
+    assert obs[0].importance > 5.0, "时间窗外的合并应提升 importance"
+    assert obs[0].last_accessed == 7.0, "合并应刷新 last_accessed"
 
 
 def test_distinct_observations_kept(tmp_path):

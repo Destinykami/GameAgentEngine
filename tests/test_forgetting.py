@@ -134,13 +134,15 @@ def test_repeated_observation_merges_plus_one_not_double_count(tmp_path):
     完整 importance 再加一遍 (事件重要性首次入库时已计入, 再加 = 双重计分)。"""
     npc = _make(tmp_path)
     first = npc.observe("Aria 帮 Fade 修了咖啡机", 0.0, player_id="Aria")
-    second = npc.observe("Aria 帮 Fade 修了咖啡机", 1.0, player_id="Aria")
+    # 跳过 6h 自动遗忘清扫, 单独验证 merge 的强化 (否则 +1 前会先被降权)
+    npc._last_sweep = 8.0
+    second = npc.observe("Aria 帮 Fade 修了咖啡机", 7.0, player_id="Aria")
     assert second == first, "近义观察应合并进同一条记录"
     obs = _by_id(npc, "observation")
     assert len(obs) == 1, "合并不新增记录"
     assert obs[first].importance == pytest.approx(6.0), \
-        "重复 = +1 强化 (5.0→6.0), 不是加全量 importance (5.0→10.0)"
-    assert obs[first].last_accessed == pytest.approx(1.0), "合并应刷新 last_accessed"
+        "时间窗外重复 = +1 强化 (5.0→6.0), 不是加全量 importance (5.0→10.0)"
+    assert obs[first].last_accessed == pytest.approx(7.0), "合并应刷新 last_accessed"
 
 
 def test_merge_reinforcement_caps_at_ten(tmp_path):
@@ -190,11 +192,11 @@ def test_merge_raises_decay_baseline(tmp_path):
     不把合并的 +1 增益抹掉。"""
     s = _obs_store(8.0)
     mid = s.all_valid()[0].id
-    s.merge_observation(mid, now=0.0)   # +1 → 9.0, 基线抬到 9.0
+    s.merge_observation(mid, now=6.0)   # 时间窗外 +1 → 9.0, 基线抬到 9.0
     rec = s.all_valid()[0]
     assert rec.importance == pytest.approx(9.0)
     assert rec.base_importance == pytest.approx(9.0), "基线应随 merge 抬高"
-    s.decay_and_forget(now=24.0)        # 24h 后 (hl=48h): 9.0 * 0.5^0.5 ≈ 6.36
+    s.decay_and_forget(now=30.0)        # 距 last_accessed(6) 24h: 9.0 * 0.5^0.5 ≈ 6.36
     got = s.all_valid()[0].importance
     assert got == pytest.approx(9.0 * (0.5 ** 0.5)), \
         f"应从基线 9.0 衰减 (得 6.36), 实际 {got:.4f} (抹掉增益会是 8.0*0.707=5.66)"

@@ -37,6 +37,12 @@ ALPHA_RELEVANCE = 1.0
 # 两层阈值对齐到 0.92 —— 观察层本就取这个值, 保持一致。
 OBS_DEDUP_THRESHOLD = 0.92
 
+# 合并强化限速 (F2-1): 同一条观察反复"发生"时, importance 每受一次 merge 就
+# +1 会把在场观察顶满 10 (世界层每步 perceive 都会 merge 一次)。重复仍是
+# 记忆强化, 但 importance 强化按游戏时间窗限速: 只有距上次强化 >= 6h 才 +1,
+# 其他 merge 只刷新 last_accessed (recency 语义不变)。
+MERGE_REINFORCE_INTERVAL = 6.0
+
 # 遗忘 = 部分衰减降权 (不直接删除): importance *= 0.5 ** (age / half_life),
 # 渐近降到 MIN_IMPORTANCE 为止, 记忆**保留**(valid 恒为 1), 只是 importance
 # 被调低。检索的 importance 维用 importance/10, 所以老记忆自然跌出前排,
@@ -81,6 +87,8 @@ class MemoryRecord:
     hearsay: bool = False              # S4: 传闻记忆 (非亲见, 检索按 hop 打折)
     hop: int = 0                       # S4: 传播跳数 (0=亲见, 上限 HEARSAY_MAX_HOP)
     consolidated: bool = False         # M1: 已被固化进情节摘要 (仍 valid 可检索, 退出冲突扫描)
+    # F2-1: 上次 importance 强化时间 (merge 限速); None = 用 timestamp 兜底
+    last_reinforced: float | None = None
     id: int | None = None              # 由数据库分配
 
 
@@ -119,7 +127,8 @@ class MemoryStore:
                     base_importance REAL,
                     hearsay INTEGER DEFAULT 0,
                     hop INTEGER DEFAULT 0,
-                    consolidated INTEGER DEFAULT 0
+                    consolidated INTEGER DEFAULT 0,
+                    last_reinforced REAL
                 )
                 """
             )
@@ -155,6 +164,17 @@ class MemoryStore:
                 self._conn.execute(
                     "ALTER TABLE memory ADD COLUMN consolidated INTEGER DEFAULT 0"
                 )
+            # 旧库迁移 (F2-1): 强化限速时间锚点。旧行从 last_accessed/timestamp
+            # 起算, 避免升级后第一次 merge 立刻 +1。
+            if "last_reinforced" not in cols:
+                self._conn.execute(
+                    "ALTER TABLE memory ADD COLUMN last_reinforced REAL"
+                )
+                self._conn.execute(
+                    "UPDATE memory SET last_reinforced = "
+                    "COALESCE(last_accessed, timestamp) "
+                    "WHERE last_reinforced IS NULL"
+                )
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_player ON memory(player_id)"
             )
@@ -173,6 +193,8 @@ class MemoryStore:
         # 调用方 (observe/_save_plan/_save_obs/测试) 自动把基线设为初始重要性。
         base_imp = (rec.base_importance if rec.base_importance is not None
                     else rec.importance)
+        last_reinforced = (rec.last_reinforced if rec.last_reinforced is not None
+                           else rec.timestamp)
         with self._lock, self._conn:
             cur = self._conn.execute(
                 """
@@ -180,8 +202,8 @@ class MemoryStore:
                     (type, content, timestamp, importance, player_id,
                      evidence, confidence, valid, last_accessed,
                      base_confidence, base_importance, hearsay, hop,
-                     consolidated)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     consolidated, last_reinforced)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     rec.type,
@@ -198,6 +220,7 @@ class MemoryStore:
                     1 if rec.hearsay else 0,
                     rec.hop,
                     1 if rec.consolidated else 0,
+                    last_reinforced,
                 ),
             )
             new_id = int(cur.lastrowid)
@@ -270,6 +293,7 @@ class MemoryStore:
             confidence=row[7], valid=bool(row[8]), last_accessed=row[9],
             base_confidence=row[10], base_importance=row[11],
             hearsay=bool(row[12]), hop=row[13], consolidated=bool(row[14]),
+            last_reinforced=row[15] if len(row) > 15 else None,
         )
 
     # ------------------------------------------------------------------ 检索
@@ -453,31 +477,44 @@ class MemoryStore:
         return best
 
     def merge_observation(self, mem_id: int, now: float) -> float:
-        """合并重复观察: 刷新 last_accessed (重复发生 = 记忆强化, 抗遗忘),
-        并以固定 +1 (上限 10) 提升 importance —— 反复发生的事件更突出。
+        """合并重复观察: 刷新 last_accessed (重复发生 = 被回忆, 抗遗忘),
+        并按时间窗 (+1, 上限 10) 强化 importance。
 
         强化是**固定 +1 的重复计数**, 不加新观察的完整 importance: 事件的重要
         性在首次入库时已计入, 重复合并再加一次全量等于双重计分 (一条重要性 9
         的背叛重复一次就从 5 直接顶满 10)。旧版此函数有个 extra_importance
         参数但函数体硬编码 +1 从不读取 (M6 死参数), 调用方传的值被静默丢弃,
-        现已删除, 语义在此显式固定。返回新 importance。
+        现已删除。
 
-        合并同时抬高 base_importance 到提升后的值 (E1): 合并是真实的重要性事件,
-        衰减基线必须跟上, 否则 decay_and_forget 会从旧基线重算、把这次 +1 增益
-        抹掉。刷新 last_accessed 还把遗忘锚点推到 now (重复发生 = 记忆强化)。
+        F2-1 限速: 世界层每个 step 都会 perceive→observe→merge 同一在场观察,
+        若每次 merge 都 +1, 站桩的玩家几步内就把 importance 顶满 10, 真实事件
+        反而排到后面。只有距上次强化 >= MERGE_REINFORCE_INTERVAL (6 游戏小时)
+        才 +1; 其他 merge 只刷新 last_accessed, importance/base 不动。
+        强化时同步抬高 base_importance (E1): 衰减基线必须跟上, 否则
+        decay_and_forget 会从旧基线重算、把增益抹掉。返回新 importance。
         """
         with self._lock:
             row = self._conn.execute(
-                "SELECT importance FROM memory WHERE id = ?", (mem_id,)
+                "SELECT importance, base_importance, last_reinforced "
+                "FROM memory WHERE id = ?", (mem_id,)
             ).fetchone()
             if row is None:
                 raise ValueError(f"观察 {mem_id} 不存在")
-            new_imp = min(10.0, row[0] + 1.0)
+            importance, base_importance, last_reinforced = row
+            # F2-1: importance 强化按时间窗限速; 无强化时仍刷新 last_accessed
+            # (重复发生 = 被回忆, 抗遗忘), 但不抬高 importance/base。
+            reinforce = (last_reinforced is None
+                         or now - last_reinforced >= MERGE_REINFORCE_INTERVAL)
+            new_imp = min(10.0, importance + 1.0) if reinforce else importance
+            new_base = (new_imp if reinforce
+                        else (base_importance if base_importance is not None
+                              else importance))
+            new_reinforced = now if reinforce else last_reinforced
             with self._conn:
                 self._conn.execute(
                     "UPDATE memory SET last_accessed = ?, importance = ?, "
-                    "base_importance = ? WHERE id = ?",
-                    (now, new_imp, new_imp, mem_id))
+                    "base_importance = ?, last_reinforced = ? WHERE id = ?",
+                    (now, new_imp, new_base, new_reinforced, mem_id))
             return new_imp
 
     def mark_consolidated(self, mem_ids: Iterable[int]) -> int:
