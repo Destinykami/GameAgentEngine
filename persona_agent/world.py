@@ -886,16 +886,22 @@ class World:
             if a in self.INTERRUPT_ACTIONS and happened:
                 npc = self._npcs.get(name)
                 if npc:
-                    npc.replan(now=self.clock, interruption=outcome)
+                    try:
+                        npc.replan(now=self.clock, interruption=outcome)
+                    except Exception:
+                        pass   # 重规划失败不拖垮整步 (F3-5)
             # 挨打方 (未死) 的一天同样被打断 → 也重规划
             if a in ("attack", "counterattack"):
                 tname = decisions[name].get("target", "")
                 t_npc = self._npcs.get(tname) if tname else None
                 if t_npc and self.entities.get(tname) is not None \
                         and self.entities[tname].is_alive():
-                    t_npc.replan(now=self.clock,
-                                 interruption=f"被 {agent.name} 攻击了",
-                                 interruption_player=agent.name)
+                    try:
+                        t_npc.replan(now=self.clock,
+                                     interruption=f"被 {agent.name} 攻击了",
+                                     interruption_player=agent.name)
+                    except Exception:
+                        pass   # 受害者重规划失败不拖垮整步 (F3-5)
         # 3. 重感知 (行动改变了谁在哪/谁死了) + NPC 反思
         for name, npc in self._npcs.items():
             if self.entities[name].dead:

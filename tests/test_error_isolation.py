@@ -111,3 +111,26 @@ def test_world_event_failure_isolated(tmp_path):
     assert "B" in result and result["B"]
     assert "A" not in result, "A 的失败不应产生事件条目"
     w.close()
+
+
+class _AttackThenBoomPlan(_StubLLM):
+    def decide_action(self, *args, **kwargs):
+        return {"action": "attack", "target": "B", "utterance": "",
+                "dest": "", "reason": "test attack"}
+
+    def generate_plan(self, *args, **kwargs):
+        raise RuntimeError("replan failed")
+
+
+def test_action_triggered_replan_failure_isolated(tmp_path):
+    w = World("w", [Location("L", 0, 0)])
+    atk = _AttackThenBoomPlan()
+    w.add_npc("A", dict(TRAITS), llm=atk,
+              data_dir=str(tmp_path / "A"), location="L")
+    w.add_npc("B", dict(TRAITS), llm=_StubLLM(),
+              data_dir=str(tmp_path / "B"), location="L")
+    w._agent_llms.update({"A": atk, "B": w.npc("B").llm})
+    w._agent_personas.update({"A": dict(TRAITS), "B": dict(TRAITS)})
+    events, _decisions = w.step_autonomous(1.0)
+    assert events and w.get("B").health < 100, "攻击仍应生效"
+    w.close()
