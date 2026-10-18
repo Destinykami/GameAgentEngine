@@ -89,7 +89,8 @@ def test_attack_death_and_atomic_failure():
     assert ve.type == "attack" and ve.target_dead and ve.damage >= 0
     assert s == f"旅行者 攻击 桃音, 造成 {ve.damage} 伤害 → 桃音 阵亡!"
     assert ve.to_dict()["target_dead"] is True and ve.to_dict()["damage"] == ve.damage
-    # 非致死
+    # 非致死 (F3-3: 目标必须在视距内, 先走到神樱庭)
+    t.move(w.locations["神樱庭"])
     s = w.execute_action(t, {"action": "attack", "target": "雷电将军"})
     ve = _last(w)
     assert ve.target_dead is False

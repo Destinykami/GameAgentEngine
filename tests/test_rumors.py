@@ -22,8 +22,8 @@ TRAITS = {"social": 0.7, "goal_oriented": 0.5}
 
 
 def _locs() -> list[Location]:
-    # 甲乙相邻 (距离 1.0 ≤ 视距 1.5), 丙远 (距离 3.0 > 视距)
-    return [Location("甲", 0, 0), Location("乙", 0, 1), Location("丙", 0, 3)]
+    # 甲乙相邻 (距离 1.0 ≤ 视距 1.5), 乙丙相邻 (1.0), 甲丙 2.0 > 视距
+    return [Location("甲", 0, 0), Location("乙", 0, 1), Location("丙", 0, 2)]
 
 
 def _world(tmp_path, **kw) -> World:
@@ -35,7 +35,7 @@ def _world(tmp_path, **kw) -> World:
               location="甲")
     w.add_npc("C", dict(TRAITS), llm=_StubLLM(), data_dir=str(tmp_path / "C"),
               location="乙")
-    # D 在丙: 离甲 3.0 (听不见 A 的原话), 离乙 1.0 (C 转述时在场)
+    # D 在丙: 离甲 2.0 (听不见 A 的原话), 离乙 1.0 (C 转述时在场)
     w.add_npc("D", dict(TRAITS), llm=_StubLLM(), data_dir=str(tmp_path / "D"),
               location="丙")
     w.add_npc("E", dict(TRAITS), llm=_StubLLM(), data_dir=str(tmp_path / "E"),

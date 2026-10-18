@@ -101,6 +101,7 @@ def test_talk_blacksmith_forges_weapon_and_reason():
     w, llm = _world()
     llm.load_reasons(["刚郎作证: 收缴神之眼后武器生意断绝"])
     t = w.get("旅行者")
+    t.move(w.locations["锻造坊"])   # F3-3: 交互目标必须在视距内
     atk0 = t.attack
     w.execute_action(t, {"action": "talk", "target": "刚郎", "utterance": "锻把武器"})
     ve = _last(w)

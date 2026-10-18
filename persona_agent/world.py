@@ -154,8 +154,9 @@ class VisualEvent:
             return f"{a} 移动到 {self.to}"
         if self.type == "conversation":
             if not self.success:
+                reason = self.failure_reason or "认知事件生成失败"
                 return (f"{a} 想对 {self.target} 说话, "
-                        f"但认知事件生成失败, 动作中止")
+                        f"但{reason}, 动作中止")
             out = f"{a} 对 {self.target} 说: {self.utterance}"
             if self.reply:
                 out += f" ← {self.reply_speaker}: {self.reply}"
@@ -166,8 +167,9 @@ class VisualEvent:
             return out
         if self.type == "attack":
             if not self.success:
+                reason = self.failure_reason or "认知事件生成失败"
                 return (f"{a} 想攻击 {self.target}, "
-                        f"但认知事件生成失败, 动作中止")
+                        f"但{reason}, 动作中止")
             out = f"{a} 攻击 {self.target}, 造成 {self.damage} 伤害"
             if self.target_dead:
                 out += f" → {self.target} 阵亡!"
@@ -179,11 +181,17 @@ class VisualEvent:
                 return f"{a} 想逃但无威胁"
             return f"{a} 逃离威胁, 逃到 {self.to}"
         if self.type == "help":
+            if not self.success:
+                reason = self.failure_reason or "动作中止"
+                return f"{a} 想帮助 {self.target}, 但{reason}"
             out = f"{a} 帮助 {self.target}"
             if self.reason_added:
                 out += f" [旅行者积累理由, 现{self.reason_count}条]"
             return out
         if self.type == "hide":
+            if not self.success:
+                reason = self.failure_reason or "动作中止"
+                return f"{a} 想替 {self.target} 藏匿, 但{reason}"
             return f"{a} 替 {self.target}"
         if self.type == "world_event":
             return f"世界事件: {self.description}"
@@ -238,6 +246,8 @@ class World:
     # 打断当日计划、触发重规划的动作 (M5): 战斗/逃跑/帮匿都是"日程被打破"的
     # 重大状态变化。talk/move/wait 是日程内的日常行为, 不打断。
     INTERRUPT_ACTIONS = ("attack", "counterattack", "flee", "help", "hide")
+    # 需要目标且必须在感知范围内的动作 (F3-3: 防 LLM 幻觉出视距外目标隔空交互)
+    INTERACT_ACTIONS = ("talk", "attack", "help", "hide")
 
     def __init__(self, name: str, locations: list[Location],
                  path: str | None = None,
@@ -610,6 +620,32 @@ class World:
             counters[key] = 0     # 触发后清零, 下一轮链重新累积
             self.world_event(description, self.clock, at=agent.location.name)
 
+    def _within_reach(self, agent: Entity, target: Entity | None) -> bool:
+        """动作目标是否在可交互范围内 (F3-3): 非自身、存活、视距内。
+
+        非全知原则要在动作层兑现 —— decide_action 只看到视距内实体, 但模型
+        可能幻觉出别处/已死的名字; 不在视距内的 target 一律中止动作, 不允许
+        "隔空攻击/对话/帮助"。范围沿用 perception_radius (与 agent_perception
+        一致)。
+        """
+        return (target is not None and target is not agent
+                and target.is_alive()
+                and distance(agent, target) <= self.perception_radius)
+
+    def _emit_failure(self, action_type: str, agent: Entity,
+                      target: Entity | None, target_name: str,
+                      reason: str) -> str:
+        """记录一个中止的交互动作 (结构化事件 + 派生字符串)。"""
+        # talk 的成功事件类型是 "conversation"; 失败也沿用同一类型, 否则
+        # describe() 会落到默认分支显示成"观望"。
+        ve_type = "conversation" if action_type == "talk" else action_type
+        ve = VisualEvent(ve_type, agent.name, self.clock,
+                         location=agent.location.name,
+                         target=(target.name if target is not None else target_name),
+                         success=False, failure_reason=reason)
+        self.visual_events.append(ve)
+        return ve.describe()
+
     def execute_action(self, agent: Entity, action: dict) -> str:
         """执行动作并应用影响, 返回发生了什么 (供打印/记录)。非全知: 只影响直接相关方。
 
@@ -620,8 +656,13 @@ class World:
         action = self._norm_action(action)   # R7: 入口 schema 校验/降级
         a = action.get("action", "wait")
         target = self.get(action.get("target", "")) if action.get("target") else None
+        # F3-3: 目标在视距外/已死/不存在 → 动作中止, 不扣血/不写历史/不对话。
+        if (a in self.INTERACT_ACTIONS and action.get("target")
+                and not self._within_reach(agent, target)):
+            return self._emit_failure(
+                a, agent, target, action.get("target", ""), "不在可交互范围")
         # S5 行为链计数: 任何对存活目标的动作都过链检查 (无注册规则 = no-op,
-        # 缺省行为不变)。放在分支前, talk/attack/help/hide 等一律覆盖。
+        # 缺省行为不变)。放在距离校验之后, 隔空动作不计链。
         if target is not None and target.is_alive():
             self._chain_update(agent, a, target)
 
@@ -747,14 +788,20 @@ class World:
                                     location=agent.location.name, success=False,
                                     failure_reason="无威胁可逃"))
         if a in ("help", "hide") and target and target.is_alive():
+            # F3-4: 与 attack/talk 对齐 —— 可失败的认知事件在前, 成功才提交
+            # history/effects; 失败中止动作, 不留"状态已改但 NPC 没观察到"。
+            try:
+                self._observe_target_social(
+                    target, agent, "帮助了TA" if a == "help" else "替TA藏匿")
+            except Exception:
+                return self._emit_failure(
+                    a, agent, target, target.name, "认知事件生成失败")
             agent.record(f"{'帮助' if a == 'help' else '替'} {target.name}")
             target.record(f"{agent.name} {'帮了TA' if a == 'help' else '替TA藏匿'}")
             ve = VisualEvent(a, agent.name, self.clock,
                              location=agent.location.name, target=target.name)
-            # E16: 目标 NPC 观察这次帮助/藏匿进自己记忆流 (关系观察, 信任度随之
-            # 惰性上升)。NPC 的"反应"同样由其下一步 decide_agent 行动承担。
-            self._observe_target_social(
-                target, agent, "帮助了TA" if a == "help" else "替TA藏匿")
+            # E16: 目标 NPC 观察这次帮助/藏匿进自己记忆流 (关系认知, 信任度随之
+            # 惰性上升)。目标非 NPC 时 _observe_target_social 返回 None, 无认知事件。
             # 世界层效果 (如"帮持眼者→得理由") 由情境经钩子注入。
             self._run_effects(a, agent, target, action, ve)
             return emit(ve)
@@ -778,8 +825,11 @@ class World:
             for name, npc in self._npcs.items():
                 if self.entities[name].dead:
                     continue   # 死去的 NPC 不再规划 (生命止于死亡那一刻)
-                npc.generate_daily_plan(previous_day=f"第{day}天",
-                                        date=f"第{day+1}天", now=self.clock)
+                try:
+                    npc.generate_daily_plan(previous_day=f"第{day}天",
+                                            date=f"第{day+1}天", now=self.clock)
+                except Exception:
+                    continue   # 单个 NPC 规划失败不阻塞其余 (F3-5)
             self._last_plan_day = day
         self._maybe_consolidate(now, day)   # M1 夜间固化 (缺省关 = no-op)
         # 1. 所有存活 agent 先决策 (基于同一时刻感知)
@@ -804,7 +854,14 @@ class World:
                                        "utterance": "", "dest": "",
                                        "reason": "idle 档: 视距内无玩家, 规则等待"}
                     continue
-            decisions[name] = self.decide_agent(agent, memory_context)
+            try:
+                decisions[name] = self.decide_agent(agent, memory_context)
+            except Exception as e:
+                # F3-5: 一个 agent 的 LLM/网络失败不能拖垮整步; 降级 wait,
+                # 其余 agent 仍按同一时刻感知决策/执行。
+                decisions[name] = {"action": "wait", "target": "",
+                                   "utterance": "", "dest": "",
+                                   "reason": f"决策异常: {e}"}
         # 2. 统一执行 (应用影响)。重置结构化视觉事件缓冲 —— 本步 execute_action
         # 追加的事件执行后恰好等于 self.visual_events, 供回放层读取。
         self.visual_events = []
@@ -812,7 +869,11 @@ class World:
         for name, agent in self.entities.items():
             if not agent.is_alive():
                 continue
-            outcome = self.execute_action(agent, decisions[name])
+            try:
+                outcome = self.execute_action(agent, decisions[name])
+            except Exception as e:
+                events.append(f"{agent.name} 动作异常: {e}")
+                continue   # 动作失败不触发 replan, 其余 agent 继续
             events.append(outcome)
             # M5: 重大状态变化 (战斗/逃跑/帮匿) 打断当日计划 → 从当前时刻重规划。
             # 模拟里此前只有每天早晨一次日计划, 计划整天静止 (被打了还在按计划
@@ -839,9 +900,15 @@ class World:
         for name, npc in self._npcs.items():
             if self.entities[name].dead:
                 continue
-            self.perceive(name, now)
-            if npc._tier != "idle":
-                npc.maybe_reflect_self(now)
+            try:
+                self.perceive(name, now)
+            except Exception:
+                pass   # 单个 NPC 感知失败不阻塞其余 (F3-5)
+            try:
+                if npc._tier != "idle":
+                    npc.maybe_reflect_self(now)
+            except Exception:
+                pass
         # 4. E16/R4/R5: 社交交互过关系反思层 —— 消费 _step_social (flush_social
         # 带 try/finally, 异常也清空不重复处理)。信任度随之惰性更新, 参与后续判定。
         self.flush_social(now)
@@ -862,7 +929,10 @@ class World:
         for name, npc in self._npcs.items():
             if self.entities[name].dead:
                 continue   # 死去的 NPC 不再固化 (生命止于死亡那一刻)
-            npc.consolidate(self.clock)
+            try:
+                npc.consolidate(self.clock)
+            except Exception:
+                continue   # 单个 NPC 固化失败不阻塞其余 (F3-5)
         self._last_consolidate_day = day
 
     def flush_social(self, now: float) -> None:
@@ -952,7 +1022,10 @@ class World:
         for name in targets:
             if self.entities[name].dead:
                 continue   # L7: 死去的 NPC 不感知世界事件 (同 step/日计划的死亡检查)
-            result[name] = [self._npcs[name].observe(desc, now)]
+            try:
+                result[name] = [self._npcs[name].observe(desc, now)]
+            except Exception:
+                continue   # 单个 NPC 感知世界事件失败不阻塞其余 (F3-5)
         # 结构化视觉事件 (回放层用): 世界事件不归属任何玩家, actor 记"世界"。
         # 即使范围内无 NPC 也记录 —— 它是环境状态, 与谁感知到无关。
         self.visual_events.append(
@@ -981,19 +1054,28 @@ class World:
             for name, npc in self._npcs.items():
                 if self.entities[name].dead:
                     continue   # 死去的 NPC 不再规划 (同 step_autonomous)
-                npc.generate_daily_plan(previous_day=f"第{day}天",
-                                        date=f"第{day+1}天", now=self.clock)
+                try:
+                    npc.generate_daily_plan(previous_day=f"第{day}天",
+                                            date=f"第{day+1}天", now=self.clock)
+                except Exception:
+                    continue   # 单个 NPC 规划失败不阻塞其余 (F3-5)
             self._last_plan_day = day
         self._maybe_consolidate(now, day)   # M1 夜间固化 (缺省关 = no-op)
         new_obs: dict[str, int] = {}
         for name, npc in self._npcs.items():
             if self.entities[name].dead:
                 continue   # 死去的 NPC 不再感知/反思 (同 step_autonomous)
-            ids = self.perceive(name, now)
+            try:
+                ids = self.perceive(name, now)
+            except Exception:
+                ids = []   # 单个 NPC 感知失败不阻塞其余 (F3-5)
             if ids:
                 new_obs[name] = len(ids)
-            if npc._tier != "idle":
-                npc.maybe_reflect_self(now)   # 重要性超阈值才反思 (内部门控)
+            try:
+                if npc._tier != "idle":
+                    npc.maybe_reflect_self(now)   # 重要性超阈值才反思 (内部门控)
+            except Exception:
+                pass
         # F3-2: step 也必须消费社交交互队列 —— social_perception 在 perceive 里
         # 登记 _step_social, 此前只有 step_autonomous 调 flush_social, 导致
         # step 驱动时队列跨步积压且关系反思永不跑。
