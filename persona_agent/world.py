@@ -1024,12 +1024,22 @@ class World:
             r = self.perception_radius if radius is None else radius
             targets = [n for n in self._npcs
                        if location_distance(center, self.entities[n]) <= r]
+        # F2-3: 同一事件文本对所有 NPC 的重要性相同 (player_id=None), 只打一次分
+        # 复用; 旧实现每个 NPC 调一次 score_importance (N 个 NPC = N 次 LLM)。
+        living = [n for n in targets if not self.entities[n].dead]
+        importance: float | None = None
+        if living:
+            try:
+                importance = self._npcs[living[0]].llm.score_importance(desc, None)
+            except Exception:
+                importance = None   # 打分失败则各 NPC 自行兜底 (per-NPC try 仍在)
         result: dict[str, list[int]] = {}
         for name in targets:
             if self.entities[name].dead:
                 continue   # L7: 死去的 NPC 不感知世界事件 (同 step/日计划的死亡检查)
             try:
-                result[name] = [self._npcs[name].observe(desc, now)]
+                result[name] = [self._npcs[name].observe(
+                    desc, now, importance=importance)]
             except Exception:
                 continue   # 单个 NPC 感知世界事件失败不阻塞其余 (F3-5)
         # 结构化视觉事件 (回放层用): 世界事件不归属任何玩家, actor 记"世界"。

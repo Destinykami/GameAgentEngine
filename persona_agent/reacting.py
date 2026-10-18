@@ -21,6 +21,13 @@ from dataclasses import dataclass
 from .llm import LLMClient
 from .memory import MemoryStore
 
+# 信任判断的输入窗口 (F2-4): 关系流会随交互无限增长, 全量塞 prompt 会让 token
+# 线性膨胀并最终撞上下文上限。保留"高阶认知 + 近期观察"的窗口:
+#   - reflection/identity/episode 最多 10 条 (信念/泛化/情节, 优先)
+#   - observation 最多 20 条 (近期证据)
+# 关系流较短时行为不变; 超窗时旧观察被排除 (episode 应承担长期凝练)。
+JUDGE_TRUST_MAX_MEMORIES = 30
+
 
 @dataclass
 class ReactionDecision:
@@ -73,7 +80,19 @@ class ReactionDecider:
         cached = self._trust_cache.get(player_id)
         if cached is not None and cached[1] == sig:
             return cached[0]
-        mems = [(m.type, m.content, m.confidence) for m in rel]
+        # F2-4: 高阶认知优先 + 近期观察填满窗口, 总数不超过
+        # JUDGE_TRUST_MAX_MEMORIES; 缓存签名仍按全量关系流变化失效。
+        high = [m for m in rel
+                if m.type in ("reflection", "identity", "episode")]
+        obs = [m for m in rel if m.type == "observation"]
+
+        def _recent(items):
+            return sorted(items, key=lambda m: (m.timestamp, m.id or 0),
+                          reverse=True)
+
+        selected = (_recent(high)[:10]
+                    + _recent(obs)[:JUDGE_TRUST_MAX_MEMORIES - 10])
+        mems = [(m.type, m.content, m.confidence) for m in selected]
         trust = self._llm.judge_trust(mems, player_id)
         self._trust_cache[player_id] = (trust, sig)
         return trust

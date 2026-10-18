@@ -99,7 +99,8 @@ class NPC:
     # ---------------------------------------------------------------- 观察
     def observe(self, content: str, now: float,
                 player_id: str | None = None,
-                hearsay: bool = False, hop: int = 0) -> int:
+                hearsay: bool = False, hop: int = 0,
+                importance: float | None = None) -> int:
         """记录一条观察 (世界事件或关系事件), 按玩家参照系打重要性分。
 
         观察层去重: 同玩家的近义观察 (>= 0.92) 合并进已有记录 ——
@@ -108,6 +109,8 @@ class NPC:
         重要性累积不再被重复观察反复抬高。返回 (可能已存在的) 记忆 id。
 
         hearsay/hop (S4, 缺省亲见): 传闻观察标记传播身份, 检索按 hop 打折。
+        importance: 预打好的重要性 (世界事件对同一文本只打一次分时由调用方传入);
+        None = 本 NPC 自己调 score_importance。
         """
         self._advance(now)
         # F2-2: 先去重再打分。重复在场走 merge 分支, 不需要 importance
@@ -128,7 +131,8 @@ class NPC:
             # 不是反思信号。
             # 传闻重听同理: 合并保留原记录的 hop (不升级传播身份)。
             return dup.id
-        importance = self.llm.score_importance(content, player_id)
+        if importance is None:
+            importance = self.llm.score_importance(content, player_id)
         rec = MemoryRecord(content=content, timestamp=now, type="observation",
                            player_id=player_id, importance=importance,
                            hearsay=hearsay, hop=hop)
