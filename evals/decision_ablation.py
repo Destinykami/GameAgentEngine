@@ -53,7 +53,9 @@ def build_npc(name_suffix: str, persona: str, trust: str,
 
 
 def run_scenario(method: str, persona: str, trust: str, embedder) -> dict:
-    use_relationship = method != "fixed"   # fixed 用独立规则决策器, NPC 供世界镜像
+    # 只有 full 臂开启信任调制; no_relationship 必须真正关掉 (F5-4),
+    # fixed 用独立规则决策器、NPC 只作世界镜像, 也不需要关系。
+    use_relationship = (method == "full")
     npc, _llm = build_npc(method, persona, trust, use_relationship, embedder)
     npc.generate_daily_plan(previous_day="", date="评测日", now=T_PLAN)
     decider = FixedPriorityDecider() if method == "fixed" else None
