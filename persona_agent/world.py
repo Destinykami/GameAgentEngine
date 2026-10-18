@@ -361,11 +361,13 @@ class World:
         if npc is None or npc._tier == "idle":
             return []
         me = self.entities[npc_name]
+        if me.dead:
+            return []   # 死去的 NPC 不再感知 (同 world_event/step 的死亡检查)
         r = self.perception_radius if radius is None else radius
         ids: list[int] = []
         for ent in self.entities.values():
-            if ent.kind != "player" or distance(me, ent) > r:
-                continue   # 非玩家或视距外
+            if ent.kind != "player" or ent.dead or distance(me, ent) > r:
+                continue   # 非玩家 / 死者 / 视距外
             if npc._tier == "full":
                 content = f"{ent.name} 出现在 {me.location.name}, 靠近 {npc_name}"
             else:   # compressed
@@ -901,9 +903,11 @@ class World:
         这是 blog「问题一」的落地: 认知开销随距离自动降档。
         """
         me = self.entities[npc_name]
+        if me.dead:
+            return "idle"   # 死去的 NPC 不参与认知调度
         nearest: float | None = None
         for ent in self.entities.values():
-            if ent.kind != "player":
+            if ent.kind != "player" or ent.dead:
                 continue
             d = distance(me, ent)
             if nearest is None or d < nearest:
@@ -983,11 +987,17 @@ class World:
         self._maybe_consolidate(now, day)   # M1 夜间固化 (缺省关 = no-op)
         new_obs: dict[str, int] = {}
         for name, npc in self._npcs.items():
+            if self.entities[name].dead:
+                continue   # 死去的 NPC 不再感知/反思 (同 step_autonomous)
             ids = self.perceive(name, now)
             if ids:
                 new_obs[name] = len(ids)
             if npc._tier != "idle":
                 npc.maybe_reflect_self(now)   # 重要性超阈值才反思 (内部门控)
+        # F3-2: step 也必须消费社交交互队列 —— social_perception 在 perceive 里
+        # 登记 _step_social, 此前只有 step_autonomous 调 flush_social, 导致
+        # step 驱动时队列跨步积压且关系反思永不跑。
+        self.flush_social(now)
         if self._conn is not None:
             self.save()
         return {"clock": self.clock, "tiers": tiers, "new_observations": new_obs}
