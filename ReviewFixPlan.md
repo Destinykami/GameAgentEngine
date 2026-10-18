@@ -887,8 +887,23 @@ importance = self.llm.score_importance(content, player_id)
 | F3-3/F3-4/F3-5 距离/原子性/故障隔离 | `680f57c` |
 | F3-5 补漏：动作触发重规划失败隔离 | `0db5ee3` |
 
-闸门实测：`206` 离线测试在 `PYTHONHASHSEED=0/24` 下全绿；全量
+P0 闸门实测：`206` 离线测试在 `PYTHONHASHSEED=0/24` 下全绿；全量
 `pytest tests/ -q`（含 6 真实 LLM 探针）`212 passed`。
+
+### P1 完成记录（2026-10-18）
+
+| 范围 | commit |
+|---|---|
+| F2-3/F2-4 world_event 单次打分 + trust 输入封顶 | `00186eb` |
+| F4-1/F4-2 传闻相关转述 + hearsay 来源/信任/episode | `0626c19` |
+| F4-3/F4-4/F4-5 半衰期 + 身份生成 + 共享冲突 | `3576ffe` |
+| F5-1 add_npc 自治注册 + load 恢复 | `b5f7eaa` |
+| F5-2 react 缓存保存完整决策 | `a693244` |
+| F5-3 计划块归一化 + 返回校验块 | `4b83c3b` |
+| F5-4 use_relationship 真正跳过 trust | `ff99ec0` |
+
+P1 闸门实测：`231` 离线测试在 `PYTHONHASHSEED=0/24` 下全绿；全量
+`pytest tests/ -q`（含 6 真实 LLM 探针）`237 passed`。
 
 ### 阶段 0
 - [x] F0-1 稳定 HashEmbedder + 跨进程测试 + 修 flaky 用例
@@ -904,8 +919,8 @@ importance = self.llm.score_importance(content, player_id)
 ### 阶段 2
 - [x] F2-1 merge 强化时间窗 + `last_reinforced` 迁移
 - [x] F2-2 去重前置（重复在场零 LLM）（P1 顺带完成）
-- [ ] F2-3 `world_event` 单次打分
-- [ ] F2-4 `judge_trust` 输入封顶
+- [x] F2-3 `world_event` 单次打分
+- [x] F2-4 `judge_trust` 输入封顶
 
 ### 阶段 3
 - [x] F3-1 死亡实体退出档位/感知/step
@@ -915,24 +930,24 @@ importance = self.llm.score_importance(content, player_id)
 - [x] F3-5 per-agent 故障隔离
 
 ### 阶段 4
-- [ ] F4-1 传闻只转述相关话题
-- [ ] F4-2 信任/episode 保留 hearsay/hop
-- [ ] F4-3 episode/identity 半衰期
-- [ ] F4-4 身份信念生成接线
-- [ ] F4-5 共享/identity 冲突检查
+- [x] F4-1 传闻只转述相关话题
+- [x] F4-2 信任/episode 保留 hearsay/hop
+- [x] F4-3 episode/identity 半衰期
+- [x] F4-4 身份信念生成接线
+- [x] F4-5 共享/identity 冲突检查
 
 ### 阶段 5
-- [ ] F5-1 `add_npc` 自治注册 + load 恢复
-- [ ] F5-2 `react` 缓存保存决策对象
-- [ ] F5-3 计划块归一化 + 返回校验块
-- [ ] F5-4 `use_relationship` 真正跳过 trust
+- [x] F5-1 `add_npc` 自治注册 + load 恢复
+- [x] F5-2 `react` 缓存保存决策对象
+- [x] F5-3 计划块归一化 + 返回校验块
+- [x] F5-4 `use_relationship` 真正跳过 trust
 
 ### 阶段 6
 - [ ] F6-1 ~ F6-12 卫生项与文档对齐
 
 ### 阶段验收
-- [x] 三个种子下离线测试全绿（0 / 24 / 随机；206 passed）
-- [x] 6 探针通过（全量 212 passed）
+- [x] 三个种子下离线测试全绿（P0 206 / P1 231 passed）
+- [x] 6 探针通过（P0 全量 212 / P1 全量 237 passed）
 - [ ] `evals/memory_consistency.py --smoke` 跑通（行为变化后重新跑）
 - [ ] `evals/decision_ablation.py --smoke` 跑通（F5-4 后）
 - [x] 在本文件勾选 P0 完成（本记录）
