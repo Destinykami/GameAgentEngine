@@ -215,8 +215,17 @@ class NPC:
         return new_ids
 
     # ---------------------------------------------------------------- 对话
-    def speak(self, player_id: str, utterance: str, now: float) -> str:
-        """对玩家发言作出回应 (非全知, 只用自己记忆流)。"""
+    def speak(self, player_id: str, utterance: str, now: float,
+              remember: bool = True,
+              record_utterance: bool = True) -> str:
+        """对玩家发言作出回应 (非全知, 只用自己记忆流), 默认把对话写入记忆。
+
+        remember: 是否把本轮对话写进该玩家的关系面 (缺省 True)。单 NPC API
+          (`npc.speak`) 没有世界层帮忙回流, 不写就"说完就忘"; 世界层可在已经
+          用 perceive_action 观察过对方话语时传 record_utterance=False 防双写。
+        record_utterance: 是否记录对方这句话。False 时只记录自己的回复
+          (世界层 talk 路径用: 对方话语已由 perceive_action 观察入库)。
+        """
         # 近处: 仅当该玩家出现新观察时才重跑关系反思 (否则反思无限增殖、
         # 信任度随反复反思漂移)。已有反思足以指导本次对话。
         self._advance(now)
@@ -226,7 +235,15 @@ class NPC:
             if obs_count > self._reflected_obs.get(player_id, 0):
                 self.reflect_relationship(player_id, now)
                 self._reflected_obs[player_id] = obs_count
-        return self.dialogue.reply(player_id, utterance, now)
+        # 先拿到回复, 再写记忆: 本轮反思不该把"刚听到的这句话"当作旧证据。
+        reply = self.dialogue.reply(player_id, utterance, now)
+        if remember and record_utterance and utterance:
+            self.observe(f"{player_id} 对我说: {utterance}", now,
+                         player_id=player_id)
+        if remember and reply:
+            self.observe(f"我对 {player_id} 说: {reply}", now,
+                         player_id=player_id)
+        return reply
 
     # ---------------------------------------------------------------- 反应
     def react(self, event: str, player_id: str, now: float,

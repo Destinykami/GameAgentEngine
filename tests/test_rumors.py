@@ -84,9 +84,13 @@ def test_overhearing_hop1(tmp_path):
     assert c_obs[0].content == "A 说: 账本少了"
     # E (丙, 视距外) 没听到
     assert w.npc("E").store.all_valid(player_id="A") == []
-    # B 是对话者不是第三方: B 只有 E16 的亲见观察 (hearsay=False), 无传闻
+    # B 是对话者不是第三方: B 只有亲见观察 (hearsay=False), 无传闻。
+    # F1-1 后 talk 双向落库, B 有 2 条: A 的话 (perceive_action) + 自己的回复
+    # (speak), 两条都是亲见。
     b_obs = w.npc("B").store.all_valid(player_id="A", types=["observation"])
-    assert len(b_obs) == 1 and not b_obs[0].hearsay
+    incoming = [m for m in b_obs if "对TA说" in m.content]
+    assert len(incoming) == 1 and not incoming[0].hearsay
+    assert any("我对 A 说" in m.content for m in b_obs)
     w.close()
 
 

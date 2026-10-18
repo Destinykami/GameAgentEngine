@@ -67,8 +67,11 @@ def test_npc_to_npc_talk_observes_actor_stream(tmp_path):
     w.execute_action(w.get("A"), {"action": "talk", "target": "B",
                                   "utterance": "今天天气不错"})
     obs = w.npc("B").store.all_valid(player_id="A", types=["observation"])
-    assert len(obs) == 1
-    assert "对TA说" in obs[0].content
+    # F1-1 后 talk 双向落库: B 既记得 A 说的话 (perceive_action), 也记得自己
+    # 的回复 (speak 内部写入), 所以是 2 条而不是旧的 1 条。
+    assert len(obs) == 2
+    assert any("对TA说" in m.content for m in obs)
+    assert any("我对 A 说: stub-reply" in m.content for m in obs)
     w.close()
 
 

@@ -651,7 +651,10 @@ class World:
                 try:
                     npc = self._observe_target_social(target, agent, f"对TA说: {line}")
                     if npc is not None:
-                        reply = npc.speak(agent.name, line, self.clock) or ""
+                        # 对方话语已经由 _observe_target_social/perceive_action
+                        # 观察入库, speak 只补记自己的回复, 避免双写 incoming。
+                        reply = npc.speak(agent.name, line, self.clock,
+                                          record_utterance=False) or ""
                 except Exception:
                     return emit(VisualEvent(
                         "conversation", agent.name, self.clock,
