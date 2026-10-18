@@ -910,9 +910,10 @@ P1 闸门实测：`231` 离线测试在 `PYTHONHASHSEED=0/24` 下全绿；全量
 | 范围 | commit |
 |---|---|
 | F6-1 ~ F6-12 记忆/世界/文档卫生 | `836a60d` |
+| F4-5 共享冲突成本门控（调度校准后追加） | `c160497` |
 
-P2 闸门实测：`245` 离线测试在 `PYTHONHASHSEED=0/24` 下全绿；全量
-`pytest tests/ -q`（含 6 真实 LLM 探针）`251 passed`。F6-11 过渡驱动感知
+P2 闸门实测：`246` 离线测试在 `PYTHONHASHSEED=0/24` 下全绿；全量
+`pytest tests/ -q`（含 6 真实 LLM 探针）`252 passed`。F6-11 过渡驱动感知
 已实现但缺省关（`player_perception_transition=False`），旧行为不变。
 
 ### Eval smoke 校准记录（2026-10-18）
@@ -964,6 +965,29 @@ P1 后全量仍复现机制方向：证据约束切断级联，LLM 矛盾判别�
 100%），属单点噪声，不作为结论。旧表"full 准确率低于 no_rel"是缺陷臂造成的，
 已在 `evals/README.md` 重写实验 2 全表与结论。实验 3 的成本曲线仍为 F2-3 前
 数据（世界事件已单次打分），已在 README 标注待重跑。
+
+### Eval 全量校准记录：scheduling_efficiency（2026-10-19）
+
+产物：`data/eval/scheduling_efficiency/20261018-200426/`（耗时 17482s，六个 run）。
+
+| 配置 | N | 总调用 | 调用/步均值 | token/步均值 | P50 | P95 | 自我反思 |
+|---|---|---|---|---|---|---|---|
+| all_full | 5 | 1680 | 69 | 20007 | 72.1s | 153.0s | 0 |
+| tiered | 5 | 480 | 19 | 7170 | 16.9s | 82.1s | 0 |
+| tiered | 10 | 1357 | 56 | 17493 | 34.5s | 180.5s | 0 |
+| tiered | 20 | 1229 | 51 | 20070 | 62.6s | 373.2s | 0 |
+| tiered | 40 | 9414 | 392 | 100215 | 0.0s | 1028.8s | 0 |
+| tiered_capped | 40 | 1766 | 73 | 28036 | 26.6s | 751.9s | 0 |
+
+**校准发现**：成本热点已从世界事件转移到 `judge_conflict`。all_full N=5 中
+`judge_conflict` 1074/1680（64%），tiered N=40 中 7601/9414（81%）；F4-5 的
+共享冲突门控把 all_full 从 5194→1680，但关系冲突扫描仍随对话观察增长。
+N=40 第 8 步后全部 NPC 转 idle、旅行者只 wait，P50 被零调用步拉成 0.0，
+不能当 scaling 曲线；capped N=40 把调用砍到 1766、冲突判到 159，同时保留
+40/40 存活，但反思洞察从 180 降到 18，证明证据上限是有效的成本↔深度旋钮。
+F1-3 后自我反思只计共享流，本场景全为 0，旧表"认知深度"数字失效。
+后续若要恢复可信 N=40 曲线，应先对**关系冲突检查**做增量/门控（不要每轮重扫
+K 条观察），再重跑调度全量；这是独立于 P0/P1/P2 的后续成本项。
 
 ### 阶段 0
 - [x] F0-1 稳定 HashEmbedder + 跨进程测试 + 修 flaky 用例
@@ -1023,6 +1047,6 @@ P1 后全量仍复现机制方向：证据约束切断级联，LLM 矛盾判别�
 - [x] `evals/decision_ablation.py --smoke` 跑通（修正 no_rel 臂后 smoke）
 - [x] `evals/decision_ablation.py` 全量按修正臂重跑（2026-10-18，1143s）
 - [x] `evals/memory_consistency.py` 全量按 P1 后行为重跑（2026-10-18，1948s）
-- [ ] `evals/scheduling_efficiency.py` 全量重跑（F2-3 改变世界事件打分成本；进行中）
-- [x] P2 全量闸门（245 离线 + 6 探针 = 251 passed）
+- [x] `evals/scheduling_efficiency.py` 全量重跑（2026-10-19，17482s；成本热点转到 judge_conflict）
+- [x] P2 全量闸门（246 离线 + 6 探针 = 252 passed）
 - [x] 在本文件勾选 P0/P1/P2 完成并登记 eval smoke/full（本记录）
