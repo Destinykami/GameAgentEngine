@@ -72,6 +72,9 @@ class NPC:
         # 每玩家"上次关系反思时的观察数": 用于门控, 避免每次对话都重跑反思
         # 导致反思无限增殖、信任度漂移 (只有出现新观察才值得再反思)
         self._reflected_obs: dict[str, int] = {}
+        # F4-5 成本门控: 共享冲突检查只在共享证据 (未固化观察/episode) 变化时跑,
+        # 不在每次 maybe_reflect_self 都扫 (否则 judge_conflict 成为最大成本项)。
+        self._shared_conflict_sig: tuple | None = None
         # 持久化: 文件库路径 + 游戏内时钟 (小时, 单调递增)
         self._data_path: str | None = None
         self._game_time: float = 0.0
@@ -176,8 +179,9 @@ class NPC:
         ids = self.reflection.reflect_self(self.store, now)
         self._importance_accum = 0.0
         # F4-5: 共享自我反思/identity 也要能被后续世界观察推翻 (此前冲突检查
-        # 只按玩家扫关系反思, 自我/身份信念永不过期)。
-        self.reflection.check_conflicts(self.store, None, now, shared=True)
+        # 只按玩家扫关系反思, 自我/身份信念永不过期)。按共享证据签名门控,
+        # 没有新观察/episode 时零 judge_conflict 调用。
+        self.check_shared_conflicts(now)
         return ids
 
     def reflect_relationship(self, player_id: str, now: float) -> list[int]:
@@ -191,6 +195,23 @@ class NPC:
         """身份层信念 (M3): 跨玩家泛化, 写共享流 (type=identity)。显式触发。"""
         self._advance(now)
         return self.reflection.reflect_identity(self.store, now)
+
+    def check_shared_conflicts(self, now: float) -> list[int]:
+        """检查共享自我/identity 反思是否被更晚的世界证据推翻 (F4-5)。
+
+        成本门控: 以"共享未固化观察 + episode"的 (条数, 最新时间戳) 为签名;
+        签名未变说明没有新证据, 直接返回, 不再为同一批反思重复判矛盾。
+        这也让 conflict_cache 的 512 上限不再被世界模拟的每步扫描打满。
+        """
+        evidence = (
+            self.store.all_valid(shared=True, types=["observation"],
+                                 consolidated=False)
+            + self.store.all_valid(shared=True, types=["episode"]))
+        sig = (len(evidence), max((m.timestamp for m in evidence), default=0.0))
+        if sig == self._shared_conflict_sig:
+            return []
+        self._shared_conflict_sig = sig
+        return self.reflection.check_conflicts(self.store, None, now, shared=True)
 
     def consolidate(self, now: float) -> list[int]:
         """夜间记忆固化 (M1): 把当天未固化的原始观察按流压缩成情节摘要 (episode),
@@ -238,7 +259,7 @@ class NPC:
             new_ids.append(ep_id)
         if new_ids:
             # episode 是新证据: 共享自我/identity 信念同样要过一遍冲突检查
-            self.reflection.check_conflicts(self.store, None, now, shared=True)
+            self.check_shared_conflicts(now)
         return new_ids
 
     # ---------------------------------------------------------------- 对话

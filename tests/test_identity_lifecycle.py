@@ -103,3 +103,31 @@ def test_shared_identity_can_be_invalidated():
     npc.reflection.check_conflicts(npc.store, None, 3.0, shared=True)
     assert ident_id in {m.id for m in npc.store.all_invalid()}, \
         "identity 信念也应参与共享冲突扫描"
+
+
+class _CountingConflict(_ConflictLLM):
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    def judge_conflict(self, reflection, observation):
+        self.calls += 1
+        return super().judge_conflict(reflection, observation)
+
+
+def test_shared_conflicts_are_gated_by_new_evidence():
+    llm = _CountingConflict()
+    npc = NPC("测试人", dict(TRAITS), llm=llm, embedder=HashEmbedder())
+    npc.store.add(MemoryRecord(content="我信任外来者", timestamp=1.0,
+                               type="reflection", player_id=None,
+                               confidence=0.8))
+    npc.observe("外来者来拜访", 2.0)
+    npc.check_shared_conflicts(3.0)
+    first = llm.calls
+    assert first >= 1
+    npc.check_shared_conflicts(4.0)
+    assert llm.calls == first, "没有新共享证据时不得重复判矛盾"
+    npc.store.add(MemoryRecord(content="外来者背叛了我", timestamp=5.0,
+                               type="observation", player_id=None))
+    npc.check_shared_conflicts(6.0)
+    assert llm.calls > first, "新共享证据应触发一次检查"
