@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import NPC
+from persona_agent import NPC, MemoryRecord
 from tests.test_persistence import _StubLLM
 
 TRAITS = {"social": 0.7, "goal_oriented": 0.5}
@@ -159,8 +159,12 @@ def test_conflict_scan_skips_consolidated(tmp_path):
     npc.observe("P 帮过我", 1.0, player_id="P")
     npc.observe("P 又送来了炭", 2.0, player_id="P")
     npc.reflect_relationship("P", 5.0)   # 反思 (t=5), 证据 = 前两条观察
+    # 直接入库, 绕过 observe 的 0.92 观察去重: 本用例测冲突扫描, 不应依赖
+    # HashEmbedder 在某个 PYTHONHASHSEED 下恰好不把两条模板文本判为重复。
     for i in range(10):
-        npc.observe(f"P 的第 {i} 条更晚观察", 6.0 + i, player_id="P")
+        npc.store.add(MemoryRecord(content=f"P 的第 {i} 条更晚观察",
+                                   timestamp=6.0 + i, type="observation",
+                                   player_id="P", importance=5.0))
     npc.reflection.check_conflicts(npc.store, "P", 16.0)
     assert llm.conflict_calls == 10       # 10 条更晚观察 (K=10 窗口全收)
     npc.consolidate(17.0)                 # 全部观察 → 1 条 episode (t=17)

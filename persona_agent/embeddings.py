@@ -1,12 +1,13 @@
 """向量层: 可插拔 Embedder 接口。
 
-默认 HashEmbedder: 基于词袋 + 哈希的确定性向量, 无需模型权重即可跑通,
-余弦相似度反映词面重叠, 足够支撑 demo 与探针测试的"相关性"维度。
+默认 HashEmbedder: 基于词袋 + 稳定哈希的跨进程确定向量, 无需模型权重即可
+跑通, 余弦相似度反映词面重叠, 足够支撑 demo 与探针测试的"相关性"维度。
 接入真实模型时, 实现 embed(texts) -> list[list[float]] 并保证归一化即可。
 """
 
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 from abc import ABC, abstractmethod
@@ -20,6 +21,16 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+|[\u4e00-\u9fff]")
 def _tokens(text: str) -> list[str]:
     """简单分词: 英文按词, 中文按单字, 保证中英文都能产生重叠信号。"""
     return _TOKEN_RE.findall(text.lower())
+
+
+def _stable_hash(tok: str) -> int:
+    """跨进程稳定的 64 位哈希 (内建 hash() 对字符串按进程随机加盐)。
+
+    HashEmbedder 的向量不持久化, 但同一份记忆在不同进程重建时必须得到同样的
+    桶/符号, 否则去重与检索在重启后漂移、测试随 PYTHONHASHSEED 随机红。
+    """
+    digest = hashlib.blake2b(tok.encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(digest, "big")
 
 
 class Embedder(ABC):
@@ -46,7 +57,7 @@ def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
 
 
 class HashEmbedder(Embedder):
-    """词袋哈希 Embedder: 确定性、无外部依赖、中英文均可用。"""
+    """词袋哈希 Embedder: 跨进程确定、无外部依赖、中英文均可用。"""
 
     def __init__(self, dim: int = 256) -> None:
         self._dim = dim
@@ -62,7 +73,7 @@ class HashEmbedder(Embedder):
         vec = [0.0] * self._dim
         for tok in _tokens(text):
             # 用稳定哈希决定桶与符号, 降低碰撞抵消
-            h = hash(tok) & 0xFFFFFFFF
+            h = _stable_hash(tok)
             idx = h % self._dim
             sign = 1.0 if (h >> 16) & 1 else -1.0
             vec[idx] += sign
