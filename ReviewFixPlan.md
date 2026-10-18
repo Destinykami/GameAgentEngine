@@ -932,6 +932,22 @@ no_rel 关系一致 0% → full 100%，但 full 的准确率优势在单切片�
 实验 1 的 ours 背叛后信任 +0.80 与 2026-10-15 smoke 同值（单轨迹噪声），
 P1 后 stale/冲突指标仍保持 ours 最优；全量结果表建议随最终全量重跑一起更新。
 
+### Eval 全量校准记录：memory_consistency（2026-10-18）
+
+产物：`data/eval/memory_consistency/20261018-144723/`（耗时 1948s）。
+
+| 臂 | EGR | 级联 | stale@top-k | stale 占比 | ctx 矛盾 | 背叛后信任 | 失效 | LLM 调用 |
+|---|---|---|---|---|---|---|---|---|
+| baseline | 0.48 | 36 | 2.6 | 34.1% | 90% | -0.68 | 0 | 194 |
+| ablation_a | 1.00 | 0 | 1.8 | 23.3% | 80% | -0.70 | 0 | 194 |
+| ablation_b | 0.56 | 30 | 2.7 | 34.1% | 80% | -0.67 | 0 | 194 |
+| ours | 1.00 | 0 | 0.3 | 3.8% | 20% | -0.81 | 23 | 221 |
+
+P1 后全量仍复现机制方向：证据约束切断级联，LLM 矛盾判别把 stale 占比
+23.3%→3.8%、ctx 矛盾 80%→20%（+14% 调用）；启发式衰减 stale 与 baseline
+持平，仍是无效替代。四臂背叛后信任均负；单条 smoke 的 ours +0.80 已确认为
+轨迹噪声。旧 2026-10-15 表已被替换（对话落库/检索范围变化）。
+
 ### Eval 全量校准记录：decision_ablation（2026-10-18）
 
 产物：`data/eval/decision_ablation/20261018-131629/`（耗时 1143s，修正臂全量）。
@@ -1006,7 +1022,7 @@ P1 后 stale/冲突指标仍保持 ours 最优；全量结果表建议随最终�
 - [x] `evals/memory_consistency.py --smoke` 跑通（P1 后 smoke）
 - [x] `evals/decision_ablation.py --smoke` 跑通（修正 no_rel 臂后 smoke）
 - [x] `evals/decision_ablation.py` 全量按修正臂重跑（2026-10-18，1143s）
-- [ ] `evals/memory_consistency.py` 全量按 P1 后行为重跑
-- [ ] `evals/scheduling_efficiency.py` 全量重跑（F2-3 改变世界事件打分成本）
+- [x] `evals/memory_consistency.py` 全量按 P1 后行为重跑（2026-10-18，1948s）
+- [ ] `evals/scheduling_efficiency.py` 全量重跑（F2-3 改变世界事件打分成本；进行中）
 - [x] P2 全量闸门（245 离线 + 6 探针 = 251 passed）
 - [x] 在本文件勾选 P0/P1/P2 完成并登记 eval smoke/full（本记录）
