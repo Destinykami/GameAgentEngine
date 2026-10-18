@@ -874,29 +874,45 @@ importance = self.llm.score_importance(content, player_id)
 
 ## 12. 进度清单
 
+### P0 完成记录（2026-10-18）
+
+| 范围 | commit |
+|---|---|
+| F0-1 稳定 HashEmbedder + 可复现闸门 | `fddff5d` |
+| F1-2/F1-3 反思双流去重 + 触发器按流 | `b962c9c` |
+| F1-4/F1-5/F1-6 对话/计划/决策信息隔离 | `45b942f` |
+| F1-1 `speak` 对话落库 | `0eaea4e` |
+| F2-1/F2-2 merge 限速 + 去重前置 | `50639e1` |
+| F3-1/F3-2 死亡语义 + step 社交队列 | `3db0027` |
+| F3-3/F3-4/F3-5 距离/原子性/故障隔离 | `680f57c` |
+| F3-5 补漏：动作触发重规划失败隔离 | `0db5ee3` |
+
+闸门实测：`206` 离线测试在 `PYTHONHASHSEED=0/24` 下全绿；全量
+`pytest tests/ -q`（含 6 真实 LLM 探针）`212 passed`。
+
 ### 阶段 0
-- [ ] F0-1 稳定 HashEmbedder + 跨进程测试 + 修 flaky 用例
+- [x] F0-1 稳定 HashEmbedder + 跨进程测试 + 修 flaky 用例
 
 ### 阶段 1
-- [ ] F1-2 `_save` 共享流去重隔离
-- [ ] F1-3 反思触发器只累积共享观察
-- [ ] F1-4 对话检索"当前玩家 + 共享流"
-- [ ] F1-5 计划 context/中断观察不跨流
-- [ ] F1-6 自治决策上下文按可见对象过滤
-- [ ] F1-1 `speak` 默认写对话记忆 + 世界层去重
+- [x] F1-2 `_save` 共享流去重隔离
+- [x] F1-3 反思触发器只累积共享观察
+- [x] F1-4 对话检索"当前玩家 + 共享流"
+- [x] F1-5 计划 context/中断观察不跨流
+- [x] F1-6 自治决策上下文按可见对象过滤（P1 顺带完成）
+- [x] F1-1 `speak` 默认写对话记忆 + 世界层去重
 
 ### 阶段 2
-- [ ] F2-1 merge 强化时间窗 + `last_reinforced` 迁移
-- [ ] F2-2 去重前置（重复在场零 LLM）
+- [x] F2-1 merge 强化时间窗 + `last_reinforced` 迁移
+- [x] F2-2 去重前置（重复在场零 LLM）（P1 顺带完成）
 - [ ] F2-3 `world_event` 单次打分
 - [ ] F2-4 `judge_trust` 输入封顶
 
 ### 阶段 3
-- [ ] F3-1 死亡实体退出档位/感知/step
-- [ ] F3-2 `step` 消费 `_step_social`
-- [ ] F3-3 动作距离校验
-- [ ] F3-4 help/hide 原子性
-- [ ] F3-5 per-agent 故障隔离
+- [x] F3-1 死亡实体退出档位/感知/step
+- [x] F3-2 `step` 消费 `_step_social`
+- [x] F3-3 动作距离校验
+- [x] F3-4 help/hide 原子性
+- [x] F3-5 per-agent 故障隔离
 
 ### 阶段 4
 - [ ] F4-1 传闻只转述相关话题
@@ -915,8 +931,8 @@ importance = self.llm.score_importance(content, player_id)
 - [ ] F6-1 ~ F6-12 卫生项与文档对齐
 
 ### 阶段验收
-- [ ] 三个种子下离线测试全绿
-- [ ] 6 探针通过
+- [x] 三个种子下离线测试全绿（0 / 24 / 随机；206 passed）
+- [x] 6 探针通过（全量 212 passed）
 - [ ] `evals/memory_consistency.py --smoke` 跑通（行为变化后重新跑）
 - [ ] `evals/decision_ablation.py --smoke` 跑通（F5-4 后）
-- [ ] 更新 `REVIEW.md`（追加"第四轮修复记录"）或在本文件勾选完成
+- [x] 在本文件勾选 P0 完成（本记录）
