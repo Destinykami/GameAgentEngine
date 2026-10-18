@@ -33,7 +33,9 @@ class PlanningEngine:
         顶层块 (start, end, activity) 一并返回, 供调用方判断"当前正忙"——
         计划只存进记忆流是不够的: 反应决策不走检索, 需要直接拿到块。
         """
-        top_blocks = self._llm.generate_plan(persona_traits, previous_day, date, context)
+        raw_blocks = self._llm.generate_plan(persona_traits, previous_day, date,
+                                             context)
+        top_blocks = raw_blocks if isinstance(raw_blocks, list) else []
         self.daily_plan_count += 1   # 每次生成都计 (LLM 返回空计划也花了调用)
         # M4: 新的一天计划**替换**旧的 —— 计划是前瞻性的, 跨日后昨日计划 (含分解
         # 出的子任务) 纯属垃圾, 直接失效而非降权到地板留在流里: 30 天模拟会积
@@ -42,18 +44,27 @@ class PlanningEngine:
         # 昨天的安排已不再是"现在正在做的事"。
         old_ids = [m.id for m in store.all_valid(types=["plan"])]
         top_ids: list[int] = []
+        validated: list[tuple[int, int, str]] = []
         for start, end, activity in top_blocks:
-            # 审查#2: 顶层块过合法性闸 —— 越界 (25-26)/倒置 (10-9) 块丢弃, 不入库。
-            # PlanningEngine 自己的兜底, 不依赖 RealLLM 的 parse 层 (stub 会绕过)。
-            if not self._valid_block(start, end):
+            # 审查#2 + F5-3: 顶层块先归一化为整点再过合法性闸 —— 越界 (25-26)/
+            # 倒置 (10-9)/非整数浮点 (7.5) 丢弃, 不入库。f"{:02d}" 只接受 int,
+            # 旧实现对 7.5 会直接 ValueError 打崩整步。
+            start, end = self._as_hour(start), self._as_hour(end)
+            if start is None or end is None or not self._valid_block(start, end):
                 continue
             top_id = self._save_plan(store, now, f"{start:02d}-{end:02d} {activity}",
                                      player_id=None)
             top_ids.append(top_id)
+            validated.append((start, end, activity))
             # 只对多于一小时的块分解为小时级子任务; 1 小时块已是最细粒度, 分解会
             # 把原活动原样回声成"子任务"造成重复, 故跳过。
             if end - start > 1:
-                for s, e, sub in self._llm.decompose_activity(activity, start, end):
+                subs = self._llm.decompose_activity(activity, start, end)
+                for s, e, sub in (subs if isinstance(subs, list) else []):
+                    # F5-3: 子任务同样先归一化; 非整数浮点直接丢弃。
+                    s, e = self._as_hour(s), self._as_hour(e)
+                    if s is None or e is None:
+                        continue
                     # E15: 子任务时间 clamp 到父块 [start,end] —— LLM 分解可能返回
                     # 越出父块的时间 (09-11 块回个 03-04 子任务), 原样入库会把子任务
                     # 排到它根本不属于的时段。裁到父块边界; 裁完为空 (整段在父块外)
@@ -73,7 +84,9 @@ class PlanningEngine:
                     self._save_plan(store, now, sub_content, player_id=None)
         for old_id in old_ids:
             store.invalidate(old_id)
-        return top_ids, top_blocks
+        # F5-3: 返回**校验后**的块, 不再把原始 LLM 块交给 NPC._plan_blocks
+        # (旧实现会把越界/倒置/浮点块塞进 react 的"当前正忙"上下文)。
+        return top_ids, validated
 
     # ------------------------------------------------------------- 重规划
     def replan_from_now(self, store: MemoryStore, persona_traits: dict,
@@ -101,16 +114,19 @@ class PlanningEngine:
         anchor_ctx = (f"计划在 {int(hour):02d}:{int((hour % 1) * 60):02d} 被打断, "
                       f"只生成从当前时刻到当天结束的计划, 不要重排已经过去的时间。")
         context = f"{context} {anchor_ctx}".strip() if context else anchor_ctx
-        blocks = self._llm.generate_plan(persona_traits, "", "replan", context=context)
+        raw_blocks = self._llm.generate_plan(persona_traits, "", "replan",
+                                             context=context)
+        blocks = raw_blocks if isinstance(raw_blocks, list) else []
         self.replan_count += 1
         # 规则层锚定: 锚点 = 下一个整点 (当前小时内的剩余不足 1 小时, 不排块)
         anchor = math.ceil(hour - 1e-9)
         clamped: list[tuple[int, int, str]] = []
         for start, end, activity in blocks:
-            # 审查#3: 先校验合法性 (0<=start<end<=24, 越界/倒置块丢弃) —— 日界
-            # (end<=24) 由校验保证, (23,25) 这类跨日块在此被丢, 不会存成越界计划。
-            # 再做 anchor 裁剪, 裁剪后复查 start<end (anchor 可能把整块吞掉)。
-            if not self._valid_block(start, end):
+            # 审查#3 + F5-3: 先归一化为整点再校验 (0<=start<end<=24, 越界/倒置/
+            # 非整数浮点丢弃) —— 日界 (end<=24) 由校验保证, (23,25) 这类跨日块
+            # 在此被丢; 再做 anchor 裁剪, 裁剪后复查 start<end。
+            start, end = self._as_hour(start), self._as_hour(end)
+            if start is None or end is None or not self._valid_block(start, end):
                 continue
             if end <= anchor:
                 continue   # 整块在过去
@@ -146,11 +162,27 @@ class PlanningEngine:
                                       importance=5.0))
 
     @staticmethod
+    def _as_hour(value) -> int | None:
+        """把 LLM 返回的时间归一化为整点; 非整数浮点/字符串返回 None。
+
+        RealLLM 的 _parse_hour 已在 parse 层做类型容错, 但 stub/自定义 LLM 会
+        绕过它。这里统一收口: int、整数值 float (7.0) 接受; 7.5/''/'早上' 丢弃,
+        不静默取整 (避免把 7.5-9.5 悄悄挪成别的时段)。bool 是 int 子类, 排除。
+        """
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float) and value.is_integer():
+            return int(value)
+        return None
+
+    @staticmethod
     def _valid_block(start, end) -> bool:
         """计划块合法性: 0 <= start < end <= 24 (一日时间界 + 顺序不倒置)。
 
         PlanningEngine 自己的兜底 (防御纵深): RealLLM 的 parse 层也过滤非法块,
         但 stub/自定义 LLM 绕过 parse —— 越界块 (25-26)、倒置块 (10-9) 不得作为
-        有效计划进记忆流。int/float 都适用。
+        有效计划进记忆流。调用方应先用 _as_hour 归一化。
         """
         return 0 <= start < end <= 24
