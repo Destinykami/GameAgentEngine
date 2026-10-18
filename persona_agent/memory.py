@@ -63,6 +63,8 @@ MIN_IMPORTANCE = FORGET_FLOOR * 10.0   # = 1.5, importance 降权下限
 FORGET_HALF_LIVES: dict[str, float] = {
     "observation": 48.0,   # ~2 天: 没被固化、没被回忆的原始事件先降权
     "reflection": 168.0,   # ~2 周: 高阶认知降权最慢
+    "episode": 168.0,      # ~2 周: 固化后的情节摘要与反思同档
+    "identity": 336.0,     # ~4 周: 身份层信念最稳定
     "plan": 24.0,          # ~1 天: 计划隔夜即降权
 }
 

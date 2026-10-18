@@ -169,6 +169,9 @@ class NPC:
             return []
         ids = self.reflection.reflect_self(self.store, now)
         self._importance_accum = 0.0
+        # F4-5: 共享自我反思/identity 也要能被后续世界观察推翻 (此前冲突检查
+        # 只按玩家扫关系反思, 自我/身份信念永不过期)。
+        self.reflection.check_conflicts(self.store, None, now, shared=True)
         return ids
 
     def reflect_relationship(self, player_id: str, now: float) -> list[int]:
@@ -227,6 +230,9 @@ class NPC:
             ep_id = self.store.add(ep)
             self.store.mark_consolidated([m.id for m in obs])
             new_ids.append(ep_id)
+        if new_ids:
+            # episode 是新证据: 共享自我/identity 信念同样要过一遍冲突检查
+            self.reflection.check_conflicts(self.store, None, now, shared=True)
         return new_ids
 
     # ---------------------------------------------------------------- 对话

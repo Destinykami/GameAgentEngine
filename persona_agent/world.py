@@ -949,8 +949,12 @@ class World:
                 continue   # 死去的 NPC 不再固化 (生命止于死亡那一刻)
             try:
                 npc.consolidate(self.clock)
+                # F4-4: 身份信念与夜间固化同一节拍触发; 仅开关打开时生成
+                # (缺省关 = 现行为), 与 decide_agent 的 identity 注入同开关。
+                if self._use_identity_beliefs:
+                    npc.reflect_identity(self.clock)
             except Exception:
-                continue   # 单个 NPC 固化失败不阻塞其余 (F3-5)
+                continue   # 单个 NPC 固化/身份反思失败不阻塞其余 (F3-5)
         self._last_consolidate_day = day
 
     def flush_social(self, now: float) -> None:

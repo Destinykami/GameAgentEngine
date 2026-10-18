@@ -209,16 +209,21 @@ class ReflectionEngine:
 
     # ------------------------------------------------------------- 冲突处理
     def check_conflicts(self, store: MemoryStore, player_id: str,
-                        now: float) -> list[int]:
-        """冲突处理入口: 按 _conflict_policy 分派 (消融开关, 缺省 full = 现行为)。"""
+                        now: float, shared: bool = False) -> list[int]:
+        """冲突处理入口: 按 _conflict_policy 分派 (消融开关, 缺省 full = 现行为)。
+
+        shared=True 时检查共享流的自我反思 + identity 信念 (player_id 仍用于
+        日志/接口兼容, 实际按 shared=True 取流)。关系反思的冲突检查仍走
+        player_id 路径 (shared=False)。
+        """
         if self._conflict_policy == "off":
             return []
         if self._conflict_policy == "heuristic_decay":
-            return self._check_conflicts_heuristic(store, player_id, now)
-        return self._check_conflicts_llm(store, player_id, now)
+            return self._check_conflicts_heuristic(store, player_id, now, shared)
+        return self._check_conflicts_llm(store, player_id, now, shared)
 
     def _check_conflicts_llm(self, store: MemoryStore, player_id: str,
-                             now: float) -> list[int]:
+                             now: float, shared: bool = False) -> list[int]:
         """检测关系反思与更晚观察的矛盾 (LLM 判矛盾强度), 失效/衰减矛盾反思。
 
         取代词表方向匹配: 让 LLM 判语义矛盾强度 0-10 —— 强背叛推翻强信任 =
@@ -239,14 +244,25 @@ class ReflectionEngine:
         base × 0.5^K 不再被无限磨零。首跑/重启成本从 O(反思×观察) 压到 O(反思×K)。
         """
         handled: list[int] = []
-        reflections = store.all_valid(player_id=player_id, types=["reflection"])
-        # M1 固化后: 已固化的原始观察退出扫描 (被情节摘要吸收, 再由 episode 顶替
-        # "更晚证据"角色) —— 一条 episode 顶 N 条观察, 冲突检查从 O(反思×观察)
-        # 降为 O(反思×(情节+未固化观察))。未固化的观察照旧参与 (固化只走显式
-        # 触发, 缺省世界里 consolidated 恒 0, 行为不变)。
-        observations = (store.all_valid(player_id=player_id, types=["observation"],
-                                        consolidated=False)
-                        + store.all_valid(player_id=player_id, types=["episode"]))
+        if shared:
+            # 共享流的自我反思 + identity 信念都参与冲突扫描。identity 是
+            # 跨玩家泛化的高阶信念, 同样可能被后续世界观察推翻。
+            reflections = (store.all_valid(shared=True, types=["reflection"])
+                           + store.all_valid(shared=True, types=["identity"]))
+            observations = (
+                store.all_valid(shared=True, types=["observation"],
+                                consolidated=False)
+                + store.all_valid(shared=True, types=["episode"]))
+        else:
+            reflections = store.all_valid(player_id=player_id,
+                                          types=["reflection"])
+            # M1 固化后: 已固化的原始观察退出扫描 (被情节摘要吸收, 再由 episode
+            # 顶替"更晚证据"角色) —— 一条 episode 顶 N 条观察, 冲突检查从
+            # O(反思×观察) 降为 O(反思×(情节+未固化观察))。
+            observations = (
+                store.all_valid(player_id=player_id, types=["observation"],
+                                consolidated=False)
+                + store.all_valid(player_id=player_id, types=["episode"]))
 
         for ref in reflections:
             if ref.confidence < CONFLICT_DECAY_FLOOR:
@@ -282,7 +298,7 @@ class ReflectionEngine:
         return handled
 
     def _check_conflicts_heuristic(self, store: MemoryStore, player_id: str,
-                                   now: float) -> list[int]:
+                                   now: float, shared: bool = False) -> list[int]:
         """关键词方向矛盾的置信度衰减 (只衰减不失效, 零 LLM 调用)。
 
         旧词表机制的消融臂: 反思与更晚观察的信任方向相反 (TRUST_WORDS vs
@@ -291,11 +307,21 @@ class ReflectionEngine:
         本臂隔离"衰减机制本身"与"LLM 判别"。
         """
         handled: list[int] = []
-        reflections = store.all_valid(player_id=player_id, types=["reflection"])
-        # 同 LLM 路径: 已固化观察退出扫描, episode 顶替 (M1)
-        observations = (store.all_valid(player_id=player_id, types=["observation"],
-                                        consolidated=False)
-                        + store.all_valid(player_id=player_id, types=["episode"]))
+        if shared:
+            reflections = (store.all_valid(shared=True, types=["reflection"])
+                           + store.all_valid(shared=True, types=["identity"]))
+            observations = (
+                store.all_valid(shared=True, types=["observation"],
+                                consolidated=False)
+                + store.all_valid(shared=True, types=["episode"]))
+        else:
+            reflections = store.all_valid(player_id=player_id,
+                                          types=["reflection"])
+            # 同 LLM 路径: 已固化观察退出扫描, episode 顶替 (M1)
+            observations = (
+                store.all_valid(player_id=player_id, types=["observation"],
+                                consolidated=False)
+                + store.all_valid(player_id=player_id, types=["episode"]))
         for ref in reflections:
             if ref.confidence < CONFLICT_DECAY_FLOOR:
                 continue   # 已死信念不值得关键词扫描
