@@ -223,7 +223,8 @@ class MemoryStore:
     def all_valid(self, player_id: str | None = None,
                   types: Sequence[str] | None = None,
                   shared: bool = False,
-                  consolidated: bool | None = None) -> list[MemoryRecord]:
+                  consolidated: bool | None = None,
+                  include_shared: bool = False) -> list[MemoryRecord]:
         """取全部有效记忆 (可按玩家/类型过滤), 用于反思与展示。
 
         E2 语义拆分: `player_id=None` 是"不过滤" (返回所有玩家+共享流, 供衰减/
@@ -235,13 +236,20 @@ class MemoryStore:
         E5: `ORDER BY id` —— id 自增即插入序 (= 时间序)。多处用 `[-n:]` 取"最近
         n 条" (find_similar_observation 去重窗口、反思近期观察、世界记忆上下文),
         旧实现无 ORDER BY, 靠 SQLite 恰好按 rowid 返回, 是隐性依赖, 加显式排序。
+
+        include_shared: 与 player_id 联用, 返回该玩家面 + 共享流 (player_id IS
+        NULL)。对话检索用它隔离其他玩家的私有记忆; 默认 False 保持旧语义
+        (只取该玩家面)。
         """
         sql = "SELECT * FROM memory WHERE valid = 1"
         args: list = []
         if shared:
             sql += " AND player_id IS NULL"
         elif player_id is not None:
-            sql += " AND player_id = ?"
+            if include_shared:
+                sql += " AND (player_id = ? OR player_id IS NULL)"
+            else:
+                sql += " AND player_id = ?"
             args.append(player_id)
         if types:
             placeholders = ",".join("?" for _ in types)
@@ -273,7 +281,8 @@ class MemoryStore:
                  types: Sequence[str] | None = None,
                  mark_accessed: bool = True,
                  min_relevance: float = 0.0,
-                 shared: bool = False) -> list[dict]:
+                 shared: bool = False,
+                 include_shared: bool = False) -> list[dict]:
         """三维检索。
 
         - query: 查询文本 (应已含玩家身份, 使 relevance 偏向该玩家)。
@@ -282,6 +291,10 @@ class MemoryStore:
         - shared: 只检索共享流 (player_id IS NULL, 世界/自我记忆), 同 all_valid
           (E2)。自我反思的证据检索用它, 不把某玩家的关系观察当成自我证据。
         - include_player: 在评分上额外给"属于该玩家"的记忆加权 (千人千面)。
+        - include_shared: 与 player_id 联用, 候选集 = 该玩家的面 + 共享流
+          (player_id IS NULL)。对话用 True (只让当前对话者的面与共享世界记忆
+          进入 prompt, 防止把别的玩家的私有记忆说给当前玩家); 反思证据检索
+          保持默认 False (只以该玩家面的观察为证据)。
         - types: 限定记忆类型 (如 ["observation"]), 用于让反思只以真实观察为证据,
           切断"反思引用反思"的级联。
         - mark_accessed: 是否把进 top_k 的记忆刷新 last_accessed (遗忘锚点)。
@@ -295,7 +308,8 @@ class MemoryStore:
           灌水 (M7)。默认 0.0 不过滤, 行为与旧版一致。
         """
         q_vec = self._embedder.embed([query])[0]
-        cands = self.all_valid(player_id=player_id, types=types, shared=shared)
+        cands = self.all_valid(player_id=player_id, types=types, shared=shared,
+                               include_shared=include_shared)
         if not cands:
             return []
 

@@ -785,7 +785,13 @@ class World:
             memory_context = ""
             if name in self._npcs:   # NPC 用自己的记忆流做非全知上下文
                 npc = self._npcs[name]
-                mems = [m.content for m in npc.store.all_valid()[-5:]]
+                # F1-6: 只取共享流 + 视距内实体的关系记忆。别的玩家的私有记忆
+                # 不能进入本次决策上下文 (否则 B 会基于 A 的秘密做决定)。
+                visible = {e.name for e in self.entities.values()
+                           if e is not agent and not e.dead
+                           and distance(agent, e) <= self.perception_radius}
+                mems = [m.content for m in npc.store.all_valid()
+                        if m.player_id is None or m.player_id in visible][-5:]
                 memory_context = " | ".join(mems)
                 # 档位决策门控 (消融开关, 缺省关): idle NPC 规则等待, 零 LLM。
                 if self._decision_tier_gate and npc._tier == "idle":
@@ -822,7 +828,8 @@ class World:
                 if t_npc and self.entities.get(tname) is not None \
                         and self.entities[tname].is_alive():
                     t_npc.replan(now=self.clock,
-                                 interruption=f"被 {agent.name} 攻击了")
+                                 interruption=f"被 {agent.name} 攻击了",
+                                 interruption_player=agent.name)
         # 3. 重感知 (行动改变了谁在哪/谁死了) + NPC 反思
         for name, npc in self._npcs.items():
             if self.entities[name].dead:

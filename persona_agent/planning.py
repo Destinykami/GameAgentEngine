@@ -78,7 +78,8 @@ class PlanningEngine:
     # ------------------------------------------------------------- 重规划
     def replan_from_now(self, store: MemoryStore, persona_traits: dict,
                         now: float, interruption: str,
-                        context: str = "") -> tuple[list[int], list[tuple[int, int, str]]]:
+                        context: str = "",
+                        interruption_player: str | None = None) -> tuple[list[int], list[tuple[int, int, str]]]:
         """从当前时刻起重规划: 记下中断原因, 只生成当前时刻之后的计划, 返回 (计划 id, 块)。
 
         锚定当前时刻 (LLM 尽力 + 规则兜底, 同框架"LLM 战略 + 规则执行"分工):
@@ -92,8 +93,10 @@ class PlanningEngine:
         在世界背景下生成 (持眼者逢眼狩令, 被打断后仍要规划躲避), 而非"岁月静好"。
         世界背景在前, 中断锚定指令在后。
         """
-        # 记录中断事件为一条观察
-        self._save_obs(store, now, f"计划被打断: {interruption}")
+        # 记录中断事件为一条观察。来源是某个玩家/实体时写进该实体的关系面,
+        # 避免"被 Aria 攻击了"进入共享流被其他玩家检索 (面泄漏)。
+        self._save_obs(store, now, f"计划被打断: {interruption}",
+                       player_id=interruption_player)
         hour = now % 24
         anchor_ctx = (f"计划在 {int(hour):02d}:{int((hour % 1) * 60):02d} 被打断, "
                       f"只生成从当前时刻到当天结束的计划, 不要重排已经过去的时间。")

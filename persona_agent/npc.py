@@ -270,8 +270,11 @@ class NPC:
         plans = self.store.all_valid(types=["plan"])
         if plans:
             previous_day = "前一天活动: " + " | ".join(p.content for p in plans)
+        # 世界背景只用共享流观察: 关系观察属于某个玩家的面, 不能进共享 plan
+        # 的生成上下文 (否则 A 的秘密会随 plan 泄漏给 B)。E2: shared=True 是
+        # "只取 NULL 流", player_id=None 是"不过滤", 二者不能混。
         recent = [m.content for m in self.store.all_valid(
-            types=["observation"])[-10:]]
+            shared=True, types=["observation"])[-10:]]
         context = " | ".join(recent) if recent else ""
         ids, blocks = self.planner.make_daily_plan(self.store, self.persona_traits,
                                                    previous_day, date, now, context=context)
@@ -279,16 +282,23 @@ class NPC:
         self._current_plan = ""          # 日计划接管"当前正忙", 清除重规划的中断覆盖
         return ids
 
-    def replan(self, now: float, interruption: str) -> list[int]:
-        """反应后从当前时刻重规划后续。"""
+    def replan(self, now: float, interruption: str,
+               interruption_player: str | None = None) -> list[int]:
+        """反应后从当前时刻重规划后续。
+
+        interruption_player: 中断来源玩家/实体。非 None 时把"计划被打断"观察
+        写进该实体的关系面; None 写共享流。避免"被 Aria 攻击了"这类私有事件
+        作为共享记忆被其他玩家检索到。
+        """
         self._advance(now)
         # E14: 重规划也带世界背景 (近期观察), 同 generate_daily_plan —— 被打断后
-        # 仍要在眼狩令等世界背景下重排剩余日程, 而非"岁月静好"。
+        # 仍要在眼狩令等世界背景下重排剩余日程, 而非"岁月静好"。只取共享流。
         recent = [m.content for m in self.store.all_valid(
-            types=["observation"])[-10:]]
+            shared=True, types=["observation"])[-10:]]
         context = " | ".join(recent) if recent else ""
-        ids, blocks = self.planner.replan_from_now(self.store, self.persona_traits,
-                                                   now, interruption, context=context)
+        ids, blocks = self.planner.replan_from_now(
+            self.store, self.persona_traits, now, interruption,
+            context=context, interruption_player=interruption_player)
         self._plan_blocks = blocks       # 重规划后的新块接管"当前正忙"
         self._current_plan = interruption   # 中断原因作兜底覆盖 (新块未覆盖此刻时生效)
         return ids

@@ -1,0 +1,47 @@
+"""自治决策上下文的可见对象过滤回归 (F1-6)。
+
+NPC 的决策记忆上下文只包含共享流 + 视距内实体的关系记忆; 视距外玩家的私有
+记忆不得进入本次决策 (否则 B 会基于 A 的秘密做决定)。
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from persona_agent import Location, World
+from tests.test_persistence import _StubLLM, TRAITS
+
+
+class _CaptureDecision(_StubLLM):
+    def __init__(self) -> None:
+        super().__init__()
+        self.perceptions = []
+
+    def decide_action(self, agent_name, goal, persona_traits, perception,
+                      history, state):
+        self.perceptions.append(perception)
+        return super().decide_action(agent_name, goal, persona_traits,
+                                     perception, history, state)
+
+
+def test_decision_context_excludes_out_of_sight_player(tmp_path):
+    w = World("w", [Location("近", 0, 0), Location("远", 100, 100)])
+    cap = _CaptureDecision()
+    w.add_npc("B", dict(TRAITS), llm=cap, data_dir=str(tmp_path / "B"),
+              location="近")
+    # F5-1 之前的临时注册: 本用例只验证决策上下文过滤。
+    w._agent_llms["B"] = cap
+    w._agent_personas["B"] = dict(TRAITS)
+    w.add_player("P", "远")
+    b = w.npc("B")
+    b.observe("P 悄悄告诉我: 他把神之眼藏在神樱树下", 1.0, player_id="P")
+    b.observe("雷电将军颁布眼狩令: 全城神之眼一律收缴", 2.0)
+    w.step_autonomous(3.0)
+    perception = cap.perceptions[-1]
+    assert "神樱树下" not in perception, \
+        "视距外玩家的私有记忆不得进入决策上下文"
+    assert "眼狩令" in perception, "共享世界事件仍应进入决策上下文"
+    w.close()

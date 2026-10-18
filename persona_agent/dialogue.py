@@ -33,9 +33,11 @@ class DialogueManager:
         # 查询 = 玩家话语 + 玩家身份, 使 relevance 偏向与该玩家相关的记忆
         query = f"{utterance} (对话者: {player_id})"
         # 对话 = 真回忆: mark_accessed 保持默认 True (进 top_k 即刷新遗忘锚点);
-        # min_relevance 挡掉零重叠的无关记忆 (M7)。
+        # min_relevance 挡掉零重叠的无关记忆 (M7)。候选集限定"当前对话者的面 +
+        # 共享流": 别的玩家的私有记忆不得进入本轮 prompt (面隔离/防秘密泄漏)。
         memories = self._store.retrieve(
-            query=query, now=now, top_k=top_k, include_player=player_id,
+            query=query, now=now, top_k=top_k, player_id=player_id,
+            include_player=player_id, include_shared=True,
             min_relevance=RELEVANCE_FLOOR)
         # 记忆流是第三人称叙述, 必须显式告诉模型: 记忆里的名字就是你自己,
         # 开口时改用"我", 否则模型会把 NPC 自己当成第三方复述 (自指 bug)。
