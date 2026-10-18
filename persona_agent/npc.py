@@ -63,7 +63,10 @@ class NPC:
         self._current_plan = ""        # 反应后重规划的中断原因覆盖 (如"处理火灾"), 优先于日计划块
         self._plan_blocks: list[tuple[int, int, str]] = []   # 当日计划块 (start, end, activity)
         self._tier: str = "full"        # full | compressed | idle
-        self._cache: dict[str, str] = {}
+        # 语义缓存: 键 → 完整 ReactionDecision (F5-2: 不再只存 action 字符串,
+        # 否则缓存命中时要从自然语言反解析 react/utility, 事件文本含"接受"就会
+        # 把婉拒误判成接受)。
+        self._cache: dict[str, ReactionDecision] = {}
         # 每玩家"上次关系反思时的观察数": 用于门控, 避免每次对话都重跑反思
         # 导致反思无限增殖、信任度漂移 (只有出现新观察才值得再反思)
         self._reflected_obs: dict[str, int] = {}
@@ -282,14 +285,16 @@ class NPC:
         trust = self.decider.relationship_trust(player_id)
         trust_bucket = round(trust * 2) / 2   # -1..1 量化到 0.5
         cache_key = f"{event}|{player_id}|{trust_bucket}|{plan[:20]}"
-        if cache_key in self._cache:
-            cached = self._cache[cache_key]
-            d = ReactionDecision(react=("接受" in cached), action=cached,
-                                 utility=0.0, reason="语义缓存命中")
-            return d
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            # F5-2: 完整复用原决策 (react/action/utility), 只把 reason 换成
+            # 缓存命中标记; 不再从 action 文本反解析"接受"。
+            return ReactionDecision(react=cached.react, action=cached.action,
+                                    utility=cached.utility,
+                                    reason="语义缓存命中")
         decision = self.decider.decide(event, player_id, self.persona_traits, plan)
         if self._tier == "full":
-            self._cache[cache_key] = decision.action
+            self._cache[cache_key] = decision
         return decision
 
     # ---------------------------------------------------------------- 规划
