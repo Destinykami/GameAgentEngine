@@ -538,15 +538,27 @@ class World:
         listener_npc = self._npcs.get(listener.name)
         if speaker_npc is None or listener_npc is None:
             return
-        pending = [m for m in speaker_npc.store.all_valid(types=["observation"])
-                   if m.hearsay and m.hop < HEARSAY_MAX_HOP]
-        if not pending:
+        # F4-1: 只转述与当前话题相关的传闻。旧实现取"最新一条"无条件转述,
+        # A 和 B 聊天气也会把 C 的谣言塞给 B。用检索的相关性下限筛候选。
+        hits = speaker_npc.store.retrieve(
+            query=line, now=self.clock, top_k=1, types=["observation"],
+            hearsay_only=True, min_relevance=0.15, mark_accessed=False)
+        if not hits:
             return
-        latest = max(pending, key=lambda m: (m.timestamp, m.id or 0))
-        listener_npc.observe(latest.content, self.clock,
-                             player_id=latest.player_id, hearsay=True,
-                             hop=latest.hop + 1)
-        self._step_social.append((listener_npc, latest.player_id or ""))
+        latest = hits[0]
+        if latest["hop"] >= HEARSAY_MAX_HOP:
+            return   # 已封顶
+        # 不把"听者自己转述出去的传闻"再传回给听者 (三角回环), 也不把关于
+        # 听者本人的传闻说给听者。
+        if latest["player_id"] == listener.name:
+            return
+        if latest["content"].startswith(f"{listener.name} 告诉我:"):
+            return
+        content = f"{speaker.name} 告诉我: {latest['content']}"
+        listener_npc.observe(content, self.clock,
+                             player_id=latest["player_id"], hearsay=True,
+                             hop=latest["hop"] + 1)
+        self._step_social.append((listener_npc, latest["player_id"] or speaker.name))
 
     @staticmethod
     def _norm_action(action) -> dict:

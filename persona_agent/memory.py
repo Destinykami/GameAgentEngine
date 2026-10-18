@@ -247,7 +247,8 @@ class MemoryStore:
                   types: Sequence[str] | None = None,
                   shared: bool = False,
                   consolidated: bool | None = None,
-                  include_shared: bool = False) -> list[MemoryRecord]:
+                  include_shared: bool = False,
+                  hearsay_only: bool = False) -> list[MemoryRecord]:
         """取全部有效记忆 (可按玩家/类型过滤), 用于反思与展示。
 
         E2 语义拆分: `player_id=None` 是"不过滤" (返回所有玩家+共享流, 供衰减/
@@ -281,6 +282,8 @@ class MemoryStore:
         if consolidated is not None:   # M1: None=不过滤(现行为), True/False 按固化标记筛
             sql += " AND consolidated = ?"
             args.append(1 if consolidated else 0)
+        if hearsay_only:
+            sql += " AND hearsay = 1"   # F4-1: 只看传闻记忆 (转述候选)
         sql += " ORDER BY id"
         with self._lock:
             rows = self._conn.execute(sql, args).fetchall()
@@ -306,7 +309,8 @@ class MemoryStore:
                  mark_accessed: bool = True,
                  min_relevance: float = 0.0,
                  shared: bool = False,
-                 include_shared: bool = False) -> list[dict]:
+                 include_shared: bool = False,
+                 hearsay_only: bool = False) -> list[dict]:
         """三维检索。
 
         - query: 查询文本 (应已含玩家身份, 使 relevance 偏向该玩家)。
@@ -319,6 +323,8 @@ class MemoryStore:
           (player_id IS NULL)。对话用 True (只让当前对话者的面与共享世界记忆
           进入 prompt, 防止把别的玩家的私有记忆说给当前玩家); 反思证据检索
           保持默认 False (只以该玩家面的观察为证据)。
+        - hearsay_only: 只检索传闻记忆 (hearsay=1)。转述路径用它找"与当前
+          话题相关"的传闻, 不再无条件取最新一条。
         - types: 限定记忆类型 (如 ["observation"]), 用于让反思只以真实观察为证据,
           切断"反思引用反思"的级联。
         - mark_accessed: 是否把进 top_k 的记忆刷新 last_accessed (遗忘锚点)。
@@ -333,7 +339,8 @@ class MemoryStore:
         """
         q_vec = self._embedder.embed([query])[0]
         cands = self.all_valid(player_id=player_id, types=types, shared=shared,
-                               include_shared=include_shared)
+                               include_shared=include_shared,
+                               hearsay_only=hearsay_only)
         if not cands:
             return []
 
@@ -476,7 +483,9 @@ class MemoryStore:
                 best, best_s = c, s
         return best
 
-    def merge_observation(self, mem_id: int, now: float) -> float:
+    def merge_observation(self, mem_id: int, now: float,
+                          new_hearsay: bool | None = None,
+                          new_hop: int = 0) -> float:
         """合并重复观察: 刷新 last_accessed (重复发生 = 被回忆, 抗遗忘),
         并按时间窗 (+1, 上限 10) 强化 importance。
 
@@ -492,15 +501,21 @@ class MemoryStore:
         才 +1; 其他 merge 只刷新 last_accessed, importance/base 不动。
         强化时同步抬高 base_importance (E1): 衰减基线必须跟上, 否则
         decay_and_forget 会从旧基线重算、把增益抹掉。返回新 importance。
+
+        F4-2 来源合并: new_hearsay 为 None 时不动来源 (直接调用/测试兼容);
+        传入 False (亲见) 且旧记录是传闻 → 升级为亲见 (hop=0); 旧记录已是
+        亲见则不降级; 两者都是传闻时保留更近的 hop。这样"先听传闻、后亲眼
+        见到"不会让亲见被永久按传闻打折。
         """
         with self._lock:
             row = self._conn.execute(
-                "SELECT importance, base_importance, last_reinforced "
-                "FROM memory WHERE id = ?", (mem_id,)
+                "SELECT importance, base_importance, last_reinforced, "
+                "hearsay, hop FROM memory WHERE id = ?", (mem_id,)
             ).fetchone()
             if row is None:
                 raise ValueError(f"观察 {mem_id} 不存在")
-            importance, base_importance, last_reinforced = row
+            (importance, base_importance, last_reinforced,
+             old_hearsay, old_hop) = row
             # F2-1: importance 强化按时间窗限速; 无强化时仍刷新 last_accessed
             # (重复发生 = 被回忆, 抗遗忘), 但不抬高 importance/base。
             reinforce = (last_reinforced is None
@@ -510,11 +525,21 @@ class MemoryStore:
                         else (base_importance if base_importance is not None
                               else importance))
             new_reinforced = now if reinforce else last_reinforced
+            out_hearsay, out_hop = bool(old_hearsay), old_hop
+            if new_hearsay is not None:
+                if old_hearsay and not new_hearsay:
+                    out_hearsay, out_hop = 0, 0       # 亲见升级
+                elif old_hearsay and new_hearsay:
+                    out_hop = min(old_hop, new_hop)  # 保留更近来源
+                else:
+                    out_hearsay, out_hop = 0, 0       # 亲见保持亲见
             with self._conn:
                 self._conn.execute(
                     "UPDATE memory SET last_accessed = ?, importance = ?, "
-                    "base_importance = ?, last_reinforced = ? WHERE id = ?",
-                    (now, new_imp, new_base, new_reinforced, mem_id))
+                    "base_importance = ?, last_reinforced = ?, "
+                    "hearsay = ?, hop = ? WHERE id = ?",
+                    (now, new_imp, new_base, new_reinforced,
+                     int(out_hearsay), out_hop, mem_id))
             return new_imp
 
     def mark_consolidated(self, mem_ids: Iterable[int]) -> int:

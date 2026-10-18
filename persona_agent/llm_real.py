@@ -353,7 +353,8 @@ class RealLLM(LLMClient):
         mem_lines = "\n".join(_line(t, c, conf) for t, c, conf in memories)
         user = ("以下是 NPC 关于玩家 " + player_id + " 的记忆 (观察与反思):\n"
                 + mem_lines + "\n\n带'置信度'标注的反思已被后续证据部分矛盾, "
-                "信念被削弱, 判断时应少加权。\n\n判断 NPC 对 " + player_id
+                "信念被削弱, 判断时应少加权。带'[传闻N跳]'的记忆是转述而非亲见, "
+                "可信度按跳数打折, N 越大越不可信。\n\n判断 NPC 对 " + player_id
                 + " 的信任度, 只输出 -10 到 10 的整数 (可带负号):\n"
                 + "-10 极度不信任/被背叛过, -5 略有戒备, 0 中立/不太了解, "
                 + "+5 比较信任, +10 极度信任/很可靠。")

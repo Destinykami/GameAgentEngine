@@ -109,17 +109,18 @@ def test_retell_chain_and_cap(tmp_path):
     _talk(w, "A", "B", "账本少了", 10.0)          # C 听到 hop1
     assert w.npc("C").store.all_valid(player_id="A")[0].hop == 1
 
-    _talk(w, "C", "D", "随便聊聊", 11.0)           # C 转述给 D → hop2
+    _talk(w, "C", "D", "账本的事你听说了吗", 11.0)   # C 转述给 D → hop2
     d_obs = w.npc("D").store.all_valid(player_id="A", types=["observation"])
     assert len(d_obs) == 1
     assert d_obs[0].hop == 2 and d_obs[0].hearsay
-    assert d_obs[0].content == "A 说: 账本少了"
+    assert d_obs[0].content == "C 告诉我: A 说: 账本少了"
 
-    _talk(w, "D", "E", "随便聊聊", 12.0)           # D 转述给 E → hop3
+    _talk(w, "D", "E", "账本的事你听说了吗", 12.0)   # D 转述给 E → hop3
     e_obs = w.npc("E").store.all_valid(player_id="A", types=["observation"])
     assert len(e_obs) == 1 and e_obs[0].hop == 3
+    assert e_obs[0].content == "D 告诉我: C 告诉我: A 说: 账本少了"
 
-    _talk(w, "E", "F", "随便聊聊", 13.0)           # E 的传闻 hop3 已封顶 → 不转
+    _talk(w, "E", "F", "账本的事你听说了吗", 13.0)   # E 的传闻 hop3 已封顶 → 不转
     assert w.npc("F").store.all_valid(player_id="A") == []
     w.close()
 
@@ -128,8 +129,8 @@ def test_retell_triangle_no_hop_escalation(tmp_path):
     """三角传回: D 把转述传回 C, C 已有同内容同流传闻 → 去重合并, hop 不升级。"""
     w = _world(tmp_path, rumor_spread=True)
     _talk(w, "A", "B", "账本少了", 10.0)           # C hop1
-    _talk(w, "C", "D", "随便聊聊", 11.0)           # D hop2
-    _talk(w, "D", "C", "随便聊聊", 12.0)           # D 转述回 C → 合并, hop 仍 1
+    _talk(w, "C", "D", "账本的事你听说了吗", 11.0)   # D hop2
+    _talk(w, "D", "C", "账本的事你听说了吗", 12.0)   # 三角回环 → 不再传回 C
     c_obs = w.npc("C").store.all_valid(player_id="A", types=["observation"])
     assert len(c_obs) == 1
     assert c_obs[0].hop == 1

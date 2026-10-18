@@ -121,7 +121,8 @@ class NPC:
             # 合并 = 时间窗内 +1 强化 (见 memory.MERGE_REINFORCE_INTERVAL),
             # 不传 importance —— 事件重要性已在首次入库时计入, 重复合并再加
             # 全量是双重计分 (M6 死参数已删)。
-            self.store.merge_observation(dup.id, now)
+            self.store.merge_observation(dup.id, now,
+                                         new_hearsay=hearsay, new_hop=hop)
             # E7: 合并的重复是零新信息, 不累积到反思触发器。反思该由**新信息**
             # 驱动, 不是旧信息的反复强化 —— 世界层每步 perceive→observe→去重合并
             # 重放位置观察, 若 merge 分支仍累加原始 importance (世界感知常 8-10),
@@ -212,12 +213,17 @@ class NPC:
                 [m.content for m in obs], pid)
             if not summary or not summary.strip():
                 continue
+            # F4-2: episode 继承来源。任一条原料是传闻则标 hearsay; hop 取
+            # 最远来源 (保守: 摘要的可信度不高于其最弱原料)。
             ep = MemoryRecord(content=summary.strip(), timestamp=now,
                               type="episode", player_id=pid,
                               evidence=[m.id for m in obs if m.id is not None],
                               confidence=min(m.confidence for m in obs),
                               base_confidence=min(m.confidence for m in obs),
-                              importance=max(m.importance for m in obs))
+                              importance=max(m.importance for m in obs),
+                              hearsay=any(m.hearsay for m in obs),
+                              hop=max((m.hop for m in obs if m.hearsay),
+                                      default=0))
             ep_id = self.store.add(ep)
             self.store.mark_consolidated([m.id for m in obs])
             new_ids.append(ep_id)

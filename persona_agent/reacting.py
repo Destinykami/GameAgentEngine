@@ -92,7 +92,12 @@ class ReactionDecider:
 
         selected = (_recent(high)[:10]
                     + _recent(obs)[:JUDGE_TRUST_MAX_MEMORIES - 10])
-        mems = [(m.type, m.content, m.confidence) for m in selected]
+        # F4-2: 传闻在信任判断里显式标注跳数; 亲见不注水。LLM 据此降权,
+        # 避免"听来的一句话"与亲眼所见同权决定信任。
+        mems = [(m.type,
+                 (f"[传闻{m.hop}跳] {m.content}" if m.hearsay else m.content),
+                 m.confidence)
+                for m in selected]
         trust = self._llm.judge_trust(mems, player_id)
         self._trust_cache[player_id] = (trust, sig)
         return trust
