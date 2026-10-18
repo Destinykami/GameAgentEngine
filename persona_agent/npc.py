@@ -281,9 +281,14 @@ class NPC:
             plan = current_plan
         else:
             plan = self._current_activity(now) or self._current_plan
-        # 语义缓存: 按事件+玩家+关系档位缓存 (关系档位粗粒度, 避免过度失效)
-        trust = self.decider.relationship_trust(player_id)
-        trust_bucket = round(trust * 2) / 2   # -1..1 量化到 0.5
+        # 语义缓存: 按事件+玩家+关系档位缓存 (关系档位粗粒度, 避免过度失效)。
+        # F5-4: use_relationship=False 的消融臂不应计算 trust, 缓存键也不带
+        # trust 维度 (固定 "-"), 否则同一事件仍会因信任不同而拆缓存。
+        if self.decider.use_relationship:
+            trust = self.decider.relationship_trust(player_id)
+            trust_bucket = round(trust * 2) / 2   # -1..1 量化到 0.5
+        else:
+            trust_bucket = "-"
         cache_key = f"{event}|{player_id}|{trust_bucket}|{plan[:20]}"
         cached = self._cache.get(cache_key)
         if cached is not None:

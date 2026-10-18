@@ -55,6 +55,11 @@ class ReactionDecider:
         # 信任是高频读取 (react 建缓存键就要用), 必须缓存, 否则每次都烧 LLM。
         self._trust_cache: dict[str, tuple[float, tuple]] = {}
 
+    @property
+    def use_relationship(self) -> bool:
+        """信任调制是否参与反应决策 (F5-4: 关闭时不应再算 trust)。"""
+        return self._use_relationship
+
     # -------------------------------------------------------- 关系信任度
     def relationship_trust(self, player_id: str) -> float:
         """对该玩家的信任度 -1..1, 由 LLM 基于关系记忆**内容**判断 (签名缓存)。
@@ -109,10 +114,14 @@ class ReactionDecider:
         """决定是否响应事件并给出行动。事件价值由 LLM 判断 (带缓存)。"""
         v_social, v_goal, c_interrupt = self._score_event(
             event, persona_traits, current_plan)
-        trust = self.relationship_trust(player_id)
-        # 信任度调制社交权重: 信任 → 更愿社交; 警惕/背叛 → 社交价值大幅打折。
-        # trust∈[-1,1] → [0, 2], 背叛者(trust≈-1)的社交价值被压到几乎为零。
-        trust_mod = max(0.0, 1.0 + trust) if self._use_relationship else 1.0
+        # F5-4: 消融关闭时彻底跳过 trust (LLM 调用/缓存都不该发生);
+        # 开启时才用 trust 调制社交权重: trust∈[-1,1] → [0, 2]。
+        if self._use_relationship:
+            trust = self.relationship_trust(player_id)
+            trust_mod = max(0.0, 1.0 + trust)
+        else:
+            trust = 0.0
+            trust_mod = 1.0
         w_social = persona_traits.get("social", 0.5) * trust_mod
         w_goal = persona_traits.get("goal_oriented", 0.5)
 
