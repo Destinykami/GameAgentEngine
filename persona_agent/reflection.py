@@ -115,7 +115,7 @@ class ReflectionEngine:
             for insight, ev_ids in self._llm.reflection_insights(ev_pairs, n=3):
                 new_id = self._save(store, now, content=insight,
                                     evidence=ev_ids, player_id=None,
-                                    confidence=0.8)
+                                    confidence=0.8, shared=True)
                 if new_id is not None:
                     new_ids.append(new_id)
         return new_ids
@@ -156,7 +156,7 @@ class ReflectionEngine:
                 confidence = min(0.95, 0.5 + 0.1 * len(ev_ids))
                 new_id = self._save(store, now, content=insight,
                                     evidence=ev_ids, player_id=player_id,
-                                    confidence=confidence)
+                                    confidence=confidence, shared=False)
                 if new_id is not None:
                     new_ids.append(new_id)
         return new_ids
@@ -202,7 +202,7 @@ class ReflectionEngine:
         for insight, ev_used in self._llm.reflection_insights(merged, n=3):
             new_id = self._save(store, now, content=insight,
                                 evidence=ev_used, player_id=None,
-                                confidence=0.8, rtype="identity")
+                                confidence=0.8, rtype="identity", shared=True)
             if new_id is not None:
                 new_ids.append(new_id)
         return new_ids
@@ -320,12 +320,24 @@ class ReflectionEngine:
     def _save(self, store: MemoryStore, now: float, content: str,
               evidence: Sequence[int], player_id: str | None,
               confidence: float,
-              rtype: str = "reflection") -> int | None:
-        """保存反思; 与同玩家已有反思几乎同义 (>= 阈值) 时跳过, 返回 None。
+              rtype: str = "reflection",
+              shared: bool | None = None) -> int | None:
+        """保存反思; 与同流已有反思几乎同义 (>= 阈值) 时跳过, 返回 None。
+
         rtype: 记忆类型 (缺省 reflection; 身份信念传 "identity", 与常规反思
-        分池去重, 也避免身份信念被当成关系反思被证据约束链误引)。"""
+        分池去重, 也避免身份信念被当成关系反思被证据约束链误引)。
+
+        shared: 去重池的流归属。None 时按 `player_id is None` 推断 ——
+        **不能**把 None 直接传给 `all_valid(player_id=None)`: 那是"不过滤"
+        不是"共享流" (E2 陷阱), 会让自我反思与所有玩家的关系反思互相去重。
+        """
+        if shared is None:
+            shared = player_id is None
         if self._embedder is not None and self._dedup_threshold > 0:
-            existing = store.all_valid(player_id=player_id, types=[rtype])
+            if shared:
+                existing = store.all_valid(shared=True, types=[rtype])
+            else:
+                existing = store.all_valid(player_id=player_id, types=[rtype])
             if existing:
                 v_new = self._embedder.embed([content])[0]   # 新洞察嵌入一次 (不可避免)
                 # L1: 已有反思取 store 缓存向量 (add 时已嵌入缓存), 不再整批重嵌入 ——

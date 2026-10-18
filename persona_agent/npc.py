@@ -58,6 +58,7 @@ class NPC:
                                         name=name)
 
         # 成本闸门状态
+        # 自我反思触发器: 只由共享流观察累加 (关系观察走 _reflected_obs 门控)
         self._importance_accum = 0.0
         self._current_plan = ""        # 反应后重规划的中断原因覆盖 (如"处理火灾"), 优先于日计划块
         self._plan_blocks: list[tuple[int, int, str]] = []   # 当日计划块 (start, end, activity)
@@ -127,8 +128,11 @@ class NPC:
                            player_id=player_id, importance=importance,
                            hearsay=hearsay, hop=hop)
         mem_id = self.store.add(rec)
-        # 累积重要性, 驱动反思 (近处才累积, 远处/空闲不累积)
-        if self._tier != "idle":
+        # 累积重要性, 驱动**自我反思** (近处才累积, 远处/空闲不累积)。
+        # 只累积共享流观察: reflect_self 只读 shared=True 观察 (E8), 关系观察
+        # 若也累加, 会把 self 触发器打满却产出不了自我反思 (空转/重复烧 LLM);
+        # 关系观察由 speak/flush_social 的 _reflected_obs 门控驱动关系反思。
+        if self._tier != "idle" and player_id is None:
             self._importance_accum += importance
         return mem_id
 
