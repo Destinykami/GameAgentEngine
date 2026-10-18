@@ -905,6 +905,23 @@ P0 闸门实测：`206` 离线测试在 `PYTHONHASHSEED=0/24` 下全绿；全量
 P1 闸门实测：`231` 离线测试在 `PYTHONHASHSEED=0/24` 下全绿；全量
 `pytest tests/ -q`（含 6 真实 LLM 探针）`237 passed`。
 
+### Eval smoke 校准记录（2026-10-18）
+
+| smoke | 产物 | 结果 |
+|---|---|---|
+| `memory_consistency.py --smoke` | `data/eval/memory_consistency/20261018-125959/` | ours EGR 1.00，stale@top-k 0，ctx 矛盾 0%，失效反思 2，背叛后信任 +0.80 |
+| `decision_ablation.py --smoke`（修正臂） | `data/eval/decision_ablation/20261018-130514/` | fixed ERR 50/GCR 50/关系一致 0；no_rel ERR 50/GCR 0/关系一致 0；full ERR 58.3/GCR 0/关系一致 100 |
+
+**校准发现**：`decision_ablation.py` 的 `no_relationship` 臂此前也传
+`use_relationship=True`，与 `full` 同一配置（旧 trace 同样出现"信任+0.80"），
+旧表该臂的 44.4% 关系一致性无效。已在 commit `1f2fe0e` 修正为
+`use_relationship = (method == "full")`，并在 `evals/README.md` 加校准注记；
+旧 table 的 no_rel 行与结论 2/3 标记待重跑。修正后 smoke 才符合设计预期：
+no_rel 关系一致 0% → full 100%，但 full 的准确率优势在单切片未复现。
+
+实验 1 的 ours 背叛后信任 +0.80 与 2026-10-15 smoke 同值（单轨迹噪声），
+P1 后 stale/冲突指标仍保持 ours 最优；全量结果表建议随最终全量重跑一起更新。
+
 ### 阶段 0
 - [x] F0-1 稳定 HashEmbedder + 跨进程测试 + 修 flaky 用例
 
@@ -948,6 +965,7 @@ P1 闸门实测：`231` 离线测试在 `PYTHONHASHSEED=0/24` 下全绿；全量
 ### 阶段验收
 - [x] 三个种子下离线测试全绿（P0 206 / P1 231 passed）
 - [x] 6 探针通过（P0 全量 212 / P1 全量 237 passed）
-- [ ] `evals/memory_consistency.py --smoke` 跑通（行为变化后重新跑）
-- [ ] `evals/decision_ablation.py --smoke` 跑通（F5-4 后）
-- [x] 在本文件勾选 P0 完成（本记录）
+- [x] `evals/memory_consistency.py --smoke` 跑通（P1 后 smoke）
+- [x] `evals/decision_ablation.py --smoke` 跑通（修正 no_rel 臂后 smoke）
+- [ ] 两项 eval 的**全量**结果表按修正臂/新行为重跑
+- [x] 在本文件勾选 P0/P1 完成并登记 eval smoke（本记录）
