@@ -329,13 +329,17 @@ class World:
     def add_npc(self, name: str, persona_traits: dict[str, float], llm,
                 embedder=None, data_dir: str = "data",
                 location: str | None = None,
-                reflection_threshold: float | None = None) -> "NPC":
+                reflection_threshold: float | None = None,
+                autonomous: bool = False) -> "NPC":
         """创建或加载一个持久化 NPC (复用 NPC.create, 一 NPC 一库) 并登记入世界。
 
         location 缺省时放到第一个区域。NPC 认知对象与位置实体分开持有:
         _npcs 管认知, entities 管位置 (感知/档位调度用)。
         reflection_threshold: 透传给 NPC (重要性累积到多少触发自我反思);
         缺省用 NPC 默认 150。
+        autonomous: 是否把该 NPC 注册为自治 agent (决定/动作循环会调用其 LLM)。
+        缺省 False = 旧行为 (只作为认知 NPC, decide_agent 返回"无 LLM" wait);
+        开启后等价于老的私有 `_agent_llms[name]=llm` 写法, 由公开 API 承担。
         """
         from .npc import NPC   # 函数级导入, 避免模块加载期循环依赖
         kwargs = {} if reflection_threshold is None else \
@@ -346,7 +350,24 @@ class World:
         self._npc_data_dirs[name] = data_dir   # 记录其独立 db 位置, 供世界持久化恢复
         loc = self.locations[location] if location else next(iter(self.locations.values()))
         self.add_entity(Entity("npc", name, loc))
+        if autonomous:
+            self.register_agent(name, llm, npc.persona_traits)
         return npc
+
+    def register_agent(self, name: str, llm, persona_traits: dict | None = None) -> None:
+        """把已存在的 NPC 实体注册为自治 agent (公开 API)。
+
+        `add_npc(..., autonomous=True)` 内部调用本方法; 已加载/手工构造的世界可
+        用它补注册, 不必再碰私有 `_agent_llms`。persona_traits 缺省沿用 NPC 自己
+        的, 避免调用方再传一份。
+        """
+        if name not in self.entities:
+            raise KeyError(f"实体 '{name}' 未注册入世界")
+        self._agent_llms[name] = llm
+        npc = self._npcs.get(name)
+        traits = persona_traits if persona_traits is not None else (
+            npc.persona_traits if npc is not None else {})
+        self._agent_personas[name] = dict(traits)
 
     def add_player(self, name: str, location: str) -> Player:
         """登记一个玩家实体到某区域。"""
@@ -1184,13 +1205,21 @@ class World:
             self._conn.execute(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('npcs', ?)",
                 (json.dumps(self._npc_data_dirs),))
+            # F5-1: 自治 agent 名单 (与 npcs 数据目录分开), 供 load 恢复注册。
+            self._conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('agent_npcs', ?)",
+                (json.dumps(sorted(n for n in self._agent_llms
+                                   if n in self._npcs)),))
 
-    def load(self, llm=None, embedder=None) -> None:
+    def load(self, llm=None, embedder=None, agent_llms: dict | None = None) -> None:
         """从 world.db 恢复世界状态 (实体全量状态 + 时钟 + NPC 注册表)。
 
         传入 llm/embedder 时, 同时按注册表重新实例化各 NPC (从各自独立 db
         恢复其全部记忆流与面)。不传则只恢复实体与位置时钟 (NPC 需另行 add_npc)。
         实体的血/攻防/目标/死亡/角色/历史/理由一并恢复 (M9), 跨进程续跑不失态。
+
+        agent_llms: 可选 {name: LLM}, 用于恢复每个 NPC 各自的 LLM 实例;
+        未提供的自治 NPC 回退到统一传入的 `llm` (旧调用方式兼容)。
         """
         if self._conn is None:
             raise RuntimeError("该世界是内存世界, 无法加载")
@@ -1227,6 +1256,16 @@ class World:
                                    llm, embedder=embedder)
                     self._npcs[name] = npc
                     self._npc_data_dirs[name] = data_dir
+            # F5-1: 恢复自治 agent 注册 (名单存 world.db meta; LLM 实例由调用方
+            # 传入, 不能从磁盘反序列化)。旧库无 agent_npcs = 不注册, 现行为不变。
+            row = self._conn.execute(
+                "SELECT value FROM meta WHERE key='agent_npcs'").fetchone()
+            if row and llm is not None:
+                for name in json.loads(row[0]):
+                    if name not in self._npcs:
+                        continue
+                    chosen = (agent_llms or {}).get(name, llm)
+                    self.register_agent(name, chosen)
 
     def close(self) -> None:
         if self._conn is not None:

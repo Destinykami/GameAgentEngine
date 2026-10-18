@@ -256,12 +256,11 @@ def main() -> int:
     emb = make_embedder()
 
     for name, traits, loc, hp, atk, dfn, role, goal in NPCS:
-        npc = w.add_npc(name, traits, llm=llm, embedder=emb, data_dir=DATA,
-                        location=loc, reflection_threshold=REFLECT_THRESHOLD)
+        w.add_npc(name, traits, llm=llm, embedder=emb, data_dir=DATA,
+                  location=loc, reflection_threshold=REFLECT_THRESHOLD,
+                  autonomous=True)
         e = w.get(name)
         e.health, e.attack, e.defense, e.goal, e.role = hp, atk, dfn, goal, role
-        w._agent_llms[name] = llm
-        w._agent_personas[name] = traits
     w.add_agent_player("旅行者", "稻妻主城", TRAVELER_GOAL, llm=llm,
                        persona_traits={"social": 0.5, "goal_oriented": 0.9},
                        health=380, attack=12, defense=5)   # 血 300→380: 每 2h 一步后执行官持续追击的消耗翻倍,
