@@ -18,6 +18,8 @@ interface Row {
   barFill: Phaser.GameObjects.Rectangle;
   meta: Phaser.GameObjects.Text;
   dead: Phaser.GameObjects.Text;
+  // 折叠/展开时恢复可见性用 (dead 对象本身被隐藏后仍要知道该行是否阵亡)
+  deadState: boolean;
 }
 
 export class StatusPanel {
@@ -67,14 +69,15 @@ export class StatusPanel {
       }).setOrigin(0, 0.5).setDepth(1001);
       const barBg = this.scene.add.rectangle(left + 62, ry, 60, 6, 0x2a2a34).setOrigin(0, 0.5).setDepth(1001);
       const barFill = this.scene.add.rectangle(left + 62, ry, 60, 6, 0x7ec67e).setOrigin(0, 0.5).setDepth(1002);
-      const dead = this.scene.add.text(left + 128, ry, "✝", {
+      // 阵亡标记放在血条位置 (血条此时隐藏), 不再和地点 meta 抢 left+128 同一个 x。
+      const dead = this.scene.add.text(left + 92, ry, "✝", {
         fontFamily: "monospace", fontSize: "12px", color: "#ff6655",
-      }).setOrigin(0, 0.5).setDepth(1001).setVisible(false);
+      }).setOrigin(0.5, 0.5).setDepth(1001).setVisible(false);
       // meta 用 10px (11px 时 "血120 @稻妻主城" 会顶出面板右内边), 名字+血+地点收在框内。
       const meta = this.scene.add.text(left + 128, ry, "", {
         fontFamily: "monospace", fontSize: "10px", color: "#9a9aa2",
       }).setOrigin(0, 0.5).setDepth(1001);
-      this.rows.push({ name, barBg, barFill, meta, dead });
+      this.rows.push({ name, barBg, barFill, meta, dead, deadState: false });
     }
   }
 
@@ -112,8 +115,12 @@ export class StatusPanel {
       this.toggleBtn.setText("−");
       this.footer.setVisible(true);
       for (const r of this.rows) {
-        r.name.setVisible(true); r.barBg.setVisible(true); r.barFill.setVisible(true);
-        r.meta.setVisible(true);   // dead 的可见性由 update() 按生死重设
+        const hasEntity = r.name.text.length > 0;
+        r.name.setVisible(true); r.meta.setVisible(true);
+        // 空行/阵亡行不恢复血条; 阵亡标记按折叠前的 deadState 恢复。
+        r.dead.setVisible(hasEntity && r.deadState);
+        r.barBg.setVisible(hasEntity && !r.deadState);
+        r.barFill.setVisible(hasEntity && !r.deadState);
       }
     }
   }
@@ -127,19 +134,26 @@ export class StatusPanel {
       const row = this.rows[i];
       const [name, s] = entries[i] ?? [null, null];
       if (!name || !s) {
-        row.name.setText(""); row.meta.setText(""); row.dead.setVisible(false);
-        row.barFill.setSize(0, 6);
+        row.name.setText(""); row.meta.setText("");
+        row.dead.setVisible(false); row.deadState = false;
+        row.barBg.setVisible(false);
+        row.barFill.setVisible(false).setSize(0, 6);
         continue;
       }
       row.name.setText(name).setColor(s.dead ? "#ff6655" : "#e8e6e3");
       if (s.dead) {
-        row.barFill.setSize(0, 6);
+        // 阵亡: 血条整体隐藏, ✝ 占据血条位置, meta 保持 left+128 显示地点。
+        row.barBg.setVisible(false);
+        row.barFill.setVisible(false).setSize(0, 6);
         row.dead.setVisible(true);
+        row.deadState = true;
         row.meta.setText("@ " + s.loc).setVisible(true);
       } else {
         const ratio = Math.max(0, Math.min(1, s.health / MAX_HEALTH));
-        row.barFill.setSize(60 * ratio, 6).setFillStyle(this.hpColor(ratio));
+        row.barBg.setVisible(true);
+        row.barFill.setVisible(true).setSize(60 * ratio, 6).setFillStyle(this.hpColor(ratio));
         row.dead.setVisible(false);
+        row.deadState = false;
         row.meta.setText(`血${s.health} @${s.loc}`).setVisible(true);
       }
     }
@@ -163,5 +177,13 @@ export class StatusPanel {
     const wrapped = wrapText(lines.join("\n"), this.w - 20, FOOT_FONT).split("\n");
     const shown = wrapped.length > this.footerMaxLines ? wrapped.slice(0, this.footerMaxLines) : wrapped;
     this.footer.setText(shown.join("\n"));
+    // 折叠状态下步进: 仍更新文本内容, 但不要把实体行/页脚重新显示出来。
+    if (this.collapsed) {
+      this.footer.setVisible(false);
+      for (const r of this.rows) {
+        r.name.setVisible(false); r.barBg.setVisible(false); r.barFill.setVisible(false);
+        r.meta.setVisible(false); r.dead.setVisible(false);
+      }
+    }
   }
 }
