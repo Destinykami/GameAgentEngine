@@ -1,13 +1,15 @@
 import Phaser from "phaser";
 import { wrapText } from "../text/wrapText";
+import { HUD_RECTS, overlapArea, type HudRect } from "./hudRects";
 import type { AgentSnapshot } from "../data/schema";
 
 // DetailCard: 点击实体弹出的详情卡 (只读)。
 // 显示 name / role / 血量 / 攻击 / 地点 / 生死, 旅行者额外显示已收集的证据理由。
-// 跟随被点 NPC 定位 (优先右侧, 放不下换左侧, 夹在屏幕内), 点空白处或右上角 × 隐藏。
-// × 用场景级几何命中 (此环境 per-object setInteractive 不可靠, 曾点不动)。
+// 跟随被点 NPC 定位 (优先右侧, 放不下换左侧), 并避让状态面板/事件记录/播放条/顶部栏。
+// 点空白处或右上角 × 隐藏。× 用场景级几何命中 (此环境 per-object setInteractive 不可靠)。
 const W = 252;
 const GAP = 20;          // 卡与 NPC 的水平间隙
+const MARGIN = 8;        // 卡与屏幕边缘的最小距离
 const MAX_REASONS = 4;
 const REASON_WRAP = 224;
 // 布局行高/行距: 此环境 t.height 低估实际渲染行高 (~19px), 用 21px 固定行高 + 6px 行距,
@@ -30,7 +32,9 @@ export class DetailCard {
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
-    this.root = scene.add.container(0, 0).setDepth(300).setVisible(false);
+    // 详情卡是"查看某个实体"的临时焦点, 必须盖在 HUD 之上 (面板/日志 depth 1000,
+    // 气泡 1100), 否则会被地点标签/事件记录/状态面板切掉。气泡另由场景避让。
+    this.root = scene.add.container(0, 0).setDepth(1500).setVisible(false);
     this.bg = scene.add.rectangle(0, 0, W, 40, 0x14141c, 0.97).setStrokeStyle(2, 0xd9a441);
     this.nameText = scene.add.text(-W / 2 + 10, -14, "", {
       fontFamily: "monospace", fontSize: "15px", color: "#ffd9a0", fontStyle: "bold",
@@ -99,14 +103,43 @@ export class DetailCard {
     this.open = true;
   }
 
-  // 卡定位到 NPC 旁边: 优先右侧, 右侧放不下 (超右缘) 换左侧; 垂直居中于 NPC, 夹在屏幕内。
+  // 卡定位到 NPC 旁边, 同时避让 HUD。只判断屏幕边界不够: 旅行者在主城时默认右侧
+  // 正好落进状态面板, 卡片内容被面板/事件记录切掉。这里用"NPC 四方向 + 每块 HUD 的
+  // 左/右/上/下"做 x/y 笛卡尔候选, 优先选与 HUD 零重叠、其次离 NPC 最近的位置。
   private positionNearNPC(nx: number, ny: number, h: number): void {
     const sw = this.scene.scale.width, sh = this.scene.scale.height;
-    let px = nx + GAP + W / 2;                    // 默认 NPC 右侧
-    if (px + W / 2 > sw - 8) px = nx - GAP - W / 2;   // 右侧放不下 → 左侧
-    px = Math.max(W / 2 + 8, Math.min(sw - W / 2 - 8, px));   // 水平夹取
-    const py = Math.max(h / 2 + 8, Math.min(sh - h / 2 - 8, ny));   // 垂直夹取
-    this.px = px; this.py = py;
+    const clamp = (cx: number, cy: number): { x: number; y: number } => ({
+      x: Math.max(MARGIN + W / 2, Math.min(sw - MARGIN - W / 2, cx)),
+      y: Math.max(MARGIN + h / 2, Math.min(sh - MARGIN - h / 2, cy)),
+    });
+    // 注意要允许"左右避让 A + 上下避让 B"的组合, 只沿单块 HUD 平移会卡在
+    // "躲开面板但压住日志"的中间态 (旅行者卡曾停在面板左缘与日志上缘的交叠处)。
+    const xs: number[] = [nx + GAP + W / 2, nx - GAP - W / 2, nx];
+    const ys: number[] = [ny, ny - GAP - h / 2, ny + GAP + h / 2];
+    for (const r of HUD_RECTS) {
+      xs.push(r.x - GAP - W / 2, r.x + r.w + GAP + W / 2);
+      ys.push(r.y - GAP - h / 2, r.y + r.h + GAP + h / 2);
+    }
+    const boxOf = (c: { x: number; y: number }): HudRect => ({
+      x: c.x - W / 2, y: c.y - h / 2, w: W, h,
+    });
+    let best = clamp(nx, ny);
+    let bestOverlap = Infinity;
+    let bestDist = Infinity;
+    for (const x of xs) {
+      for (const y of ys) {
+        const c = clamp(x, y);
+        const box = boxOf(c);
+        let overlap = 0;
+        for (const r of HUD_RECTS) overlap += overlapArea(box, r);
+        const dist = Phaser.Math.Distance.Between(c.x, c.y, nx, ny);
+        // 零重叠优先; 同为 0 时取离 NPC 近的; 实在都重叠则取重叠面积最小的。
+        if (overlap < bestOverlap || (overlap === bestOverlap && dist < bestDist)) {
+          best = c; bestOverlap = overlap; bestDist = dist;
+        }
+      }
+    }
+    this.px = best.x; this.py = best.y;
   }
 
   hide(): void { this.root.setVisible(false); this.open = false; }
