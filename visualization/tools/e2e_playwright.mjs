@@ -100,6 +100,19 @@ check(Object.keys(day0).every((n) => day0[n].loc), "day-0 每实体都有 loc");
 
 console.log("\n== 2. 初始站位 (M1) ==");
 await page.screenshot({ path: resolve(SHOTS, "01_initial.png") });
+// 可选本地原神像素头像: 有素材时状态面板显示, 缺失时自动隐藏 (不产生 404)。
+const portraitInfo = await page.evaluate(() => {
+  const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
+  const count = Object.keys(s.textures.list).filter((k) => k.startsWith("portrait_")).length;
+  const row = s.panel.rows.find((r) => r.name.text === "旅行者");
+  return { count, visible: !!row && row.avatar.visible, key: row && row.avatar.texture.key };
+});
+if (portraitInfo.count > 0) {
+  check(portraitInfo.visible && portraitInfo.key === "portrait_旅行者",
+    "本地原神像素头像已显示 (旅行者)");
+} else {
+  check(true, "未安装本地原神像素头像 → 自动隐藏 (可选项)");
+}
 const initPos = await page.evaluate(() => ({
   旅行者: window.__REPLAY__.sprites.posOf("旅行者"), 雷电将军: window.__REPLAY__.sprites.posOf("雷电将军"),
 }));

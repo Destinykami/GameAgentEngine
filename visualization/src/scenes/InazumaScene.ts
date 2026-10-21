@@ -18,7 +18,19 @@ function loadImage(url: string): Promise<HTMLImageElement> {
     img.src = url;
   });
 }
+
+// 可选本地原神像素头像。Vite 构建期 __OFFICIAL_PORTRAITS__ 为 false 时完全不请求,
+// 避免目录缺失时的 404/console 错误; 素材仅本地个人学习用 (见 OFFICIAL_PORTRAITS.md)。
+async function loadPortraits(): Promise<Map<string, HTMLImageElement>> {
+  const out = new Map<string, HTMLImageElement>();
+  if (!__OFFICIAL_PORTRAITS__) return out;
+  await Promise.all(Object.entries(PORTRAIT_FILES).map(async ([name, file]) => {
+    try { out.set(name, await loadImage(portraitUrl(file))); } catch { /* 单张缺失则跳过 */ }
+  }));
+  return out;
+}
 import { defaultActivity, isInterrupted } from "../data/activityProjection";
+import { PORTRAIT_FILES, portraitTextureKey, portraitUrl } from "../data/avatarAssets";
 import { LiveSource, type LiveMeta } from "../data/liveSource";
 import { wrapText } from "../text/wrapText";
 import { StatusPanel } from "../ui/StatusPanel";
@@ -87,19 +99,20 @@ export class InazumaScene extends Phaser.Scene {
     const params = new URLSearchParams(window.location.search);
     const isLive = params.has("live");
     const ttImgPromise = loadImage("assets/tiny-town-tilemap.png");   // tilemap 立即开始加载 (两种模式共用)
+    const portraitPromise = loadPortraits();                          // 本地原神像素头像 (可选)
     if (isLive) {
       // 直播模式 (?live): 轮询 live.jsonl 实时跟随运行中的模拟 (见 M5 扩展)。
       this.loadingText.setText("等待模拟开始… (直播模式, 轮询 live.jsonl)");
       this.live = new LiveSource("live.jsonl");
       this.showLiveBadge();
-      this.startLivePolling(ttImgPromise);
+      this.startLivePolling(ttImgPromise, portraitPromise);
       return;
     }
     // 默认回放 stub 时间线; ?timeline=<file> 可回放其它样本 (如 real_timeline.json 旧格式真实样本, M5)。
     const tlFile = params.get("timeline") ?? "stub_timeline.json";
     this.addLiveHint();   // 普通回放页常驻提示: 点它进直播模式 (?live), 实时看运行中的模拟
-    Promise.all([loadTimeline(tlFile), ttImgPromise])
-      .then(([tl, ttImg]) => this.setup(tl, ttImg))
+    Promise.all([loadTimeline(tlFile), ttImgPromise, portraitPromise])
+      .then(([tl, ttImg, portraits]) => this.setup(tl, ttImg, portraits))
       .catch((e: unknown) => {
         this.loadingText.setText("加载失败:\n" + String(e) +
           "\n\n请确认 public/stub_timeline.json 与 public/assets/tiny-town-tilemap.png 存在。");
@@ -121,7 +134,7 @@ export class InazumaScene extends Phaser.Scene {
   // 直播模式: 每 1s 轮询 live.jsonl。收到 meta + ≥1 步 → 建场景并跳到最新步跟随;
   // 之后每来新步 → addStep + 时间轴增刻度 + 跳到最新 (跟随); 收到 done → 停止轮询、
   // 隐藏 LIVE 标记, 时间线完整可往回拖 (切回普通回放)。
-  private startLivePolling(ttImgPromise: Promise<HTMLImageElement>): void {
+  private startLivePolling(ttImgPromise: Promise<HTMLImageElement>, portraitPromise: Promise<Map<string, HTMLImageElement>>): void {
     this.liveTimer = this.time.addEvent({
       delay: 1000, loop: true,
       callback: async () => {
@@ -132,8 +145,8 @@ export class InazumaScene extends Phaser.Scene {
         // 1) 首次收到 meta + ≥1 步 → 建场景。时间线用 buildLiveTimeline 拷贝 allSteps
         //    (已含本 poll 的 newSteps), 故本轮不再 addStep (setupThisPoll 防重复)。
         if (!this.liveSetupDone && meta && this.liveStepCount >= 1) {
-          const ttImg = await ttImgPromise;
-          this.setup(this.buildLiveTimeline(meta), ttImg);
+          const [ttImg, portraits] = await Promise.all([ttImgPromise, portraitPromise]);
+          this.setup(this.buildLiveTimeline(meta), ttImg, portraits);
           this.liveSetupDone = true;
           setupThisPoll = true;
           this.controller.seek(this.controller.totalSteps - 1);   // 跳到最新步跟随
@@ -187,9 +200,17 @@ export class InazumaScene extends Phaser.Scene {
     this.liveBadge = null;
   }
 
-  private setup(tl: Timeline, ttImg: HTMLImageElement): void {
+  private setup(tl: Timeline, ttImg: HTMLImageElement, portraits: Map<string, HTMLImageElement>): void {
     this.loadingText.destroy();
     const day0 = tl.steps[0].states;
+
+    // 本地原神像素头像 → Phaser 纹理 (64x64; UI 里缩到 20/28 显示)。
+    for (const [name, img] of portraits) {
+      const key = portraitTextureKey(name);
+      if (this.textures.exists(key)) continue;
+      const tex = this.textures.createCanvas(key, img.width, img.height);
+      if (tex) { tex.context.drawImage(img, 0, 0); tex.refresh(); }
+    }
 
     // M3 真实像素地图: 地面 (Ground) + 建筑 (Buildings) + 活动点/前景道具, 全部参与 y-sort。
     // 角色与建筑/道具同处一个深度空间, 按 y 排序 → 角色从屋顶/树后走过时正确遮挡 (计划 §M3)。

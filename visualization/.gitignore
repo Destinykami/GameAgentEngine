@@ -8,3 +8,7 @@ dist/
 syslibs/
 e2e_shots/
 *.deb
+
+# 原神官方角色头像 (仅个人本地学习用; © HoYoverse/miHoYo, 不随仓库分发)
+public/assets/portraits/
+public/assets/portraits-src/

@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { wrapText } from "../text/wrapText";
 import { truncateLines } from "../text/truncate";
+import { portraitTextureKey } from "../data/avatarAssets";
 import type { Timeline, TimelineStep } from "../data/schema";
 
 // StatusPanel (计划 §5.2): 血量 / 死亡 / 位置 / 旅行者理由与攻 / 劝说进度。
@@ -12,8 +13,18 @@ const MAX_HEALTH = 300;   // 满血参考 (雷电将军), 血量条按比例
 const FOOT_FONT = "12px monospace";
 const FOOT_LINE_H = 15;   // 页脚行高 (12px 字 + 3 lineSpacing)
 const HEADER_H = 34;      // 折叠时标题条高度
+// 行内布局: 20px 头像 + 名字 + 44px 血条 + 地点 meta。面板宽 230 不扩宽也能放下。
+const AVATAR_SIZE = 20;
+const AVATAR_X = 4;
+const NAME_X = 28;
+const BAR_X = 80;
+const BAR_W = 44;
+const META_X = 128;
+const DEAD_X = BAR_X + BAR_W / 2;   // ✝ 占血条中心
 
 interface Row {
+  avatar: Phaser.GameObjects.Image;
+  hasPortrait: boolean;
   name: Phaser.GameObjects.Text;
   barBg: Phaser.GameObjects.Rectangle;
   barFill: Phaser.GameObjects.Rectangle;
@@ -65,20 +76,24 @@ export class StatusPanel {
     // 最多 6 实体 + 余量
     for (let i = 0; i < 8; i++) {
       const ry = top + i * rowH;
-      const name = this.scene.add.text(left, ry, "", {
+      // 头像用 __WHITE 占位并默认隐藏; 有官方像素图时才 setTexture。
+      const avatar = this.scene.add.image(left + AVATAR_X, ry, "__WHITE")
+        .setOrigin(0, 0.5).setDisplaySize(AVATAR_SIZE, AVATAR_SIZE)
+        .setDepth(1001).setVisible(false);
+      const name = this.scene.add.text(left + NAME_X, ry, "", {
         fontFamily: "monospace", fontSize: "12px", color: "#e8e6e3",
       }).setOrigin(0, 0.5).setDepth(1001);
-      const barBg = this.scene.add.rectangle(left + 62, ry, 60, 6, 0x2a2a34).setOrigin(0, 0.5).setDepth(1001);
-      const barFill = this.scene.add.rectangle(left + 62, ry, 60, 6, 0x7ec67e).setOrigin(0, 0.5).setDepth(1002);
-      // 阵亡标记放在血条位置 (血条此时隐藏), 不再和地点 meta 抢 left+128 同一个 x。
-      const dead = this.scene.add.text(left + 92, ry, "✝", {
+      const barBg = this.scene.add.rectangle(left + BAR_X, ry, BAR_W, 6, 0x2a2a34).setOrigin(0, 0.5).setDepth(1001);
+      const barFill = this.scene.add.rectangle(left + BAR_X, ry, BAR_W, 6, 0x7ec67e).setOrigin(0, 0.5).setDepth(1002);
+      // 阵亡标记放在血条位置 (血条此时隐藏), 不再和地点 meta 抢同一个 x。
+      const dead = this.scene.add.text(left + DEAD_X, ry, "✝", {
         fontFamily: "monospace", fontSize: "12px", color: "#ff6655",
       }).setOrigin(0.5, 0.5).setDepth(1001).setVisible(false);
       // meta 用 10px (11px 时 "血120 @稻妻主城" 会顶出面板右内边), 名字+血+地点收在框内。
-      const meta = this.scene.add.text(left + 128, ry, "", {
+      const meta = this.scene.add.text(left + META_X, ry, "", {
         fontFamily: "monospace", fontSize: "10px", color: "#9a9aa2",
       }).setOrigin(0, 0.5).setDepth(1001);
-      this.rows.push({ name, barBg, barFill, meta, dead, deadState: false });
+      this.rows.push({ avatar, hasPortrait: false, name, barBg, barFill, meta, dead, deadState: false });
     }
   }
 
@@ -106,6 +121,7 @@ export class StatusPanel {
       this.toggleBtn.setText("+");
       this.footer.setVisible(false);
       for (const r of this.rows) {
+        r.avatar.setVisible(false);
         r.name.setVisible(false); r.barBg.setVisible(false); r.barFill.setVisible(false);
         r.meta.setVisible(false); r.dead.setVisible(false);
       }
@@ -117,6 +133,7 @@ export class StatusPanel {
       this.footer.setVisible(true);
       for (const r of this.rows) {
         const hasEntity = r.name.text.length > 0;
+        r.avatar.setVisible(hasEntity && r.hasPortrait);
         r.name.setVisible(true); r.meta.setVisible(true);
         // 空行/阵亡行不恢复血条; 阵亡标记按折叠前的 deadState 恢复。
         r.dead.setVisible(hasEntity && r.deadState);
@@ -135,12 +152,17 @@ export class StatusPanel {
       const row = this.rows[i];
       const [name, s] = entries[i] ?? [null, null];
       if (!name || !s) {
+        row.avatar.setVisible(false); row.hasPortrait = false;
         row.name.setText(""); row.meta.setText("");
         row.dead.setVisible(false); row.deadState = false;
         row.barBg.setVisible(false);
         row.barFill.setVisible(false).setSize(0, 6);
         continue;
       }
+      const pkey = portraitTextureKey(name);
+      row.hasPortrait = this.scene.textures.exists(pkey);
+      if (row.hasPortrait) row.avatar.setTexture(pkey).setDisplaySize(AVATAR_SIZE, AVATAR_SIZE).setVisible(true);
+      else row.avatar.setVisible(false);
       row.name.setText(name).setColor(s.dead ? "#ff6655" : "#e8e6e3");
       if (s.dead) {
         // 阵亡: 血条整体隐藏, ✝ 占据血条位置, meta 保持 left+128 显示地点。
@@ -152,7 +174,7 @@ export class StatusPanel {
       } else {
         const ratio = Math.max(0, Math.min(1, s.health / MAX_HEALTH));
         row.barBg.setVisible(true);
-        row.barFill.setVisible(true).setSize(60 * ratio, 6).setFillStyle(this.hpColor(ratio));
+        row.barFill.setVisible(true).setSize(BAR_W * ratio, 6).setFillStyle(this.hpColor(ratio));
         row.dead.setVisible(false);
         row.deadState = false;
         row.meta.setText(`血${s.health} @${s.loc}`).setVisible(true);
@@ -181,6 +203,7 @@ export class StatusPanel {
     if (this.collapsed) {
       this.footer.setVisible(false);
       for (const r of this.rows) {
+        r.avatar.setVisible(false);
         r.name.setVisible(false); r.barBg.setVisible(false); r.barFill.setVisible(false);
         r.meta.setVisible(false); r.dead.setVisible(false);
       }

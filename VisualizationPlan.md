@@ -883,6 +883,11 @@ persona_agent/
 - **角色（idle/walk 动画）+ 活动点道具（铁砧/病床/书桌/鸟居）**：**原创像素**（代码生成，
   见 `art/characters.ts` / `art/activityFrames.ts` / `art/palette.ts`）——角色需要行走动画，
   公开 tile 无动画帧；活动点道具需高辨识度。原创无第三方素材，无许可证风险。
+- **UI 角色头像（可选，仅本地）**：原神官方角色图标 → 程序化 64×64 像素化（32 色量化 + 1px
+  深色描边）。素材 © HoYoverse/miHoYo，仅个人学习/本地演示；`public/assets/portraits-src/`
+  与 `public/assets/portraits/` 均在 `.gitignore` 中，不入仓、不随项目发布。缺失时 UI 自动
+  隐藏头像，不影响构建/E2E。生成见 `tools/fetch_official_portraits.mjs` +
+  `tools/pixelate_portraits.py`，说明见 `OFFICIAL_PORTRAITS.md`。世界内角色动画仍用原创像素。
 - 混合策略：地图用公开 CC0 素材（美观、无许可证风险），角色/活动道具用原创（动画、辨识）。
   符合 §8.1"公共领域或明确允许开发使用的临时素材"标准，且许可证已确认入库。
 

@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { wrapText } from "../text/wrapText";
 import { truncateLines } from "../text/truncate";
 import { HUD_RECTS, overlapArea, type HudRect } from "./hudRects";
+import { portraitTextureKey } from "../data/avatarAssets";
 import type { AgentSnapshot } from "../data/schema";
 
 // DetailCard: 点击实体弹出的详情卡 (只读)。
@@ -16,13 +17,15 @@ const MARGIN = 8;        // 卡与屏幕边缘的最小距离
 const MAX_REASONS = 12;  // 理由超过这个数才折叠, 其余靠卡内滚动查看
 const REASON_WRAP = 214; // 给右侧滚动条留出 4px + 边距
 // 标题区固定高度: 此环境 t.height 低估实际渲染行高, 用固定标题带而不是 nameH 叠行。
-const TITLE_H = 24;
+const TITLE_H = 32;
 const TITLE_GAP = 6;     // 标题带与第一行之间
 const BOTTOM_PAD = 10;
 const CLOSE_W = 24;
 const CLOSE_H = 24;
 const CLOSE_MARGIN = 6;  // 关闭区距卡右缘
-const TITLE_MAX_W = W - 20 - (CLOSE_W + CLOSE_MARGIN);   // 给 × 留出位置, 长名字省略号
+const TITLE_MAX_W = W - 20 - (CLOSE_W + CLOSE_MARGIN) - 34;   // 给头像 + × 留出位置
+const AVATAR_SIZE = 28;
+const AVATAR_BG = 30;
 // 布局行高/行距: 此环境 t.height 低估实际渲染行高 (~19px), 用 21px 固定行高 + 5px 行距,
 // 保证折行后的多行理由不重叠 (12-13px 字号都够)。
 const LINE_H = 21;
@@ -43,6 +46,9 @@ export class DetailCard {
   private scrollThumb!: Phaser.GameObjects.Rectangle;
   private rows: Phaser.GameObjects.Text[] = [];
   private nameText!: Phaser.GameObjects.Text;
+  private avatarBg!: Phaser.GameObjects.Rectangle;
+  private avatar!: Phaser.GameObjects.Image;
+  private hasPortrait = false;
   private closeBtn!: Phaser.GameObjects.Text;
   private open = false;
   private px = 0;        // 卡中心 (跟随 NPC 定位)
@@ -70,6 +76,11 @@ export class DetailCard {
     this.content = scene.add.container(0, 0);
     this.maskGfx = scene.make.graphics({ x: 0, y: 0 }, false);
     this.content.setMask(this.maskGfx.createGeometryMask());
+    // 头像: 28px 像素化原神头像 + 30px 边框, 固定在标题带左侧; 名字右移让出位置。
+    this.avatarBg = scene.add.rectangle(-W / 2 + 10 + AVATAR_BG / 2, 0, AVATAR_BG, AVATAR_BG, 0x1c1c24)
+      .setStrokeStyle(1, 0xd9a441).setVisible(false);
+    this.avatar = scene.add.image(-W / 2 + 10 + AVATAR_BG / 2, 0, "__WHITE")
+      .setDisplaySize(AVATAR_SIZE, AVATAR_SIZE).setVisible(false);
     this.nameText = scene.add.text(-W / 2 + 10, 0, "", {
       fontFamily: "monospace", fontSize: "15px", color: "#ffd9a0", fontStyle: "bold",
     }).setOrigin(0, 0.5);
@@ -83,7 +94,7 @@ export class DetailCard {
       .setOrigin(0.5, 0).setVisible(false);
     this.scrollThumb = scene.add.rectangle(0, 0, SCROLL_W, 10, 0xd9a441)
       .setOrigin(0.5, 0).setVisible(false);
-    this.root.add([this.bg, this.content, this.nameText, this.closeBtn, this.scrollTrack, this.scrollThumb]);
+    this.root.add([this.bg, this.content, this.avatarBg, this.avatar, this.nameText, this.closeBtn, this.scrollTrack, this.scrollThumb]);
   }
 
   show(name: string, s: AgentSnapshot, activityLabel: string | null, nx: number, ny: number): void {
@@ -93,6 +104,16 @@ export class DetailCard {
     const title = `${name}  [${s.dead ? "阵亡" : "存活"}]`;
     this.nameText.setText(truncateLines(title, 1, TITLE_MAX_W, "15px monospace"));
     this.nameText.setColor(s.dead ? "#ff6655" : "#ffd9a0");
+    const pkey = portraitTextureKey(name);
+    this.hasPortrait = this.scene.textures.exists(pkey);
+    this.nameText.setX(this.hasPortrait ? -W / 2 + 46 : -W / 2 + 10);
+    if (this.hasPortrait) {
+      this.avatar.setTexture(pkey).setDisplaySize(AVATAR_SIZE, AVATAR_SIZE).setVisible(true);
+      this.avatarBg.setVisible(true).setStrokeStyle(1, s.dead ? 0x883322 : 0xd9a441);
+    } else {
+      this.avatar.setVisible(false);
+      this.avatarBg.setVisible(false);
+    }
     this.closeBtn.setColor(s.dead ? "#ff6655" : "#d9a441");
     this.bg.setStrokeStyle(2, s.dead ? 0x883322 : 0xd9a441);
 
@@ -146,6 +167,8 @@ export class DetailCard {
     this.contentTop = -h / 2 + TITLE_H + TITLE_GAP;
     this.bg.setSize(W, h);
     const titleY = -h / 2 + TITLE_H / 2;
+    this.avatarBg.setY(titleY);
+    this.avatar.setY(titleY);
     this.nameText.setY(titleY);
     this.closeBtn.setY(titleY);
     // 行从正文容器顶部 0 开始排, 容器 y=contentTop; 滚动只改容器 y。
