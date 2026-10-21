@@ -2,7 +2,9 @@
 
 默认接入: http://10.121.39.10:30005 上的 Qwen3.8-27B-Coder/BF16 (SGLang)。
 - 用标准库 urllib 发请求, 不引入 openai / requests 依赖。
-- 这是思考型模型: 对话/打分默认关思考 (快), 反思/规划开思考 (推理更好)。
+- 这是思考型模型: 对话默认关思考 (快), 可用 enable_thinking=True 打开;
+  打分与结构化 JSON 任务 (反思/规划/判断) **恒关思考** —— 思考 token 会挤爆
+  max_tokens 导致 JSON 截断。
   关思考用 SGLang 的 chat_template_kwargs={"enable_thinking": false}。
 - 结构化输出 (问题/洞察/计划) 要求模型返回严格 JSON, 并做容错解析。
 

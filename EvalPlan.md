@@ -1,5 +1,8 @@
 # EvalPlan — 三实验评测体系实施计划
 
+> **状态：已完成**。三实验脚本、smoke/全量跑批与结果表均已落地，方法学与
+> 结果见 [evals/README.md](evals/README.md)；本文件保留为设计记录。
+
 为 persona_agent 补上一套真实 LLM 的评测 harness，回答三个问题：
 
 1. **实验 1（记忆一致性）**：证据约束反思 + LLM 矛盾判别 + 置信度衰减，是否真的降低了过期记忆召回与认知冲突？
@@ -122,7 +125,7 @@ evals/
 - [x] P7 planning.py：daily_plan_count / replan_count
 - [x] P8 world.py：decision_tier_gate 决策门控
 - [x] tests/test_eval_flags.py 离线测试
-- [x] 闸门：离线测试 (138 全绿) + 6 探针 (85s 全绿)
+- [x] 闸门：离线测试 (当时 138 个用例全绿) + 6 探针 (85s 全绿)
 - [x] 提交 1 (044290e 实验基建)
 - [x] evals/common.py（NPC 工厂 / 轨迹构造 / 裁判 / 指标 / 落盘）
 - [x] evals/scenarios.py（人格×信任×事件矩阵 + 54 格期望响应表）
@@ -136,4 +139,4 @@ evals/
 - [x] 全量跑批：实验 3（独占；tiered N=20 暴露解析崩溃 → 修复后增量续跑）
 - [x] 全量跑批：实验 1（34 分钟）+ 实验 2（19 分钟，并发）
 - [x] 结果汇总回填 evals/README 三张表 + OVERVIEW 验证体系挂评测
-- [ ] 提交 3
+- [x] 提交 3（结果与文档已入库；复算入口 `data/eval/<实验>/<时间戳>/`）

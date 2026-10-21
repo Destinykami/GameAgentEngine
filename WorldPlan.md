@@ -1,6 +1,6 @@
 # 游戏世界层 (World Layer) 实施计划
 
-> **✅ 已全部落地（2024，7 阶段完成）**。世界层实现于 `persona_agent/world.py`，
+> **✅ 已全部落地（2026，7 阶段完成）**。世界层实现于 `persona_agent/world.py`，
 > 稻妻城·眼狩令真实 LLM demo 在 `examples/world_demo.py`。距离调度（blog 问题一）
 > 已由阶段 3 解决，无遗留债。下方为原始计划，作为交付记录保留。
 

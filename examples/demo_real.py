@@ -1,8 +1,8 @@
 """用真实 LLM (SGLang @ 10.121.39.10:30005, Qwen3.8-27B-Coder) 的千人千面 demo。
 
 端到端千人千面 demo, 对话/反思/规划全部走真实模型:
-- 对话/打分: 关思考 (快, in-character)
-- 反思/规划: 开思考 (推理更好)
+- 对话: 关思考 (快, in-character), 可用 enable_thinking=True 打开
+- 打分/反思/规划等结构化任务: 恒关思考 (思考 token 会挤爆 max_tokens)
 
 运行: python examples/demo_real.py
 """
@@ -28,7 +28,7 @@ def main() -> int:
     print("人格: 目标导向为主, 社交为辅")
     print("=" * 72)
 
-    print("\n[日计划] 生成并逐层分解 (开思考):")
+    print("\n[日计划] 生成并逐层分解 (结构化 JSON, 关思考):")
     npc.generate_daily_plan(previous_day="睡了个好觉", date="2月13日", now=7.0)
     plans = sorted(npc.store.all_valid(types=["plan"]), key=lambda p: p.timestamp)
     for p in plans[:8]:

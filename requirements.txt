@@ -1,9 +1,11 @@
-# 无第三方运行时依赖: 仅用 Python 标准库 (sqlite3, re, math, dataclasses)。
-# MockLLM + HashEmbedder 让全部逻辑在无 API key / 无模型权重下可跑。
+# 无第三方运行时依赖: 仅用 Python 标准库 (sqlite3, urllib, re, math, dataclasses)。
+# 离线测试用各测试文件内的 stub LLM + HashEmbedder, 无需 API key / 模型权重。
 #
 # 可选依赖 (接入真实模型时):
-#   - 真实 LLM: 实现 persona_agent.llm.LLMClient 并替换 MockLLM
-#   - 真实向量: 实现 persona_agent.embeddings.Embedder 并替换 HashEmbedder
+#   - 真实 LLM: persona_agent.llm_real.RealLLM (OpenAI 兼容端点),
+#     或自行实现 persona_agent.llm.LLMClient
+#   - 真实向量: persona_agent.embeddings_real.RealEmbedder (gte-Qwen2),
+#     或自行实现 persona_agent.embeddings.Embedder
 #
 # 开发依赖:
 #   pytest>=7.0        # 运行 tests/
