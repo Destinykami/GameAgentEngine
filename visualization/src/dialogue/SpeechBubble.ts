@@ -15,6 +15,9 @@ const WRAP_WIDTH = 168;      // 气泡文字换行宽度 (像素)
 const PAD = 8;               // 内边距
 const FONTSIZE = 14;
 const FONT = `${FONTSIZE}px monospace`;
+// Phaser 在此环境回报的 text.height 会低估实际渲染行高 (14px 字约少报 4px/行),
+// 长台词按 text.height 建背景会直接溢出。与 DetailCard 一样按行数 × 固定行高计算。
+const LINE_H = FONTSIZE + 7; // 21px
 const TAIL = 8;              // 尾巴高
 
 // SpeechBubble: 创建/销毁气泡, 跟随角色锚点, 进入/离场淡入淡出。
@@ -68,9 +71,11 @@ export class SpeechBubble {
     this.bg.setStrokeStyle(2, color);
     this.tail.setFillStyle(color).setStrokeStyle(2, color);
 
-    // 换行后: 宽=最宽行 (≤WRAP_WIDTH), 高=行数×行高。背景 = 文本尺寸 + 内边距。
+    // 换行后: 宽=最宽行 (≤WRAP_WIDTH), 高=行数×真实行高。背景 = 文本尺寸 + 内边距。
+    // 不用 this.text.height: 此环境它按 15-17px/行回报, 实际约 21px/行, 长台词会溢出黑框。
+    const lines = wrapped.split("\n").length;
     const tw = this.text.width + PAD * 2;
-    const th = this.text.height + PAD * 2;
+    const th = Math.max(this.text.height, lines * LINE_H) + PAD * 2;
     this.bg.setSize(tw, th);
     this.text.setOrigin(0.5).setPosition(0, 0);
     this.bg.setPosition(0, 0);
@@ -118,11 +123,14 @@ export class SpeechBubble {
   isVisible(): boolean { return this.visible; }
   bubbleText(): string { return this.original; }   // 原始台词 (不含换行), E2E 比对内容用
   // E2E 断言用: 背景是否容得下文字 (bg 尺寸 >= 文本尺寸, 即无溢出)。
+  // textH 用行数 × LINE_H (真实行高), 避免再拿低估的 text.height 做"自证不溢出"。
   fitInfo(): { bgW: number; bgH: number; textW: number; textH: number; lines: number } {
+    const lines = this.text.text.split("\n").length;
     return {
       bgW: this.bg.width, bgH: this.bg.height,
-      textW: this.text.width, textH: this.text.height,
-      lines: this.text.text.split("\n").length,
+      textW: this.text.width,
+      textH: Math.max(this.text.height, lines * LINE_H),
+      lines,
     };
   }
 
