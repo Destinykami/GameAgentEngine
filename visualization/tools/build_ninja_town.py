@@ -47,13 +47,13 @@ def main() -> None:
     # 土路 / 营地 / 官道口
     path = Image.new("L", base.size, 0)
     d = ImageDraw.Draw(path)
-    d.line([(200, 130), (300, 300), (440, 330), (640, 330), (700, 360), (850, 480)],
+    d.line([(200, 160), (300, 300), (440, 330), (640, 330), (700, 360), (850, 480)],
            fill=255, width=30, joint="curve")
-    d.line([(440, 330), (440, 170)], fill=255, width=30)
+    d.line([(440, 330), (440, 190)], fill=255, width=30)
     d.ellipse((250, 85, 410, 205), fill=255)
     d.ellipse((805, 430, 930, 530), fill=255)
     d.rounded_rectangle((292, 222, 578, 418), radius=34, fill=255)
-    d.rounded_rectangle((388, 132, 500, 218), radius=18, fill=255)
+    d.rounded_rectangle((388, 152, 500, 238), radius=18, fill=255)
     d.rounded_rectangle((596, 288, 690, 368), radius=16, fill=255)
     d.rounded_rectangle((650, 318, 750, 398), radius=16, fill=255)
     fill(base, path, DIRT)
@@ -62,7 +62,7 @@ def main() -> None:
     stone = Image.new("L", base.size, 0)
     d2 = ImageDraw.Draw(stone)
     d2.rounded_rectangle((300, 230, 570, 410), radius=30, fill=255)
-    d2.rounded_rectangle((394, 138, 494, 212), radius=14, fill=255)
+    d2.rounded_rectangle((394, 158, 494, 232), radius=14, fill=255)
     d2.rounded_rectangle((604, 294, 682, 362), radius=12, fill=255)
     d2.rounded_rectangle((658, 324, 742, 392), radius=12, fill=255)
     fill(base, stone, STONE)
@@ -70,7 +70,7 @@ def main() -> None:
     # 神社前庭: 石板
     deck = Image.new("L", base.size, 0)
     d3 = ImageDraw.Draw(deck)
-    d3.ellipse((145, 85, 265, 195), fill=255)
+    d3.ellipse((145, 115, 265, 225), fill=255)
     fill(base, deck, STONE)
 
     # 草叶斑块
@@ -84,7 +84,7 @@ def main() -> None:
     px = base.load()
     for _ in range(180):
         x = RNG.randint(145, 270)
-        y = RNG.randint(90, 205)
+        y = RNG.randint(120, 235)
         r, g, b, a = base.getpixel((x, y))
         if a:
             px[x, y] = (238, 150, 180, 255) if RNG.random() < 0.7 else (255, 230, 240, 255)

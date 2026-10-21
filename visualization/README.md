@@ -144,7 +144,7 @@ npm run e2e
   仅个人学习/演示，发布前需替换或授权）。地面 `ninja-town.png` 由
   `tools/build_ninja_town.py` 生成（60×34：草地、土路、石板广场、神社前庭、樱花）；和风
   木屋/茅屋/废弃屋、苔藓树、樱花、木门、栅栏、岩石、倒木裁成透明 Sprite
-  （`public/assets/ninja/`），depth=脚底 y，与角色一起 y-sort；布局在
+  （`public/assets/ninja/`），depth=脚底 y，与角色一起 y-sort；房屋按 1.5x/2x 放大，另加**红色鸟居 + 石灯笼**（夜间暖光）。布局在
   `art/ninjaAssets.ts`。原 **Kenney "Tiny Town"** 保留为素材缺失回退。
   **角色帧（idle/walk）与活动点道具（铁砧/病床/书桌/鸟居）默认保留原创像素**；本地安装
   官方全身立绘后，世界角色切换为 40×56 像素化 Sprite（仅个人学习，gitignored）。

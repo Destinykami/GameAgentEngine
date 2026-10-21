@@ -127,10 +127,10 @@ if (bodyInfo.h > 16) {
 // 环境: Ninja Adventure 日式村庄底图/建筑; 缺失则回退 Tiny Town。
 const rlMap = await page.evaluate(() => {
   const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
-  return { town: s.textures.exists("ninja_town"), house: s.textures.exists("ninja_house_main") };
+  return { town: s.textures.exists("ninja_town"), house: s.textures.exists("ninja_house_main"), torii: s.textures.exists("ninja_torii_red"), lantern: s.textures.exists("ninja_lantern_stone") };
 });
 if (rlMap.town) {
-  check(rlMap.house, "Ninja 日式村庄地图 + 建筑纹理已加载");
+  check(rlMap.house && rlMap.torii && rlMap.lantern, "Ninja 日式村庄地图 + 建筑/鸟居/石灯笼纹理已加载");
 } else {
   check(true, "Ninja 地图缺失 → 回退 Tiny Town");
 }

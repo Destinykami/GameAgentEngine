@@ -6,7 +6,7 @@ export const NINJA_TOWN_KEY = "ninja_town";
 
 export const NINJA_SPRITE_FILES = [
   "house_main", "house_clinic", "house_shrine", "house_forge",
-  "house_white", "house_ruin", "gate", "fence", "rock", "log",
+  "house_white", "house_ruin", "fence", "rock", "log", "torii_red", "lantern_stone",
   "tree_round", "tree_round2", "tree_sakura",
 ] as const;
 
@@ -23,15 +23,12 @@ export interface NinjaPart {
 
 // 每个地点 1~2 个建筑部件; 底边锚在锚点略后方, 角色站前方 → y-sort。
 export const NINJA_BUILDING_PARTS: Record<string, NinjaPart[]> = {
-  稻妻主城: [{ key: "house_clinic", dx: 0, dy: 0 }],
-  治疗堂: [{ key: "house_main", dx: 0, dy: 0 }],
+  稻妻主城: [{ key: "house_clinic", dx: 0, dy: 0, scale: 1.5 }],
+  治疗堂: [{ key: "house_main", dx: 0, dy: 0, scale: 1.5 }],
   锻造坊: [{ key: "house_forge", dx: 0, dy: 0, scale: 2 }],
-  眼狩署: [{ key: "house_white", dx: 0, dy: 0 }],
-  神樱庭: [
-    { key: "house_shrine", dx: 0, dy: 0 },
-    { key: "gate", dx: -55, dy: 4 },
-  ],
-  城外官道: [{ key: "gate", dx: 0, dy: 0 }],
+  眼狩署: [{ key: "house_white", dx: 0, dy: 0, scale: 1.5 }],
+  神樱庭: [{ key: "house_shrine", dx: 0, dy: 0, scale: 1.5 }],
+  城外官道: [],
 };
 
 export interface NinjaDecor {
@@ -88,4 +85,14 @@ export const NINJA_DECOR: NinjaDecor[] = [
   { key: "fence", x: 382, y: 165, scale: 1 },
   { key: "log", x: 292, y: 170, scale: 1 },
   { key: "rock", x: 360, y: 120, scale: 1 },
+  // 红色鸟居 + 石灯笼 (稻妻/和风标志)
+  { key: "torii_red", x: 120, y: 180, scale: 1 },
+  { key: "torii_red", x: 850, y: 450, scale: 1 },
+  { key: "lantern_stone", x: 350, y: 320, scale: 1 },
+  { key: "lantern_stone", x: 530, y: 320, scale: 1 },
+  { key: "lantern_stone", x: 600, y: 360, scale: 1 },
+  { key: "lantern_stone", x: 300, y: 210, scale: 1 },
+  { key: "lantern_stone", x: 760, y: 400, scale: 1 },
+  { key: "lantern_stone", x: 660, y: 300, scale: 1 },
+  { key: "lantern_stone", x: 130, y: 230, scale: 1 },
 ];

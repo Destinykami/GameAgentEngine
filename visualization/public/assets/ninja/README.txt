@@ -8,4 +8,7 @@
 - `tileset_interior_floor.png`：和室木地板/石板/榻榻米。
 - `tileset_village_abandoned.png`：和风房屋、石灯笼、苔藓树、木门、栅栏等。
 - `../ninja-town.png`：由 `tools/build_ninja_town.py` 生成的 60×34 村庄底图。
-- `*.png`（本目录根下）：从 village sheet 裁出的透明建筑/树/灯笼/门/栅栏 Sprite。
+- `*.png`（本目录根下）：从 village sheet 裁出的透明建筑/树/栅栏/岩石/倒木 Sprite。
+- `torii_red.png` / `lantern_stone.png`：本项目补画的红色鸟居与石灯笼（和风标志）。
+- `ninja-town.png` 中不包含建筑；房屋主城/治疗堂/眼狩署/神樱庭 1.5x、锻造坊 2x，
+  仍参与 y-sort。红色鸟居/石灯笼为本项目补画的和风标志。

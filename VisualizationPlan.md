@@ -882,8 +882,8 @@ persona_agent/
   `public/assets/ninja/tileset_*.png`；地面 `public/assets/ninja-town.png` 由
   `tools/build_ninja_town.py` 生成（60×34，草地/土路/石板广场/神社前庭/樱花）；建筑
   （和风木屋/茅屋/废弃屋）、苔藓树、樱花、木门、栅栏、岩石、倒木从 village sheet 裁成透明
-  Sprite（`public/assets/ninja/`），depth 取脚底 y，和角色一起 y-sort。旧 Tiny Town 地图与
-  tile 定义保留为素材缺失时的回退。
+  Sprite（`public/assets/ninja/`），depth 取脚底 y，和角色一起 y-sort；房屋按 1.5x/2x
+  放大，并补红色鸟居 + 石灯笼（含暖光）。旧 Tiny Town 地图与 tile 定义保留为素材缺失时的回退。
 - **角色（idle/walk 动画）+ 活动点道具（铁砧/病床/书桌/鸟居）**：默认使用**原创像素**（代码
   生成，见 `art/characters.ts` / `art/activityFrames.ts` / `art/palette.ts`），无第三方素材、
   无许可证风险。若本地安装官方全身立绘（见下），世界内角色优先换成 40×56 像素化 Sprite

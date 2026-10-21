@@ -281,7 +281,7 @@ export class InazumaScene extends Phaser.Scene {
     }
     // 地点标签: 统一放建筑/角色上方; 顶部过近时夹到 y=50 (避开时间轴)。
     for (const a of Object.values(LOCATION_ANCHORS)) {
-      const labelY = Math.max(56, a.y - a.h / 2 - 14 - LOCATION_LABEL_LIFT);
+      const labelY = a.labelY ?? Math.max(56, a.y - a.h / 2 - 14 - LOCATION_LABEL_LIFT);
       this.add.text(a.x, labelY, a.label, {
         fontFamily: "monospace", fontSize: "11px", color: "#cfc6b8", stroke: "#000000", strokeThickness: 2,
       }).setOrigin(0.5, 1).setDepth(500);
@@ -669,6 +669,9 @@ export class InazumaScene extends Phaser.Scene {
       const sc = d.scale ?? 1;
       if (d.key.startsWith("tree")) {
         this.add.ellipse(d.x, d.y - 3, 18 * sc, 6, 0x000000, 0.16)
+          .setDepth(Math.round(d.y) - 1);
+      } else if (d.key === "lantern_stone") {
+        this.add.ellipse(d.x, d.y - 26, 26, 9, 0xf5d27a, 0.18)
           .setDepth(Math.round(d.y) - 1);
       }
       this.add.image(d.x, d.y, ninjaKey(d.key))
