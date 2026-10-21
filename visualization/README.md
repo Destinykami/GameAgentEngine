@@ -18,7 +18,7 @@ visualization/
 │   ├── stub_timeline.json  # 确定性 stub 时间线 (由 tools/gen_stub_timeline.py 生成)
 │   ├── real_timeline.json  # 真实 9/10 天旧格式样本 (data/auto_sim/timeline.json 拷贝, M5 回放)
 │   ├── live.jsonl          # 直播增量文件 (运行时产物, 引擎每步 append; gitignore, 不入库)
-│   └── assets/             # 地图素材: tiny-town-tilemap.png (Kenney CC0) + TinyTown-LICENSE.txt
+│   └── assets/             # 地图素材: kenney-roguelike.png + rl-town.png + rl/ (CC0); Tiny Town 回退
 ├── tools/
 │   ├── gen_stub_timeline.py   # 生成 stub 时间线 (复用真实引擎, 脚本化决策, 无 LLM)
 │   ├── validate_timeline.ts   # 数据层 schema/不变量校验
@@ -31,7 +31,7 @@ visualization/
     ├── scenes/InazumaScene.ts # 单场景: 地图+实体+HUD+播放+M2交互, 消费 visual_events
     ├── entities/              # AgentSprite (像素角色动画/血条/名牌/移动/活动), AgentRegistry
     ├── dialogue/              # SpeechBubble (气泡), DamagePopup (伤害数字弹出)
-    ├── art/                   # 像素素材: townTiles(真实tile索引) / groundMap / buildings / characters(原创) / activityFrames / ArtFactory
+    ├── art/                   # 像素素材: rlAssets(RL村庄布局) / townTiles+groundMap+buildings(回退) / characters(原创) / ArtFactory
     ├── data/                  # + activityProjection.ts (Phase 3 视觉活动投影映射)
     └── ui/                    # StatusPanel / EventLog / PlaybackControls / DetailCard / TimelineScrubber
 ```
@@ -139,14 +139,14 @@ npm run e2e
 - **M2 伤害弹出**：成功攻击时目标头顶弹出 `-N`（致死红色 `✝` 强化），上飘淡出。
 - **reason_count 源头完整**：引擎 `VisualEvent.to_dict()` 对 `witnessed` 事件也输出
   `reason_count`（此前只输出 `reason_added` 分支），前端不再显示"现 undefined 条"。
-- **M3 像素素材（混合来源，许可证已记录）**：地图改用公开素材 **Kenney "Tiny Town"**
-  （CC0 公共领域，无需署名，许可证见 `public/assets/TinyTown-LICENSE.txt`）——地面/道路/
-  六建筑/樱树/灯笼/井/栅栏/蘑菇/松树全部真实 tile（`art/townTiles.ts` 定义 tile 下标，
-  `ArtFactory` 用 `drawImage` 从 tilemap 烘焙；场景自行 fetch tilemap 为 HTMLImageElement，
-  不依赖 Phaser 纹理解码，因无头 WebGL 下 `texture.source.data` 可能为 null）。
-  **角色帧（idle/walk）与活动点道具（铁砧/病床/书桌/鸟居）保留原创像素**（`characters` /
-  `activityFrames` / `palette`）——角色需要行走动画，公开 tile 无动画。樱树 = 圆树 tile 染粉。
-  混合策略：地图用公开素材（美观、无许可证风险），角色/活动道具用原创（动画、辨识度）。
+- **M3 像素素材（混合来源，许可证已记录）**：村庄主地图用 **Kenney "Roguelike/RPG"**
+  （CC0，许可证 `public/assets/Kenney-Roguelike-LICENSE.txt`）。地面 `rl-town.png` 由
+  `tools/build_rl_town.py` 生成（60×34：石板广场、土路、营地、花圃、草叶）；房屋/树/帐篷/
+  摊位从同 pack 示例地图裁成透明 Sprite（`public/assets/rl/`），depth=脚底 y，与角色一起
+  y-sort。布局在 `art/rlAssets.ts`。原 **Kenney "Tiny Town"** 地图与 tile 代码保留为素材
+  缺失时的回退。
+  **角色帧（idle/walk）与活动点道具（铁砧/病床/书桌/鸟居）默认保留原创像素**；本地安装
+  官方全身立绘后，世界角色切换为 40×56 像素化 Sprite（仅个人学习，gitignored）。
 - **UI 美化（稻妻主题）**：状态面板加**血量条**（按血量比例变绿/黄/红）+ 金色题头线，
   旅行者理由/攻移到页脚；事件记录加金色题头；播放按钮加圆角深色底 + 金色描边；详情卡改
   金色边框（阵亡红边）。统一深底 `0x1c1c24` + 金色 `0xd9a441` 题头，呼应稻妻城风格。

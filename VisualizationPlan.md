@@ -876,10 +876,13 @@ persona_agent/
 
 ### 8.3 已选用素材（原型阶段）
 
-- **地图 / 建筑 / 树 / 道具**：Kenney **"Tiny Town"**（16×16 俯视角城镇 tileset，
-  **CC0 公共领域**，无需署名，可自由使用/修改）。许可证已入库 `visualization/public/assets/
-  TinyTown-LICENSE.txt`。tilemap 入库 `public/assets/tiny-town-tilemap.png`，前端
-  `art/townTiles.ts` 定义 tile 下标，`ArtFactory` 烘焙成纹理。
+- **地图 / 建筑 / 树 / 道具**：Kenney **"Roguelike/RPG"**（16×16 俯视角 RPG tileset，
+  **CC0 公共领域**，无需署名，可自由使用/修改）。许可证入库
+  `visualization/public/assets/Kenney-Roguelike-LICENSE.txt`，tileset 入库
+  `public/assets/kenney-roguelike.png`。地面 `public/assets/rl-town.png` 由
+  `tools/build_rl_town.py` 生成（60×34，石板广场/土路/营地/花圃/草叶）；建筑/树木/帐篷/摊位
+  从同 pack 示例地图裁成透明 Sprite（`public/assets/rl/`），depth 取脚底 y，和角色一起
+  y-sort。旧 Tiny Town 地图与 tile 定义保留为素材缺失时的回退。
 - **角色（idle/walk 动画）+ 活动点道具（铁砧/病床/书桌/鸟居）**：默认使用**原创像素**（代码
   生成，见 `art/characters.ts` / `art/activityFrames.ts` / `art/palette.ts`），无第三方素材、
   无许可证风险。若本地安装官方全身立绘（见下），世界内角色优先换成 40×56 像素化 Sprite
@@ -891,7 +894,8 @@ persona_agent/
   `tools/fetch_official_portraits.mjs`、`tools/pixelate_portraits.py`、
   `tools/fetch_official_fullbody.mjs`、`tools/pixelate_fullbody.py`，说明见
   `OFFICIAL_PORTRAITS.md`。
-- 混合策略：地图用公开 CC0 素材（美观、无许可证风险），角色/活动道具用原创（动画、辨识）。
+- 混合策略：地图用公开 CC0 素材（美观、无许可证风险），角色/活动道具用原创（动画、辨识）；
+  UI 头像/全身 Sprite 可选本地官方素材（仅个人学习，gitignored）。
   符合 §8.1"公共领域或明确允许开发使用的临时素材"标准，且许可证已确认入库。
 
 ---

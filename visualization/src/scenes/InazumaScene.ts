@@ -8,6 +8,7 @@ import { buildArt } from "../art/ArtFactory";
 import { BUILDINGS } from "../art/buildings";
 import { FULLBODY_FILES, PORTRAIT_FILES, fullbodyUrl, portraitTextureKey, portraitUrl } from "../data/avatarAssets";
 import { TILEMAP_KEY } from "../art/townTiles";
+import { RL_BUILDING_PARTS, RL_DECOR, RL_SPRITE_FILES, RL_TOWN_FILE, RL_TOWN_KEY, rlKey } from "../art/rlAssets";
 
 // 自行 fetch tilemap 为 HTMLImageElement (无头 WebGL 下 Phaser 纹理 source.data 可能为 null,
 // 直接 2D canvas drawImage 更可靠)。
@@ -39,6 +40,35 @@ async function loadFullbody(): Promise<Map<string, HTMLImageElement>> {
     try { out.set(name, await loadImage(fullbodyUrl(file))); } catch { /* 单张缺失则回退 */ }
   }));
   return out;
+}
+
+// Kenney Roguelike/RPG (CC0) 村庄素材: 地面 + 建筑/树/帐篷等 Sprite。
+// 资源已入库; 任一缺失则返回 null, 回退到原 Tiny Town 地图。
+interface RlAssets {
+  town: HTMLImageElement;
+  sprites: Map<string, HTMLImageElement>;
+}
+
+async function loadRlAssets(): Promise<RlAssets | null> {
+  try {
+    const town = await loadImage(`assets/${RL_TOWN_FILE}`);
+    const entries = await Promise.all(RL_SPRITE_FILES.map(async (n) => {
+      const img = await loadImage(`assets/rl/${n}.png`);
+      return [n, img] as const;
+    }));
+    return { town, sprites: new Map(entries) };
+  } catch {
+    return null;
+  }
+}
+
+// 把 HTMLImageElement 写成 Phaser canvas 纹理 (无头 WebGL 下比 load.image 稳)。
+function addCanvasTexture(scene: Phaser.Scene, key: string, img: HTMLImageElement): void {
+  if (scene.textures.exists(key)) return;
+  const tex = scene.textures.createCanvas(key, img.width, img.height);
+  if (!tex) return;
+  tex.context.drawImage(img, 0, 0);
+  tex.refresh();
 }
 import { defaultActivity, isInterrupted } from "../data/activityProjection";
 import { LiveSource, type LiveMeta } from "../data/liveSource";
@@ -113,19 +143,20 @@ export class InazumaScene extends Phaser.Scene {
     const ttImgPromise = loadImage("assets/tiny-town-tilemap.png");   // tilemap 立即开始加载 (两种模式共用)
     const portraitPromise = loadPortraits();                          // 本地原神像素头像 (可选)
     const fullbodyPromise = loadFullbody();                           // 本地原神像素全身 Sprite (可选)
+    const rlPromise = loadRlAssets();                                 // CC0 RL 村庄 (缺省回退 Tiny Town)
     if (isLive) {
       // 直播模式 (?live): 轮询 live.jsonl 实时跟随运行中的模拟 (见 M5 扩展)。
       this.loadingText.setText("等待模拟开始… (直播模式, 轮询 live.jsonl)");
       this.live = new LiveSource("live.jsonl");
       this.showLiveBadge();
-      this.startLivePolling(ttImgPromise, portraitPromise, fullbodyPromise);
+      this.startLivePolling(ttImgPromise, portraitPromise, fullbodyPromise, rlPromise);
       return;
     }
     // 默认回放 stub 时间线; ?timeline=<file> 可回放其它样本 (如 real_timeline.json 旧格式真实样本, M5)。
     const tlFile = params.get("timeline") ?? "stub_timeline.json";
     this.addLiveHint();   // 普通回放页常驻提示: 点它进直播模式 (?live), 实时看运行中的模拟
-    Promise.all([loadTimeline(tlFile), ttImgPromise, portraitPromise, fullbodyPromise])
-      .then(([tl, ttImg, portraits, fullbody]) => this.setup(tl, ttImg, portraits, fullbody))
+    Promise.all([loadTimeline(tlFile), ttImgPromise, portraitPromise, fullbodyPromise, rlPromise])
+      .then(([tl, ttImg, portraits, fullbody, rl]) => this.setup(tl, ttImg, portraits, fullbody, rl))
       .catch((e: unknown) => {
         this.loadingText.setText("加载失败:\n" + String(e) +
           "\n\n请确认 public/stub_timeline.json 与 public/assets/tiny-town-tilemap.png 存在。");
@@ -147,7 +178,7 @@ export class InazumaScene extends Phaser.Scene {
   // 直播模式: 每 1s 轮询 live.jsonl。收到 meta + ≥1 步 → 建场景并跳到最新步跟随;
   // 之后每来新步 → addStep + 时间轴增刻度 + 跳到最新 (跟随); 收到 done → 停止轮询、
   // 隐藏 LIVE 标记, 时间线完整可往回拖 (切回普通回放)。
-  private startLivePolling(ttImgPromise: Promise<HTMLImageElement>, portraitPromise: Promise<Map<string, HTMLImageElement>>, fullbodyPromise: Promise<Map<string, HTMLImageElement>>): void {
+  private startLivePolling(ttImgPromise: Promise<HTMLImageElement>, portraitPromise: Promise<Map<string, HTMLImageElement>>, fullbodyPromise: Promise<Map<string, HTMLImageElement>>, rlPromise: Promise<RlAssets | null>): void {
     this.liveTimer = this.time.addEvent({
       delay: 1000, loop: true,
       callback: async () => {
@@ -158,8 +189,8 @@ export class InazumaScene extends Phaser.Scene {
         // 1) 首次收到 meta + ≥1 步 → 建场景。时间线用 buildLiveTimeline 拷贝 allSteps
         //    (已含本 poll 的 newSteps), 故本轮不再 addStep (setupThisPoll 防重复)。
         if (!this.liveSetupDone && meta && this.liveStepCount >= 1) {
-          const [ttImg, portraits, fullbody] = await Promise.all([ttImgPromise, portraitPromise, fullbodyPromise]);
-          this.setup(this.buildLiveTimeline(meta), ttImg, portraits, fullbody);
+          const [ttImg, portraits, fullbody, rl] = await Promise.all([ttImgPromise, portraitPromise, fullbodyPromise, rlPromise]);
+          this.setup(this.buildLiveTimeline(meta), ttImg, portraits, fullbody, rl);
           this.liveSetupDone = true;
           setupThisPoll = true;
           this.controller.seek(this.controller.totalSteps - 1);   // 跳到最新步跟随
@@ -213,7 +244,7 @@ export class InazumaScene extends Phaser.Scene {
     this.liveBadge = null;
   }
 
-  private setup(tl: Timeline, ttImg: HTMLImageElement, portraits: Map<string, HTMLImageElement>, fullbody: Map<string, HTMLImageElement>): void {
+  private setup(tl: Timeline, ttImg: HTMLImageElement, portraits: Map<string, HTMLImageElement>, fullbody: Map<string, HTMLImageElement>, rl: RlAssets | null): void {
     this.loadingText.destroy();
     const day0 = tl.steps[0].states;
 
@@ -225,50 +256,63 @@ export class InazumaScene extends Phaser.Scene {
       if (tex) { tex.context.drawImage(img, 0, 0); tex.refresh(); }
     }
 
-    // M3 真实像素地图: 地面 (Ground) + 建筑 (Buildings) + 活动点/前景道具, 全部参与 y-sort。
-    // 角色与建筑/道具同处一个深度空间, 按 y 排序 → 角色从屋顶/树后走过时正确遮挡 (计划 §M3)。
+    // M3 地图: 优先使用 Kenney RL (CC0) 村庄; 缺失则回退原 Tiny Town。
+    // 两种模式都保持: 建筑/树木/角色同一深度空间, 按 y 排序遮挡。
     buildArt(this, ttImg, fullbody);
-    this.add.image(480, 270, "ground").setOrigin(0.5, 0.5).setDepth(0);
-
-    // 建筑: 每地点一栋, 底边锚在地点锚点略后方, 角色站在建筑前。
-    const BLDG_AT: Record<string, string> = {
-      稻妻主城: "inazumaMain", 治疗堂: "clinic", 锻造坊: "forge",
-      眼狩署: "bureau", 神樱庭: "shrine", 城外官道: "road",
-    };
-    for (const [loc, bkey] of Object.entries(BLDG_AT)) {
-      const a = LOCATION_ANCHORS[loc];
-      const def = BUILDINGS[bkey];
-      const img = this.add.image(a.x + def.anchorDx, a.y - 8 + def.anchorDy, `bldg_${bkey}`)
-        .setOrigin(0.5, 1).setDepth(Math.round(a.y - 8));
-      img.alpha = 0.96;
-      // 地点标签 (保留, 缩小放上方)
-      this.add.text(a.x, a.y - a.h / 2 - 14 - LOCATION_LABEL_LIFT, a.label, {
+    if (rl) {
+      addCanvasTexture(this, RL_TOWN_KEY, rl.town);
+      for (const [name, img] of rl.sprites) addCanvasTexture(this, rlKey(name), img);
+      this.add.image(480, 272, RL_TOWN_KEY).setOrigin(0.5, 0.5).setDepth(0);
+      this.addRlWorld();
+    } else {
+      this.add.image(480, 270, "ground").setOrigin(0.5, 0.5).setDepth(0);
+      // 建筑: 每地点一栋, 底边锚在地点锚点略后方, 角色站在建筑前。
+      const BLDG_AT: Record<string, string> = {
+        稻妻主城: "inazumaMain", 治疗堂: "clinic", 锻造坊: "forge",
+        眼狩署: "bureau", 神樱庭: "shrine", 城外官道: "road",
+      };
+      for (const [loc, bkey] of Object.entries(BLDG_AT)) {
+        const a = LOCATION_ANCHORS[loc];
+        const def = BUILDINGS[bkey];
+        const img = this.add.image(a.x + def.anchorDx, a.y - 8 + def.anchorDy, `bldg_${bkey}`)
+          .setOrigin(0.5, 1).setDepth(Math.round(a.y - 8));
+        img.alpha = 0.96;
+      }
+    }
+    // 地点标签: 统一放建筑/角色上方; 顶部过近时夹到 y=50 (避开时间轴)。
+    for (const a of Object.values(LOCATION_ANCHORS)) {
+      const labelY = Math.max(56, a.y - a.h / 2 - 14 - LOCATION_LABEL_LIFT);
+      this.add.text(a.x, labelY, a.label, {
         fontFamily: "monospace", fontSize: "11px", color: "#cfc6b8", stroke: "#000000", strokeThickness: 2,
       }).setOrigin(0.5, 1).setDepth(500);
     }
-    // 活动点道具 (NPC 日常活动的锚点, 计划 Phase 3 活动投影的基础) + 前景遮挡物。
+    // 活动点道具 (NPC 日常活动的锚点) —— 两种地图都保留。
     this.prop("anvil", LOCATION_ANCHORS.锻造坊.x + 14, LOCATION_ANCHORS.锻造坊.y + 4);
     this.prop("bed", LOCATION_ANCHORS.治疗堂.x - 10, LOCATION_ANCHORS.治疗堂.y + 4);
     this.prop("desk", LOCATION_ANCHORS.稻妻主城.x - 22, LOCATION_ANCHORS.稻妻主城.y + 4);
-    this.prop("torii", LOCATION_ANCHORS.神樱庭.x, LOCATION_ANCHORS.神樱庭.y + 8);
-    // 樱树 (前景遮挡, 2x): 神樱庭成林 + 沿路点缀, 角色走过会被花冠遮挡
-    const sx = LOCATION_ANCHORS.神樱庭.x, sy = LOCATION_ANCHORS.神樱庭.y;
-    this.prop("tree", sx - 48, sy + 16, 2);
-    this.prop("tree", sx - 12, sy - 6, 2);
-    this.prop("tree", sx + 34, sy + 12, 2);
-    this.prop("tree", sx + 62, sy - 2, 2);
-    this.prop("tree", 300, 240, 2);
-    this.prop("tree", 560, 420, 2);
-    this.prop("tree", 760, 200, 2);
-    // 松树 (点缀)
-    this.prop("pine", 120, 300, 2);
-    this.prop("pine", 900, 240, 2);
-    // 灯笼 (路边)
-    this.prop("lantern", 440, 250);
-    this.prop("lantern", 700, 300);
-    // 水井/木箱 (城外官道与主城点缀)
-    this.prop("well", 40, 500);
-    this.prop("crate", 470, 350);
+    if (rl) {
+      // RL 地图: 保留红灯笼/水井/木箱做稻妻点缀; 树/帐篷/摊位已由 addRlWorld 放置。
+      this.prop("lantern", 470, 300, 2);
+      this.prop("lantern", 640, 300, 2);
+      this.prop("well", 80, 470, 2);
+      this.prop("crate", 500, 350, 2);
+    } else {
+      this.prop("torii", LOCATION_ANCHORS.神樱庭.x, LOCATION_ANCHORS.神樱庭.y + 8);
+      const sx = LOCATION_ANCHORS.神樱庭.x, sy = LOCATION_ANCHORS.神樱庭.y;
+      this.prop("tree", sx - 48, sy + 16, 2);
+      this.prop("tree", sx - 12, sy - 6, 2);
+      this.prop("tree", sx + 34, sy + 12, 2);
+      this.prop("tree", sx + 62, sy - 2, 2);
+      this.prop("tree", 300, 240, 2);
+      this.prop("tree", 560, 420, 2);
+      this.prop("tree", 760, 200, 2);
+      this.prop("pine", 120, 300, 2);
+      this.prop("pine", 900, 240, 2);
+      this.prop("lantern", 440, 250);
+      this.prop("lantern", 700, 300);
+      this.prop("well", 40, 500);
+      this.prop("crate", 470, 350);
+    }
 
     // 实体注册表 (day-0 为初始注册表 + 满血参考), 记录初始地点
     this.reg = new AgentRegistry(this, day0);
@@ -607,6 +651,31 @@ export class InazumaScene extends Phaser.Scene {
   // 前景道具 (活动点/樱树/灯笼): 原点在脚底, 参与 y-sort (角色从其前/后走过)。
   private prop(key: string, x: number, y: number, scale = 1): void {
     this.add.image(x, y, `prop_${key}`).setOrigin(0.5, 1).setScale(scale).setDepth(Math.round(y));
+  }
+
+  // RL 村庄建筑/装饰: 每件都以底边为原点, depth=y 参与 y-sort。
+  private addRlWorld(): void {
+    for (const [loc, parts] of Object.entries(RL_BUILDING_PARTS)) {
+      const a = LOCATION_ANCHORS[loc];
+      for (const p of parts) {
+        const y = a.y + p.dy;
+        this.add.image(a.x + p.dx, y, rlKey(p.key))
+          .setOrigin(0.5, 1)
+          .setScale(p.scale ?? 1)
+          .setDepth(Math.round(y - 2));
+      }
+    }
+    for (const d of RL_DECOR) {
+      const sc = d.scale ?? 1;
+      if (d.key.startsWith("tree")) {
+        this.add.ellipse(d.x, d.y - 3, 18 * sc, 6, 0x000000, 0.16)
+          .setDepth(Math.round(d.y) - 1);
+      }
+      this.add.image(d.x, d.y, rlKey(d.key))
+        .setOrigin(0.5, 1)
+        .setScale(sc)
+        .setDepth(Math.round(d.y));
+    }
   }
 
   // 时间轴命中区 (避免点时间轴时误收起详情卡)。顶部栏高 40, 轨道 y=27。

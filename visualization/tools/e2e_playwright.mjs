@@ -124,6 +124,16 @@ if (bodyInfo.h > 16) {
 } else {
   check(true, "未安装本地原神全身 Sprite → 回退 16px 原创角色");
 }
+// 环境: Kenney RL 村庄 (CC0) 底图/建筑; 缺失则回退 Tiny Town。
+const rlMap = await page.evaluate(() => {
+  const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
+  return { town: s.textures.exists("rl_town"), house: s.textures.exists("rl_house_main") };
+});
+if (rlMap.town) {
+  check(rlMap.house, "Kenney RL 村庄地图 + 建筑纹理已加载");
+} else {
+  check(true, "RL 地图缺失 → 回退 Tiny Town");
+}
 const initPos = await page.evaluate(() => ({
   旅行者: window.__REPLAY__.sprites.posOf("旅行者"), 雷电将军: window.__REPLAY__.sprites.posOf("雷电将军"),
 }));
