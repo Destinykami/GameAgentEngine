@@ -21,7 +21,7 @@ const FONT = `${FONTSIZE}px monospace`;
 const LINE_H = FONTSIZE + 7; // 21px
 const TAIL = 8;              // 尾巴高
 
-// SpeechBubble: 创建/销毁气泡, 跟随角色锚点, 进入/离场淡入淡出。
+// SpeechBubble: 创建/销毁气泡, 跟随角色锚点, 入场直接显示、离场淡出。
 // 一次对话由场景编排: 先 show 行动者气泡, 再 show 目标回复气泡, 系统效果单独提示。
 export class SpeechBubble {
   private scene: Phaser.Scene;
@@ -96,9 +96,10 @@ export class SpeechBubble {
     this.layout();
     this.scene.tweens.killTweensOf(this.root);   // 取消旧 tween (大跳转 hide 后又 show, 旧淡出回调会关掉新气泡)
     this.root.setVisible(true);
+    this.root.alpha = 1;
     this.visible = true;
-    this.root.alpha = 0;
-    this.scene.tweens.add({ targets: this.root, alpha: 1, duration: 140, ease: "Sine.easeOut" });
+    // 不做淡入: 无头/低帧率环境下 Phaser 的 tween 可能长时间不走, 气泡会保持 alpha=0
+    // (文字在但背景半透明/看不见)。气泡出现直接置 1, 离场仍可淡出。
   }
 
   // 选择气泡位置: 上方/下方 × (默认 x + 各 HUD 左边/右边/中心)。零重叠优先,
