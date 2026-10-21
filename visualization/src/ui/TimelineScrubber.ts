@@ -3,9 +3,10 @@ import type { PlaybackController } from "../PlaybackController";
 
 // TimelineScrubber: 顶部时间轴, 每步一个刻度, 点击/拖动播放头跳到任意 step。
 // 只读回放器里的寻址工具 (计划 §7.2-10: 快速跳步不留旧 Tween/气泡, 由场景处理)。
-const X0 = 30;               // 轨道起点 x
+const X0 = 30;              // 轨道起点 x
 const W = 900;              // 轨道宽
-const Y = 20;               // 轨道 y
+const BAR_H = 40;           // 顶部实底栏高 (时间文字/轨道都在栏内)
+const Y = 27;               // 轨道 y
 const HIT_H = 22;           // 命中区高 (便于点选)
 const MARKER_H = 6;
 const HEAD_W = 8;
@@ -17,6 +18,8 @@ export class TimelineScrubber {
   private track!: Phaser.GameObjects.Rectangle;
   private fill!: Phaser.GameObjects.Rectangle;
   private head!: Phaser.GameObjects.Rectangle;
+  private bar!: Phaser.GameObjects.Rectangle;
+  private barLine!: Phaser.GameObjects.Rectangle;
   private markers: Phaser.GameObjects.Rectangle[] = [];
   private label!: Phaser.GameObjects.Text;
   private dragging = false;
@@ -30,6 +33,11 @@ export class TimelineScrubber {
     const total = ctrl.totalSteps;
     const cx = X0 + W / 2;
 
+    // 顶部实底栏: 时间文字/轨道/播放头都在栏内。此前轨道直接压在草地上, 时间文字
+    // 放在 y=6 且 origin 底对齐 (11px 字顶部约 -5px) 被画布裁掉, 只能看到刻度线。
+    this.bar = scene.add.rectangle(480, BAR_H / 2, 960, BAR_H, 0x14141c, 0.94).setDepth(318);
+    this.barLine = scene.add.rectangle(480, BAR_H - 1, 960, 1, 0xd9a441, 0.5).setDepth(319);
+
     this.track = scene.add.rectangle(cx, Y, W, 4, 0x33333d).setDepth(320);
     this.fill = scene.add.rectangle(X0, Y, 0, 4, 0xd9a441).setOrigin(0, 0.5).setDepth(321);
     for (let i = 0; i < total; i++) {
@@ -38,9 +46,10 @@ export class TimelineScrubber {
     }
     this.head = scene.add.rectangle(this.xOf(ctrl.currentIndex), Y, HEAD_W, HEAD_H, 0xffffff)
       .setStrokeStyle(1, 0xd9a441).setDepth(322);
-    this.label = scene.add.text(cx, Y - 14, "", {
-      fontFamily: "monospace", fontSize: "11px", color: "#8a8a8a",
-    }).setOrigin(0.5, 1).setDepth(320);
+    // 时间/步数标签放在栏内左上, origin (0,0) 保证 11-12px 字完整可见。
+    this.label = scene.add.text(12, 5, "", {
+      fontFamily: "monospace", fontSize: "12px", color: "#e8e6e3",
+    }).setOrigin(0, 0).setDepth(321);
 
     // 命中区: 透明 Rectangle 仅作视觉占位 (自身不处理输入)。
     // 点选/拖动由 InazumaScene 的场景级输入统一驱动 (onPointerDown/Move/Up),
@@ -98,6 +107,7 @@ export class TimelineScrubber {
   }
 
   destroy(): void {
+    this.bar.destroy(); this.barLine.destroy();
     this.track.destroy(); this.fill.destroy(); this.head.destroy();
     for (const m of this.markers) m.destroy();
     this.label.destroy();

@@ -556,9 +556,9 @@ export class InazumaScene extends Phaser.Scene {
     this.add.image(x, y, `prop_${key}`).setOrigin(0.5, 1).setScale(scale).setDepth(Math.round(y));
   }
 
-  // 时间轴命中区 (避免点时间轴时误收起详情卡)。
+  // 时间轴命中区 (避免点时间轴时误收起详情卡)。顶部栏高 40, 轨道 y=27。
   private inScrubber(x: number, y: number): boolean {
-    return x >= 30 && x <= 930 && y >= 6 && y <= 36;
+    return x >= 30 && x <= 930 && y >= 4 && y <= 38;
   }
 
   // 几何识别被点 sprite: 命中区 (x半宽10, y -22~+8) 含指针者, 取 y-sort 最上层 (depth 最大)。
