@@ -124,15 +124,15 @@ if (bodyInfo.h > 16) {
 } else {
   check(true, "未安装本地原神全身 Sprite → 回退 16px 原创角色");
 }
-// 环境: Kenney RL 村庄 (CC0) 底图/建筑; 缺失则回退 Tiny Town。
+// 环境: Ninja Adventure 日式村庄底图/建筑; 缺失则回退 Tiny Town。
 const rlMap = await page.evaluate(() => {
   const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
-  return { town: s.textures.exists("rl_town"), house: s.textures.exists("rl_house_main") };
+  return { town: s.textures.exists("ninja_town"), house: s.textures.exists("ninja_house_main") };
 });
 if (rlMap.town) {
-  check(rlMap.house, "Kenney RL 村庄地图 + 建筑纹理已加载");
+  check(rlMap.house, "Ninja 日式村庄地图 + 建筑纹理已加载");
 } else {
-  check(true, "RL 地图缺失 → 回退 Tiny Town");
+  check(true, "Ninja 地图缺失 → 回退 Tiny Town");
 }
 const initPos = await page.evaluate(() => ({
   旅行者: window.__REPLAY__.sprites.posOf("旅行者"), 雷电将军: window.__REPLAY__.sprites.posOf("雷电将军"),
@@ -284,9 +284,12 @@ await page.evaluate(() => window.__REPLAY__.detailCard.hide());
 
 console.log("\n== 4. 逐步推进 + 移动落锚点 (M1) + walk 动画 (M3) ==");
 const before = await page.evaluate(() => window.__REPLAY__.sprites.posOf("旅行者"));
-await page.evaluate(() => window.__REPLAY__.controller.next());
-await sleep(120);   // 移动途中 (Tween 600ms), 应播 walk 动画
-const walkAnim = await page.evaluate(() => window.__REPLAY__.sprites.animKeyOf("旅行者"));
+// next() 同步应用本步 → moveTo() 同步切 walk; 立即读取, 避免固定 sleep 在重负载下
+// 偶发错过 600ms Tween (读成 idle)。
+const walkAnim = await page.evaluate(() => {
+  window.__REPLAY__.controller.next();
+  return window.__REPLAY__.sprites.animKeyOf("旅行者");
+});
 check(walkAnim === "walk_旅行者", "移动途中播 walk 动画 (实际 " + walkAnim + ")");
 // 等移动 Tween 完成回 idle (轮询, 不固定 sleep; 无头环境下固定 800ms 偶发不够)
 await page.waitForFunction(

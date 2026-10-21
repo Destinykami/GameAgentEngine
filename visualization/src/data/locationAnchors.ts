@@ -14,9 +14,9 @@ export interface LocationAnchor {
 }
 
 export const LOCATION_ANCHORS: Record<string, LocationAnchor> = {
-  稻妻主城: { x: 440, y: 330, label: "稻妻主城", w: 180, h: 120, color: 0x3a4a5a },
-  治疗堂:   { x: 640, y: 330, label: "治疗堂",   w: 130, h: 100, color: 0x4a5a4a },
-  锻造坊:   { x: 700, y: 360, label: "锻造坊",   w: 120, h: 100, color: 0x5a4a3a },
+  稻妻主城: { x: 440, y: 330, label: "稻妻主城", w: 180, h: 140, color: 0x3a4a5a },
+  治疗堂:   { x: 640, y: 330, label: "治疗堂",   w: 130, h: 140, color: 0x4a5a4a },
+  锻造坊:   { x: 700, y: 360, label: "锻造坊",   w: 120, h: 140, color: 0x5a4a3a },
   眼狩署:   { x: 440, y: 170, label: "眼狩署",   w: 140, h: 100, color: 0x5a3a3a },
   神樱庭:   { x: 200, y: 130, label: "神樱庭",   w: 150, h: 110, color: 0x5a3a5a },
   城外官道: { x: 850, y: 470, label: "城外官道", w: 130, h: 70,  color: 0x4a4a3a },

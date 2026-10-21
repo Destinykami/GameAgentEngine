@@ -18,7 +18,7 @@ visualization/
 │   ├── stub_timeline.json  # 确定性 stub 时间线 (由 tools/gen_stub_timeline.py 生成)
 │   ├── real_timeline.json  # 真实 9/10 天旧格式样本 (data/auto_sim/timeline.json 拷贝, M5 回放)
 │   ├── live.jsonl          # 直播增量文件 (运行时产物, 引擎每步 append; gitignore, 不入库)
-│   └── assets/             # 地图素材: kenney-roguelike.png + rl-town.png + rl/ (CC0); Tiny Town 回退
+│   └── assets/             # 地图素材: ninja/ (日式 tileset) + ninja-town.png; Tiny Town 回退
 ├── tools/
 │   ├── gen_stub_timeline.py   # 生成 stub 时间线 (复用真实引擎, 脚本化决策, 无 LLM)
 │   ├── validate_timeline.ts   # 数据层 schema/不变量校验
@@ -31,7 +31,7 @@ visualization/
     ├── scenes/InazumaScene.ts # 单场景: 地图+实体+HUD+播放+M2交互, 消费 visual_events
     ├── entities/              # AgentSprite (像素角色动画/血条/名牌/移动/活动), AgentRegistry
     ├── dialogue/              # SpeechBubble (气泡), DamagePopup (伤害数字弹出)
-    ├── art/                   # 像素素材: rlAssets(RL村庄布局) / townTiles+groundMap+buildings(回退) / characters(原创) / ArtFactory
+    ├── art/                   # 像素素材: ninjaAssets(日式村庄布局) / townTiles+groundMap+buildings(回退) / characters(原创) / ArtFactory
     ├── data/                  # + activityProjection.ts (Phase 3 视觉活动投影映射)
     └── ui/                    # StatusPanel / EventLog / PlaybackControls / DetailCard / TimelineScrubber
 ```
@@ -139,12 +139,13 @@ npm run e2e
 - **M2 伤害弹出**：成功攻击时目标头顶弹出 `-N`（致死红色 `✝` 强化），上飘淡出。
 - **reason_count 源头完整**：引擎 `VisualEvent.to_dict()` 对 `witnessed` 事件也输出
   `reason_count`（此前只输出 `reason_added` 分支），前端不再显示"现 undefined 条"。
-- **M3 像素素材（混合来源，许可证已记录）**：村庄主地图用 **Kenney "Roguelike/RPG"**
-  （CC0，许可证 `public/assets/Kenney-Roguelike-LICENSE.txt`）。地面 `rl-town.png` 由
-  `tools/build_rl_town.py` 生成（60×34：石板广场、土路、营地、花圃、草叶）；房屋/树/帐篷/
-  摊位从同 pack 示例地图裁成透明 Sprite（`public/assets/rl/`），depth=脚底 y，与角色一起
-  y-sort。布局在 `art/rlAssets.ts`。原 **Kenney "Tiny Town"** 地图与 tile 代码保留为素材
-  缺失时的回退。
+- **M3 像素素材（日式主地图）**：村庄主地图改用 **Ninja Adventure** 日式素材
+  （https://github.com/pixel-boy/NinjaAdventure；仓库未附明确 LICENSE，按用户要求使用，
+  仅个人学习/演示，发布前需替换或授权）。地面 `ninja-town.png` 由
+  `tools/build_ninja_town.py` 生成（60×34：草地、土路、石板广场、神社前庭、樱花）；和风
+  木屋/茅屋/废弃屋、苔藓树、樱花、木门、栅栏、岩石、倒木裁成透明 Sprite
+  （`public/assets/ninja/`），depth=脚底 y，与角色一起 y-sort；布局在
+  `art/ninjaAssets.ts`。原 **Kenney "Tiny Town"** 保留为素材缺失回退。
   **角色帧（idle/walk）与活动点道具（铁砧/病床/书桌/鸟居）默认保留原创像素**；本地安装
   官方全身立绘后，世界角色切换为 40×56 像素化 Sprite（仅个人学习，gitignored）。
 - **UI 美化（稻妻主题）**：状态面板加**血量条**（按血量比例变绿/黄/红）+ 金色题头线，

@@ -876,13 +876,14 @@ persona_agent/
 
 ### 8.3 已选用素材（原型阶段）
 
-- **地图 / 建筑 / 树 / 道具**：Kenney **"Roguelike/RPG"**（16×16 俯视角 RPG tileset，
-  **CC0 公共领域**，无需署名，可自由使用/修改）。许可证入库
-  `visualization/public/assets/Kenney-Roguelike-LICENSE.txt`，tileset 入库
-  `public/assets/kenney-roguelike.png`。地面 `public/assets/rl-town.png` 由
-  `tools/build_rl_town.py` 生成（60×34，石板广场/土路/营地/花圃/草叶）；建筑/树木/帐篷/摊位
-  从同 pack 示例地图裁成透明 Sprite（`public/assets/rl/`），depth 取脚底 y，和角色一起
-  y-sort。旧 Tiny Town 地图与 tile 定义保留为素材缺失时的回退。
+- **地图 / 建筑 / 树 / 道具**：**Ninja Adventure** 日式 16×16 素材
+  （https://github.com/pixel-boy/NinjaAdventure）。按用户要求不再做许可证筛查，素材仅个人
+  本地学习/演示；仓库未附明确 LICENSE，发布前需替换或取得作者授权。tileset 入库
+  `public/assets/ninja/tileset_*.png`；地面 `public/assets/ninja-town.png` 由
+  `tools/build_ninja_town.py` 生成（60×34，草地/土路/石板广场/神社前庭/樱花）；建筑
+  （和风木屋/茅屋/废弃屋）、苔藓树、樱花、木门、栅栏、岩石、倒木从 village sheet 裁成透明
+  Sprite（`public/assets/ninja/`），depth 取脚底 y，和角色一起 y-sort。旧 Tiny Town 地图与
+  tile 定义保留为素材缺失时的回退。
 - **角色（idle/walk 动画）+ 活动点道具（铁砧/病床/书桌/鸟居）**：默认使用**原创像素**（代码
   生成，见 `art/characters.ts` / `art/activityFrames.ts` / `art/palette.ts`），无第三方素材、
   无许可证风险。若本地安装官方全身立绘（见下），世界内角色优先换成 40×56 像素化 Sprite
