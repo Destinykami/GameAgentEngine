@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { wrapText } from "../text/wrapText";
+import { truncateLines } from "../text/truncate";
 import type { VisualEvent } from "../data/schema";
 
 // EventLog (计划 §5.2): 显示当前步的事件。M1 从结构化 visual_events 渲染成可读行,
@@ -76,9 +77,9 @@ export class EventLog {
       for (const eff of systemEffects(ve)) lines.push(eff);
     }
     const content = lines.length ? lines.join("\n") : "(本步无动作)";
-    // 手动换行 (此环境 wordWrap 失效) → 按框高截断 (放不下只显示前 maxLines 行, 防竖向溢出)。
-    const wrapped = wrapText(content, this.maxW, FONT).split("\n");
-    const shown = wrapped.length > this.maxLines ? wrapped.slice(0, this.maxLines) : wrapped;
-    this.text.setText(shown.join("\n"));
+    // 手动换行 (此环境 wordWrap 失效) → 按框高截断。截断时保留前 maxLines 行并在
+    // 末行追加 "…", 不再把句子从中间直接砍掉 (防"半句话结尾"看不出还有内容)。
+    const wrapped = wrapText(content, this.maxW, FONT);
+    this.text.setText(truncateLines(wrapped, this.maxLines, this.maxW, FONT));
   }
 }

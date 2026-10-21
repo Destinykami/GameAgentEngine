@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { wrapText } from "../text/wrapText";
+import { truncateLines } from "../text/truncate";
 import type { Timeline, TimelineStep } from "../data/schema";
 
 // StatusPanel (计划 §5.2): 血量 / 死亡 / 位置 / 旅行者理由与攻 / 劝说进度。
@@ -174,9 +175,8 @@ export class StatusPanel {
     if (step.shogun_dead) lines[0] += " · 将军阵亡";
     if (step.decree_ended) lines.push("★ 眼狩令已废止");
     if (step.note) lines.push("★ " + step.note);
-    const wrapped = wrapText(lines.join("\n"), this.w - 20, FOOT_FONT).split("\n");
-    const shown = wrapped.length > this.footerMaxLines ? wrapped.slice(0, this.footerMaxLines) : wrapped;
-    this.footer.setText(shown.join("\n"));
+    const wrapped = wrapText(lines.join("\n"), this.w - 20, FOOT_FONT);
+    this.footer.setText(truncateLines(wrapped, this.footerMaxLines, this.w - 20, FOOT_FONT));
     // 折叠状态下步进: 仍更新文本内容, 但不要把实体行/页脚重新显示出来。
     if (this.collapsed) {
       this.footer.setVisible(false);

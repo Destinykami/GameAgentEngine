@@ -28,3 +28,10 @@ export function wrapText(text: string, maxWidth: number, font: string): string {
   if (cur) lines.push(cur);
   return lines.join("\n");
 }
+
+// 单行文本宽度 (省略号截断时复用同一测量 canvas/字体, 避免两套度量偏差)。
+export function measureTextWidth(text: string, font: string): number {
+  const ctx = getMeasureCtx();
+  ctx.font = font;
+  return ctx.measureText(text).width;
+}
