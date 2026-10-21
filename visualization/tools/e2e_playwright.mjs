@@ -35,6 +35,25 @@ async function gameToPage(page, gx, gy) {
   }, [gx, gy]);
 }
 
+// 无头环境截图/切页会有 >500ms 停顿。Phaser TweenManager 默认的 lag smoothing 会把
+// startTime 推到未来, 导致之后数秒 tween progress 恒为 0 (移动停在 walk、气泡 alpha 停在 0)。
+// E2E 里关掉 smoothing (setLagSmooth() 无参 = 关闭), 让长停顿后的 delta 直接补上。
+// 只影响测试页, 不改应用默认行为。
+async function disableTweenLagSmooth(page) {
+  await page.evaluate(() => {
+    const t = window.__PHASER_GAME__.scene.getScene("Inazuma").tweens;
+    if (!t) return;
+    // 关闭 lag smoothing: 之后 >500ms 的停顿不再把 manager.startTime 推到未来。
+    t.setLagSmooth();
+    // 页面加载阶段可能已经发生过一次 lag skip, 这里把 manager 自己的计时器重置到
+    // 当前时刻, 顺便清掉被推前的 nextTime; 已有 tween 会用一次较大 delta 追上。
+    t.startTime = Date.now();
+    t.prevTime = t.startTime;
+    t.time = 0;
+    t.nextTime = t.gap;
+  });
+}
+
 const preview = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], {
   cwd: resolve(here, ".."), stdio: "ignore",
 });
@@ -49,13 +68,25 @@ const up = await waitServer(`http://localhost:${PORT}/`);
 if (!up) { console.error("vite preview 未就绪"); preview.kill(); process.exit(1); }
 console.log("vite preview 已就绪 → http://localhost:" + PORT + "/");
 
-const browser = await chromium.launch();
+// 无头 Chromium 在多标签/无窗口环境会把非前台页的 rAF 降频甚至暂停,
+// 导致 Phaser 的 Tween/动画不走 (移动停在 walk、气泡 alpha 停在 0.57 等)。
+// 关掉后台节流/窗口遮挡暂停, 并在每个新页显式提到前台。
+const browser = await chromium.launch({
+  args: [
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-renderer-backgrounding",
+    "--disable-features=CalculateNativeWinOcclusion",
+  ],
+});
 const page = await browser.newPage({ viewport: { width: 980, height: 560 } });
+await page.bringToFront();
 page.on("console", (m) => { if (m.type() === "error") errors.push("console: " + m.text()); });
 page.on("pageerror", (e) => errors.push("pageerror: " + String(e)));
 
 await page.goto(`http://localhost:${PORT}/`, { waitUntil: "load" });
 await page.waitForFunction(() => window.__REPLAY__ && window.__REPLAY__.timeline, { timeout: 15000 });
+await disableTweenLagSmooth(page);
 await sleep(400);
 
 console.log("\n== 1. 页面加载 (M1) ==");
@@ -200,7 +231,7 @@ await page.screenshot({ path: resolve(SHOTS, "02_step1_moved.png") });
 console.log("\n== 5. 对话气泡 (M2) ==");
 // step2: 旅行者→桃音 @治疗堂, utterance + reply
 await page.evaluate(() => window.__REPLAY__.controller.seek(2));
-await sleep(400);   // 等气泡淡入
+await sleep(400);   // 等气泡显示/定位
 const bubbles = await page.evaluate(() => {
   const b = window.__REPLAY__.bubbles;
   const ve = window.__REPLAY__.controller.current.visual_events.find((v) => v.type === "conversation");
@@ -354,11 +385,13 @@ console.log("\n== 10. M5 真实样本回放 (旧格式: 中文 events 串 → �
 // 真实 9/10 天样本 (data/auto_sim/timeline.json → public/real_timeline.json) 无 visual_events/
 // schema_version。加载器归一化 (回退解析中文串填 visual_events) 后应完整可回放, 不回归。
 const page2 = await browser.newPage({ viewport: { width: 980, height: 560 } });
+await page2.bringToFront();
 const errors2 = [];
 page2.on("console", (m) => { if (m.type() === "error") errors2.push("console: " + m.text()); });
 page2.on("pageerror", (e) => errors2.push("pageerror: " + String(e)));
 await page2.goto(`http://localhost:${PORT}/?timeline=real_timeline.json`, { waitUntil: "load" });
 await page2.waitForFunction(() => window.__REPLAY__ && window.__REPLAY__.timeline, { timeout: 15000 });
+await disableTweenLagSmooth(page2);
 await sleep(400);
 const real = await page2.evaluate(() => window.__REPLAY__.timeline);
 check(Array.isArray(real.steps) && real.steps.length === 31, "真实样本 31 步 (实际 " + real.steps.length + ")");
@@ -463,7 +496,7 @@ const auditFix = await page2.evaluate(async () => {
              ok: rep.controller.current.states["桃音"].dead === true && p25.alpha === 0.45 && p25.marker === true
                  && p25char.anims.isPlaying === false };
   // #2 大跳转气泡不被旧淡出关: 两段不同对话, 跳后新气泡须保留。查实际 Container
-  // 可见性 + alpha (淡入结束后), 不只看 isVisible() 逻辑标记 (旧淡出回调可能把 root.visible
+  // 可见性 + alpha (入场直接置 1), 不只看 isVisible() 逻辑标记 (旧淡出回调可能把 root.visible
   // 设回 false 而标记仍 true)。
   const convIdx = [];
   for (let i = 0; i < rep.timeline.steps.length; i++)
@@ -473,8 +506,7 @@ const auditFix = await page2.evaluate(async () => {
   const txtA = s.actorBubble.bubbleText();
   rep.controller.seek(B);
   const root = s.actorBubble.root;
-  // 等淡入完成 (轮询, 不固定 300ms; 无头环境负载高时 140ms tween 可能延后),
-  // 再等 200ms 确认新气泡没有被旧淡出回调关掉。
+  // 等 alpha 就绪 (轮询, 入场直接置 1), 再等 200ms 确认新气泡没有被旧淡出回调关掉。
   for (let i = 0; i < 40; i++) {
     if (root.visible && root.alpha > 0.9) break;
     await sleep2(50);
@@ -505,7 +537,8 @@ const auditFix = await page2.evaluate(async () => {
   return out;
 });
 check(auditFix.f1.ok, "跨步大跳转同步死活 (桃音死→半透明+死亡标记, 且死者不重播 idle)");
-check(auditFix.f2.ok, "大跳转到另一段对话 → 新气泡保留 (实际 Container visible+alpha, 不被旧淡出关)");
+check(auditFix.f2.ok, "大跳转到另一段对话 → 新气泡保留 (visible=" + auditFix.f2.rootVisible +
+  ", alpha=" + auditFix.f2.rootAlpha + ")");
 check(auditFix.f5.ok, "结局后重播 → 立即显示第 0 步 (不再跳过第 0 步)");
 check(auditFix.f3.ok, "同一步多段对话按序播放 (\"" + auditFix.f3.first + "…\" → 停留后 \"" + auditFix.f3.second + "…\", 不再被覆盖)");
 await page2.screenshot({ path: resolve(SHOTS, "12_real_ending.png") });
@@ -520,6 +553,7 @@ const mock = spawn("node", ["tools/mock_live_source.mjs"], {
 });
 await sleep(300);   // 等 mock 写好 meta + 首步
 const page3 = await browser.newPage({ viewport: { width: 980, height: 560 } });
+await page3.bringToFront();
 const errors3 = [];
 page3.on("console", (m) => { if (m.type() === "error") errors3.push("console: " + m.text()); });
 page3.on("pageerror", (e) => errors3.push("pageerror: " + String(e)));
@@ -527,6 +561,7 @@ await page3.goto(`http://localhost:${PORT}/?live`, { waitUntil: "load" });
 // 等直播场景建好 (轮询收到 meta + ≥1 步后 setup, __REPLAY__ 出现且 timeline 非空)
 await page3.waitForFunction(() => window.__REPLAY__ && window.__REPLAY__.timeline
   && window.__REPLAY__.timeline.steps.length >= 1, { timeout: 20000 });
+await disableTweenLagSmooth(page3);
 await sleep(300);
 // LIVE 标记可见 (场景里 liveBadge 文本含 "LIVE")
 const liveBadgeVisible = await page3.evaluate(() => {
