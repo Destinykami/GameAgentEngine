@@ -1,17 +1,27 @@
 import Phaser from "phaser";
 import { wrapText } from "../text/wrapText";
+import { truncateLines } from "../text/truncate";
 import { HUD_RECTS, overlapArea, type HudRect } from "./hudRects";
 import type { AgentSnapshot } from "../data/schema";
 
 // DetailCard: 点击实体弹出的详情卡 (只读)。
 // 显示 name / role / 血量 / 攻击 / 地点 / 生死, 旅行者额外显示已收集的证据理由。
 // 跟随被点 NPC 定位 (优先右侧, 放不下换左侧), 并避让状态面板/事件记录/播放条/顶部栏。
-// 点空白处或右上角 × 隐藏。× 用场景级几何命中 (此环境 per-object setInteractive 不可靠)。
+// 点空白处或右上角 × 隐藏。× 是独立文本对象 + 场景级几何命中 (此环境 per-object input 不可靠)。
 const W = 252;
-const GAP = 20;          // 卡与 NPC 的水平间隙
+const GAP = 20;          // 卡与 NPC/水平 HUD 的间隙
+const V_GAP = 8;         // 卡与 NPC/垂直 HUD 的间隙 (比水平小, 长卡才放得进世界安全区)
 const MARGIN = 8;        // 卡与屏幕边缘的最小距离
 const MAX_REASONS = 4;
 const REASON_WRAP = 224;
+// 标题区固定高度: 此环境 t.height 低估实际渲染行高, 用固定标题带而不是 nameH 叠行。
+const TITLE_H = 26;
+const TITLE_GAP = 8;     // 标题带与第一行之间
+const BOTTOM_PAD = 12;
+const CLOSE_W = 24;
+const CLOSE_H = 24;
+const CLOSE_MARGIN = 6;  // 关闭区距卡右缘
+const TITLE_MAX_W = W - 20 - (CLOSE_W + CLOSE_MARGIN);   // 给 × 留出位置, 长名字省略号
 // 布局行高/行距: 此环境 t.height 低估实际渲染行高 (~19px), 用 21px 固定行高 + 6px 行距,
 // 保证折行后的多行理由不重叠 (12-13px 字号都够)。
 const LINE_H = 21;
@@ -23,6 +33,7 @@ export class DetailCard {
   private bg!: Phaser.GameObjects.Rectangle;
   private rows: Phaser.GameObjects.Text[] = [];
   private nameText!: Phaser.GameObjects.Text;
+  private closeBtn!: Phaser.GameObjects.Text;
   private open = false;
   private px = 0;        // 卡中心 (跟随 NPC 定位)
   private py = 0;
@@ -36,18 +47,25 @@ export class DetailCard {
     // 气泡 1100), 否则会被地点标签/事件记录/状态面板切掉。气泡另由场景避让。
     this.root = scene.add.container(0, 0).setDepth(1500).setVisible(false);
     this.bg = scene.add.rectangle(0, 0, W, 40, 0x14141c, 0.97).setStrokeStyle(2, 0xd9a441);
-    this.nameText = scene.add.text(-W / 2 + 10, -14, "", {
+    this.nameText = scene.add.text(-W / 2 + 10, 0, "", {
       fontFamily: "monospace", fontSize: "15px", color: "#ffd9a0", fontStyle: "bold",
-    });
-    this.root.add([this.bg, this.nameText]);
+    }).setOrigin(0, 0.5);
+    // × 独立成对象, 固定在卡右上角标题带内; 不再拼在名字末尾 (名字长短会把它带到
+    // 卡中间, 用户点可见的 × 命中不到固定判定区)。
+    this.closeBtn = scene.add.text(W / 2 - CLOSE_MARGIN - CLOSE_W / 2, 0, "×", {
+      fontFamily: "monospace", fontSize: "16px", color: "#d9a441", fontStyle: "bold",
+    }).setOrigin(0.5, 0.5);
+    this.root.add([this.bg, this.nameText, this.closeBtn]);
   }
 
   show(name: string, s: AgentSnapshot, activityLabel: string | null, nx: number, ny: number): void {
     this.lastName = name;
     this.lastSnapshot = s;
     this.activityLabel = activityLabel;
-    this.nameText.setText(`${name}  [${s.dead ? "阵亡" : "存活"}]  ×`);
+    const title = `${name}  [${s.dead ? "阵亡" : "存活"}]`;
+    this.nameText.setText(truncateLines(title, 1, TITLE_MAX_W, "15px monospace"));
     this.nameText.setColor(s.dead ? "#ff6655" : "#ffd9a0");
+    this.closeBtn.setColor(s.dead ? "#ff6655" : "#d9a441");
     this.bg.setStrokeStyle(2, s.dead ? 0x883322 : 0xd9a441);
 
     for (const t of this.rows) t.destroy();
@@ -87,15 +105,21 @@ export class DetailCard {
       this.root.add(t);
       rowHeights.push(wrapped.split("\n").length * LINE_H);
     }
-    // 垂直布局: 背景居中 (origin 0.5), 名字置顶, 行从名字下方往下排 —— 保证所有行
-    // (含折行后的多行理由) 都落在背景内, 且行间距用真实行高 (不低估)。
-    const linesH = rowHeights.reduce((a, b) => a + b + ROW_GAP, 0);
-    const nameH = this.nameText.height;
-    const h = nameH + 10 + linesH + 12;   // 名字 + 间隙 + 行 + 底部留白
+    // 垂直布局: 标题带固定 TITLE_H, 行从标题带下方开始, 每行按"半个行高 + 行距"
+    // 推进中心点。不再用低估的 nameH, 第一行不会压到标题 (长名字/长理由也不会)。
+    const linesH = rowHeights.reduce((a, b) => a + b, 0)
+      + ROW_GAP * Math.max(0, this.rows.length - 1);
+    const h = TITLE_H + TITLE_GAP + linesH + BOTTOM_PAD;
     this.bg.setSize(W, h);
-    this.nameText.setY(-h / 2 + nameH / 2 + 6);
-    let y = -h / 2 + nameH + 12;
-    for (let i = 0; i < this.rows.length; i++) { this.rows[i].setY(y); y += rowHeights[i] + ROW_GAP; }
+    const titleY = -h / 2 + TITLE_H / 2;
+    this.nameText.setY(titleY);
+    this.closeBtn.setY(titleY);
+    let y = -h / 2 + TITLE_H + TITLE_GAP;
+    for (let i = 0; i < this.rows.length; i++) {
+      y += rowHeights[i] / 2;
+      this.rows[i].setY(y);
+      y += rowHeights[i] / 2 + ROW_GAP;
+    }
     // 跟随 NPC 定位 (优先右侧, 放不下换左侧, 夹在屏幕内)。
     this.positionNearNPC(nx, ny, h);
     this.root.setPosition(this.px, this.py);
@@ -115,10 +139,10 @@ export class DetailCard {
     // 注意要允许"左右避让 A + 上下避让 B"的组合, 只沿单块 HUD 平移会卡在
     // "躲开面板但压住日志"的中间态 (旅行者卡曾停在面板左缘与日志上缘的交叠处)。
     const xs: number[] = [nx + GAP + W / 2, nx - GAP - W / 2, nx];
-    const ys: number[] = [ny, ny - GAP - h / 2, ny + GAP + h / 2];
+    const ys: number[] = [ny, ny - V_GAP - h / 2, ny + V_GAP + h / 2];
     for (const r of HUD_RECTS) {
       xs.push(r.x - GAP - W / 2, r.x + r.w + GAP + W / 2);
-      ys.push(r.y - GAP - h / 2, r.y + r.h + GAP + h / 2);
+      ys.push(r.y - V_GAP - h / 2, r.y + r.h + V_GAP + h / 2);
     }
     const boxOf = (c: { x: number; y: number }): HudRect => ({
       x: c.x - W / 2, y: c.y - h / 2, w: W, h,
@@ -154,10 +178,14 @@ export class DetailCard {
     return Math.abs(px - this.px) <= W / 2 && Math.abs(py - this.py) <= (this.bg.height / 2);
   }
   // × 关闭区 (卡右上角) —— 场景级几何命中 (per-object setInteractive 此环境不可靠)。
+  // 与 closeBtn 的显示位置使用同一组 TITLE_H/CLOSE_* 常量, 保证"看到的 ×"就是"能点的 ×"。
   closeAreaContainsPoint(px: number, py: number): boolean {
     if (!this.open) return false;
     const top = this.py - this.bg.height / 2;
-    return px >= this.px + W / 2 - 26 && px <= this.px + W / 2 - 2 &&
-           py >= top + 2 && py <= top + 22;
+    const right = this.px + W / 2;
+    const left = right - CLOSE_MARGIN - CLOSE_W;
+    const cy = top + TITLE_H / 2;
+    return px >= left && px <= right - CLOSE_MARGIN &&
+           py >= cy - CLOSE_H / 2 && py <= cy + CLOSE_H / 2;
   }
 }
