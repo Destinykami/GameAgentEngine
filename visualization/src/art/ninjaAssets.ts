@@ -7,6 +7,7 @@ export const NINJA_TOWN_KEY = "ninja_town";
 export const NINJA_SPRITE_FILES = [
   "house_main", "house_clinic", "house_shrine", "house_forge",
   "house_white", "house_ruin", "fence", "rock", "log", "torii_red", "lantern_stone",
+  "stone_steps", "banner_red",
   "tree_round", "tree_round2", "tree_sakura",
 ] as const;
 
@@ -92,7 +93,13 @@ export const NINJA_DECOR: NinjaDecor[] = [
   { key: "lantern_stone", x: 530, y: 320, scale: 1 },
   { key: "lantern_stone", x: 600, y: 360, scale: 1 },
   { key: "lantern_stone", x: 300, y: 210, scale: 1 },
-  { key: "lantern_stone", x: 760, y: 400, scale: 1 },
   { key: "lantern_stone", x: 660, y: 300, scale: 1 },
   { key: "lantern_stone", x: 130, y: 230, scale: 1 },
+  // 石阶 + 路边红色幟旗
+  { key: "stone_steps", x: 200, y: 235, scale: 1 },
+  { key: "stone_steps", x: 440, y: 380, scale: 1 },
+  { key: "banner_red", x: 370, y: 300, scale: 1 },
+  { key: "banner_red", x: 560, y: 300, scale: 1 },
+  { key: "banner_red", x: 790, y: 430, scale: 1 },
+  { key: "banner_red", x: 270, y: 230, scale: 1 },
 ];

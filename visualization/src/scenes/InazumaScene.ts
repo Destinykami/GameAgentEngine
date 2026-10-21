@@ -5,6 +5,7 @@ import { AgentRegistry } from "../entities/AgentRegistry";
 import type { AgentSprite } from "../entities/AgentSprite";
 import { LOCATION_ANCHORS, anchorOf } from "../data/locationAnchors";
 import { buildArt } from "../art/ArtFactory";
+import { SakuraPetals } from "../art/petals";
 import { BUILDINGS } from "../art/buildings";
 import { FULLBODY_FILES, PORTRAIT_FILES, fullbodyUrl, portraitTextureKey, portraitUrl } from "../data/avatarAssets";
 import { TILEMAP_KEY } from "../art/townTiles";
@@ -112,6 +113,7 @@ export class InazumaScene extends Phaser.Scene {
   private scrubber!: TimelineScrubber;  // 时间轴拖拽
   private controls!: PlaybackControls;  // 播放控制 (进度文本 E2E 可读)
   private worldBanner!: Phaser.GameObjects.Text;   // 世界事件横幅
+  private petals: SakuraPetals | null = null;       // 樱花环境粒子 (播放中漂移)
 
   // Phase 3 视觉活动投影状态: 巡逻 (执行官往返两点) + 坐镇特效 (将军光环)
   private patrol: { name: string; loc: string; a: { x: number; y: number }; b: { x: number; y: number }; atA: boolean } | null = null;
@@ -417,6 +419,8 @@ export class InazumaScene extends Phaser.Scene {
     this.log.update(tl.steps[0].visual_events);
     this.scrubber.refresh();
 
+    this.petals = new SakuraPetals(this);
+
     // E2E 调试钩子 (sprites=AgentRegistry, 可 posOf/animKeyOf/depthOf)
     (window as unknown as Record<string, unknown>).__REPLAY__ = {
       controller: this.controller, timeline: tl, sprites: this.reg,
@@ -432,6 +436,7 @@ export class InazumaScene extends Phaser.Scene {
     this.actorBubble.update();
     this.replyBubble.update();
     this.updatePatrol();                                  // Phase 3 执行官往返巡逻
+    this.petals?.update(this.controller.isPlaying);        // 播放中才让樱花飘
     if (this.stationAura?.visible) {                       // 坐镇光环跟随将军
       const g = this.reg.get("雷电将军");
       if (g) this.stationAura.setPosition(g.x, g.y + 4);
