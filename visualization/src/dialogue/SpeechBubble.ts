@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import { wrapText } from "../text/wrapText";
+import { overlapArea, type HudRect } from "../ui/hudRects";
 
 // 气泡风格: player=旅行者 (蓝边), npc=NPC (灰白边), system=系统提示 (金边)。
 // 对应计划 §4 气泡模型: 锚点跟随 Sprite, 进入/停留/离场动画, 自动换行。
@@ -33,6 +34,10 @@ export class SpeechBubble {
   private dx = 0;   // 相对锚点的水平偏移 (对话双方同地点时左右错开)
   private dy = 0;   // 相对锚点的垂直偏移
   private original = "";   // 原始台词 (未换行); bubbleText() 返回它供 E2E 比对内容
+  private avoid: HudRect[] = [];      // 需要避让的 HUD 区 (面板/日志/播放条/顶部栏)
+  private peer: SpeechBubble | null = null;   // 同屏的另一侧气泡 (避免互相重叠)
+  // show() 时锁定一次的相对位置。之后跟随锚点移动, 不再每帧重新做碰撞求解 (防抖动)。
+  private placed: { dx: number; dy: number; tailUp: boolean } | null = null;
 
   constructor(scene: Phaser.Scene, depth = 200) {
     this.scene = scene;
@@ -59,8 +64,14 @@ export class SpeechBubble {
   // 相对锚点的偏移 (对话双方同地点时左右错开气泡)。
   setOffset(dx: number, dy: number): void {
     this.dx = dx; this.dy = dy;
-    if (this.anchor) this.layout();
+    if (this.anchor) { if (this.visible) this.place(); this.layout(); }
   }
+
+  // 需要避让的屏幕区域 (场景传入共享的 HUD_RECTS)。
+  setAvoidRects(rects: HudRect[]): void { this.avoid = rects; }
+
+  // 同屏另一侧气泡: 后显示的一方把对方已占的矩形也当作避让区。
+  setPeer(peer: SpeechBubble | null): void { this.peer = peer; }
 
   // 显示气泡: 手动换行 + 按换行后行数定背景高度, 重建背景/尾巴。
   show(text: string, style: BubbleStyle): void {
@@ -79,7 +90,9 @@ export class SpeechBubble {
     this.bg.setSize(tw, th);
     this.text.setOrigin(0.5).setPosition(0, 0);
     this.bg.setPosition(0, 0);
-    this.tail.setPosition(0, th / 2 + TAIL / 2 - 1);
+    // 位置求解: 优先头顶上方; 上方会压住顶部栏/面板时翻到角色下方, 并在水平方向
+    // 避让 HUD 与另一侧气泡。求解结果锁定为相对锚点的偏移。
+    this.place();
     this.layout();
     this.scene.tweens.killTweensOf(this.root);   // 取消旧 tween (大跳转 hide 后又 show, 旧淡出回调会关掉新气泡)
     this.root.setVisible(true);
@@ -88,19 +101,76 @@ export class SpeechBubble {
     this.scene.tweens.add({ targets: this.root, alpha: 1, duration: 140, ease: "Sine.easeOut" });
   }
 
-  // 跟随锚点布局: 气泡在 sprite 头顶上方, 尾巴指向 sprite。
+  // 选择气泡位置: 上方/下方 × (默认 x + 各 HUD 左边/右边/中心)。零重叠优先,
+  // 其次离默认位置近; 上方优先于下方。避免此前"头顶放不下就被 clamp 到左上角,
+  // 压住直播入口/时间轴, 两个同地点气泡还互相重叠"。
+  private place(): void {
+    if (!this.anchor) { this.placed = null; return; }
+    const sw = this.scene.scale.width, sh = this.scene.scale.height;
+    const hw = this.bg.width / 2, hh = this.bg.height / 2;
+    const MARGIN = 6;
+    const TOP_SAFE = 44;                       // 顶部时间轴栏高 40 + 4
+    const xMin = MARGIN + hw, xMax = sw - MARGIN - hw;
+    const yMin = TOP_SAFE + hh, yMax = sh - MARGIN - hh;
+    const clampX = (v: number): number => Math.max(xMin, Math.min(xMax, v));
+    const clampY = (v: number): number => Math.max(yMin, Math.min(yMax, v));
+    const aboveY = this.anchor.y - 16 - hh - 6 + this.dy;
+    const belowY = this.anchor.y + 26 + hh + this.dy;   // 26px 让开脚下的名字牌
+    // 上方/下方都得真的放在角色之外: 若上方被顶部栏压到 yMin (等于贴在角色身上),
+    // 不应因为"零 HUD 重叠"就选中它。上方放不下就翻到下方, 反之亦然。
+    const ys: { y: number; tailUp: boolean }[] = [];
+    if (aboveY >= yMin) ys.push({ y: clampY(aboveY), tailUp: false });
+    if (belowY <= yMax) ys.push({ y: clampY(belowY), tailUp: true });
+    if (ys.length === 0) {
+      ys.push({ y: clampY(aboveY), tailUp: false }, { y: clampY(belowY), tailUp: true });
+    }
+    const xs: number[] = [this.anchor.x + this.dx, sw / 2, xMin, xMax];
+    for (const r of this.avoid) {
+      xs.push(r.x - 6 - hw, r.x + r.w + 6 + hw, r.x + r.w / 2);
+    }
+    const pr = this.peer && this.peer.isVisible() ? this.peer.screenRect() : null;
+    const peerBox: HudRect | null = pr
+      ? { x: pr.x - pr.w / 2, y: pr.y - pr.h / 2, w: pr.w, h: pr.h }
+      : null;
+    let best = { x: clampX(this.anchor.x + this.dx), y: clampY(aboveY), tailUp: false };
+    let bestScore = Infinity;
+    for (const { y, tailUp } of ys) {
+      for (const rawX of xs) {
+        const x = clampX(rawX);
+        const box: HudRect = { x: x - hw, y: y - hh, w: hw * 2, h: hh * 2 };
+        let overlap = 0;
+        for (const r of this.avoid) overlap += overlapArea(box, r);
+        if (peerBox) overlap += overlapArea(box, peerBox);
+        // 面积加权远大于距离; 同为 0 时取离默认位置近的; 下方加固定惩罚 → 能上方就上方。
+        const score = overlap * 1000 + Math.abs(x - (this.anchor.x + this.dx)) + (tailUp ? 240 : 0);
+        if (score < bestScore) { bestScore = score; best = { x, y, tailUp }; }
+      }
+    }
+    this.placed = { dx: best.x - this.anchor.x, dy: best.y - this.anchor.y, tailUp: best.tailUp };
+  }
+
+  // 每帧跟随锚点 (sprite 移动 Tween 时气泡同步)。位置用 place() 锁定的相对偏移;
+  // 仅做基本的屏幕夹取, 不在移动中重新求解 (避免气泡在 HUD 边缘来回跳)。
   private layout(): void {
     const r = this.root;
-    if (this.anchor) {
-      const headY = this.anchor.y - 16;          // sprite 头顶
-      const halfH = this.bg.height / 2 + TAIL;
-      r.setPosition(this.anchor.x + this.dx, headY - halfH - 6 + this.dy);
-      // 出界保护: 顶部翻转/右移
-      if (r.y < this.bg.height / 2 + 4) r.setY(this.bg.height / 2 + 4);
-      if (r.x - this.bg.width / 2 < 4) r.setX(this.bg.width / 2 + 4);
-      if (r.x + this.bg.width / 2 > this.scene.scale.width - 4)
-        r.setX(this.scene.scale.width - this.bg.width / 2 - 4);
+    if (!this.anchor) return;
+    const hw = this.bg.width / 2, hh = this.bg.height / 2;
+    let x: number, y: number;
+    if (this.placed) {
+      x = this.anchor.x + this.placed.dx;
+      y = this.anchor.y + this.placed.dy;
+    } else {
+      const halfH = hh + TAIL;
+      x = this.anchor.x + this.dx;
+      y = this.anchor.y - 16 - halfH - 6 + this.dy;
     }
+    x = Math.max(hw + 4, Math.min(this.scene.scale.width - hw - 4, x));
+    y = Math.max(hh + 4, Math.min(this.scene.scale.height - hh - 4, y));
+    r.setPosition(x, y);
+    const tailUp = this.placed?.tailUp ?? false;
+    // 尾巴水平指向锚点 (气泡被 HUD 推离角色左右时, 尾巴仍指向角色而不是框中心)。
+    const tailX = Phaser.Math.Clamp(this.anchor.x - x, -hw + 10, hw - 10);
+    this.tail.setPosition(tailX, tailUp ? -hh - TAIL / 2 + 1 : hh + TAIL / 2 - 1);
   }
 
   // 每帧跟随锚点 (sprite 移动 Tween 时气泡同步)。
@@ -122,6 +192,11 @@ export class SpeechBubble {
   // E2E 断言用。
   isVisible(): boolean { return this.visible; }
   bubbleText(): string { return this.original; }   // 原始台词 (不含换行), E2E 比对内容用
+  // 当前气泡在屏幕上的矩形 (中心 + 尺寸), 供另一侧气泡避让。
+  screenRect(): { x: number; y: number; w: number; h: number } | null {
+    if (!this.visible) return null;
+    return { x: this.root.x, y: this.root.y, w: this.bg.width, h: this.bg.height };
+  }
   // E2E 断言用: 背景是否容得下文字 (bg 尺寸 >= 文本尺寸, 即无溢出)。
   // textH 用行数 × LINE_H (真实行高), 避免再拿低估的 text.height 做"自证不溢出"。
   fitInfo(): { bgW: number; bgH: number; textW: number; textH: number; lines: number } {

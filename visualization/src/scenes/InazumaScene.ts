@@ -28,6 +28,7 @@ import { SpeechBubble } from "../dialogue/SpeechBubble";
 import { DamagePopup } from "../dialogue/DamagePopup";
 import { DetailCard } from "../ui/DetailCard";
 import { TimelineScrubber } from "../ui/TimelineScrubber";
+import { HUD_RECTS } from "../ui/hudRects";
 import type { AgentSnapshot, Timeline, TimelineStep } from "../data/schema";
 
 // InazumaScene — 单场景回放器: 地图+实体+HUD+播放+M2 交互 (气泡/详情卡/时间轴/伤害)。
@@ -255,6 +256,12 @@ export class InazumaScene extends Phaser.Scene {
     this.actorBubble.setOffset(-100, -10);      // 台词在左
     this.replyBubble = new SpeechBubble(this, 1100);
     this.replyBubble.setOffset(100, 10);        // 回复在右, 同地点不重叠
+    // 气泡避让 HUD (顶部栏/状态面板/事件记录/播放条/直播入口), 并互相避让:
+    // 后显示的一方把对方已占矩形当避让区, 长台词也不会再叠在一起。
+    this.actorBubble.setAvoidRects(HUD_RECTS);
+    this.replyBubble.setAvoidRects(HUD_RECTS);
+    this.actorBubble.setPeer(this.replyBubble);
+    this.replyBubble.setPeer(this.actorBubble);
     this.damagePopup = new DamagePopup(this);
     this.detailCard = new DetailCard(this);
     this.scrubber = new TimelineScrubber(this, this.controller);
