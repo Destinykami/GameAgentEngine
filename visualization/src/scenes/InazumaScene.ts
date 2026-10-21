@@ -285,6 +285,8 @@ export class InazumaScene extends Phaser.Scene {
       if (this.panel.headerContainsPoint(p.x, p.y)) { this.panel.toggle(); return; }   // 点面板标题栏 → 折叠/展开
       // 点卡右上角 × → 收起 (场景级几何命中, per-object setInteractive 此环境点不动)。
       if (this.detailCard.closeAreaContainsPoint(p.x, p.y)) { this.detailCard.hide(); return; }
+      // 卡内滚动: 在正文视口内按下开始拖动 (松手/移动由场景级 pointermove/up 驱动)。
+      if (this.detailCard.startDrag(p.x, p.y)) return;
       if (this.detailCard.isOpen() && this.detailCard.containsPoint(p.x, p.y)) return;   // 点在卡内, 不关
       const spr = this.spriteAt(p.x, p.y);
       if (spr) {
@@ -301,9 +303,19 @@ export class InazumaScene extends Phaser.Scene {
       }
       this.detailCard.hide();   // 点空白 → 收起
     });
-    // 时间轴拖拽: 场景级 pointermove/up 驱动 (独立游戏对象 input 在此环境不生效)
-    this.input.on("pointermove", (p: Phaser.Input.Pointer) => this.scrubber.onPointerMove(p.x));
-    this.input.on("pointerup", () => this.scrubber.onPointerUp());
+    // 时间轴拖拽: 场景级 pointermove/up 驱动 (独立游戏对象 input 在此环境不生效)。
+    // 详情卡内滚动: pointermove 拖动正文, pointerup 结束拖动; wheel 滚动卡内正文。
+    this.input.on("pointermove", (p: Phaser.Input.Pointer) => {
+      this.scrubber.onPointerMove(p.x);
+      this.detailCard.dragTo(p.x, p.y);
+    });
+    this.input.on("pointerup", () => {
+      this.scrubber.onPointerUp();
+      this.detailCard.endDrag();
+    });
+    this.input.on("wheel", (p: Phaser.Input.Pointer, _over: unknown, _dx: number, dy: number) => {
+      this.detailCard.handleWheel(p.x, p.y, dy);
+    });
 
     // 订阅: 步变化 → 应用状态 + 渲染视觉事件 + 重绘 HUD + 刷新时间轴;
     //        运输态变化 → 冻结/解冻 Tween + 刷新时间轴

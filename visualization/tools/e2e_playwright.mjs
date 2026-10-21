@@ -191,18 +191,61 @@ const cardFit = await page.evaluate(() => {
   const LONG_REASON = "目击执行官在稻妻主城当众收缴持眼者的神之眼, 持眼者被拖走时苦苦哀求却无人敢拦, 眼狩令的暴行昭然若揭。";
   s.detailCard.show("旅行者", { name: "旅行者", health: 300, attack: 20, loc: "稻妻主城", dead: false,
     role: "traveler", kind: "player", reasons: [LONG_REASON, "帮助桃音藏好雷神之眼"] }, "游历", 300, 300);
-  const root = s.detailCard.root, bg = s.detailCard.bg;
-  const cx = root.x, cy = root.y;   // 卡中心 (跟随定位)
-  let maxRight = 0, maxBottom = 0;
-  for (const ch of root.list) {
-    if (ch.type !== "Text" || !ch.text.length) continue;
-    maxRight = Math.max(maxRight, Math.round(cx + ch.x + ch.width));
-    maxBottom = Math.max(maxBottom, Math.round(cy + ch.y + ch.height));
-  }
-  return { maxRight, maxBottom, bgRight: Math.round(cx + bg.width / 2), bgBottom: Math.round(cy + bg.height / 2) };
+  // 行现在在 content 容器里; textBounds 会加上 content.y, 比只遍历 root.list 完整。
+  const b = s.detailCard.textBounds();
+  const bg = s.detailCard.bg;
+  return {
+    maxRight: Math.round(b.maxRight), maxBottom: Math.round(b.maxBottom),
+    bgRight: Math.round(s.detailCard.root.x + bg.width / 2),
+    bgBottom: Math.round(s.detailCard.root.y + bg.height / 2),
+  };
 });
 check(cardFit.maxRight <= cardFit.bgRight, "详情卡长理由不横向溢出 (最右 " + cardFit.maxRight + " ≤ " + cardFit.bgRight + ")");
 check(cardFit.maxBottom <= cardFit.bgBottom, "详情卡长理由不竖向溢出 (最底 " + cardFit.maxBottom + " ≤ " + cardFit.bgBottom + ")");
+
+console.log("\n== 3b. 详情卡内滚动 ==");
+const scrollSetup = await page.evaluate(() => {
+  const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
+  const LONG = "目击执行官在稻妻主城当众收缴持眼者的神之眼, 持眼者被拖走时苦苦哀求却无人敢拦, 眼狩令的暴行昭然若揭。";
+  s.detailCard.show("旅行者", { name: "旅行者", health: 300, attack: 20, loc: "稻妻主城", dead: false,
+    role: "traveler", kind: "player", reasons: [LONG, LONG, LONG, LONG, LONG] }, "游历", 625, 330);
+  return {
+    scrollable: s.detailCard.isScrollable(), info: s.detailCard.scrollInfo(),
+    cx: s.detailCard.root.x, cy: s.detailCard.root.y, bgH: s.detailCard.bg.height,
+    track: s.detailCard.scrollTrack.visible, thumb: s.detailCard.scrollThumb.visible,
+  };
+});
+check(scrollSetup.scrollable === true, "长理由卡进入滚动模式 (scrollable=true)");
+check(scrollSetup.bgH <= 320, "卡高封顶 320, 不压事件记录 (实际 " + scrollSetup.bgH + ")");
+check(scrollSetup.info.contentH > scrollSetup.info.viewH,
+  "内容高超过视口 (" + scrollSetup.info.contentH + " > " + scrollSetup.info.viewH + ")");
+check(scrollSetup.track === true && scrollSetup.thumb === true, "滚动条可见");
+const cardCenter = await gameToPage(page, scrollSetup.cx, scrollSetup.cy);
+await page.mouse.move(cardCenter.px, cardCenter.py);
+await page.mouse.wheel(0, 300);
+await sleep(150);
+const wheeled = await page.evaluate(() => window.__REPLAY__.detailCard.scrollInfo());
+check(wheeled.offset > 0, "滚轮滚动卡内正文 (offset " + Math.round(wheeled.offset) + ")");
+check(wheeled.offset <= wheeled.max + 0.01, "滚动偏移被 clamp 到 max (" + Math.round(wheeled.offset) + " ≤ " + Math.round(wheeled.max) + ")");
+await page.screenshot({ path: resolve(SHOTS, "15_detail_scroll.png") });
+// 拖动正文向上滚 (先回到顶部)
+await page.evaluate(() => window.__REPLAY__.detailCard.scrollBy(-10000));
+await page.mouse.move(cardCenter.px, cardCenter.py);
+await page.mouse.down();
+await page.mouse.move(cardCenter.px, cardCenter.py - 100, { steps: 6 });
+await page.mouse.up();
+await sleep(120);
+const dragged = await page.evaluate(() => window.__REPLAY__.detailCard.scrollInfo());
+check(dragged.offset > 0, "拖动卡内正文滚动 (offset " + Math.round(dragged.offset) + ")");
+// 滚动后点 × 仍关闭
+const closeAt = await page.evaluate(() => {
+  const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
+  return { x: s.detailCard.root.x + s.detailCard.closeBtn.x, y: s.detailCard.root.y + s.detailCard.closeBtn.y };
+});
+const closePage = await gameToPage(page, closeAt.x, closeAt.y);
+await page.mouse.click(closePage.px, closePage.py);
+await sleep(100);
+check(await page.evaluate(() => window.__REPLAY__.detailCard.isOpen() === false), "滚动后点 × 仍可关闭");
 await page.evaluate(() => window.__REPLAY__.detailCard.hide());
 
 console.log("\n== 4. 逐步推进 + 移动落锚点 (M1) + walk 动画 (M3) ==");
