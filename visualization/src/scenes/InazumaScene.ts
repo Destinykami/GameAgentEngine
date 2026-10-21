@@ -6,6 +6,7 @@ import type { AgentSprite } from "../entities/AgentSprite";
 import { LOCATION_ANCHORS, anchorOf } from "../data/locationAnchors";
 import { buildArt } from "../art/ArtFactory";
 import { BUILDINGS } from "../art/buildings";
+import { FULLBODY_FILES, PORTRAIT_FILES, fullbodyUrl, portraitTextureKey, portraitUrl } from "../data/avatarAssets";
 import { TILEMAP_KEY } from "../art/townTiles";
 
 // 自行 fetch tilemap 为 HTMLImageElement (无头 WebGL 下 Phaser 纹理 source.data 可能为 null,
@@ -29,8 +30,17 @@ async function loadPortraits(): Promise<Map<string, HTMLImageElement>> {
   }));
   return out;
 }
+
+// 可选本地原神全身 Sprite 表 (480x64, 10 帧)。缺失时回退到原 16x16 原创角色。
+async function loadFullbody(): Promise<Map<string, HTMLImageElement>> {
+  const out = new Map<string, HTMLImageElement>();
+  if (!__OFFICIAL_FULLBODY__) return out;
+  await Promise.all(Object.entries(FULLBODY_FILES).map(async ([name, file]) => {
+    try { out.set(name, await loadImage(fullbodyUrl(file))); } catch { /* 单张缺失则回退 */ }
+  }));
+  return out;
+}
 import { defaultActivity, isInterrupted } from "../data/activityProjection";
-import { PORTRAIT_FILES, portraitTextureKey, portraitUrl } from "../data/avatarAssets";
 import { LiveSource, type LiveMeta } from "../data/liveSource";
 import { wrapText } from "../text/wrapText";
 import { StatusPanel } from "../ui/StatusPanel";
@@ -48,8 +58,10 @@ import type { AgentSnapshot, Timeline, TimelineStep } from "../data/schema";
 // create() 异步加载 timeline, 成功后建地图/实体/HUD/controller/M2 组件并显示第 0 步。
 // 消费 visual_events (结构化事实源): 地点变化 Tween 移动, 成功对话气泡, 成功攻击伤害,
 // 系统效果浮动提示, 世界事件横幅。只读, 不修改世界状态。
-// 同地点错开间距: 多个 NPC 在同一地点时左右站开 (16px 角色 + 余量), 避免人物重合。
-const AGENT_SPACING = 30;
+// 同地点错开间距: 全身 Sprite 更宽, 间距相应加大; 回退 16px 角色仍用 30。
+const AGENT_SPACING = __OFFICIAL_FULLBODY__ ? 48 : 30;
+// 全身 Sprite 更高, 地点标签上移, 避免被角色头部压住。
+const LOCATION_LABEL_LIFT = __OFFICIAL_FULLBODY__ ? 26 : 0;
 export class InazumaScene extends Phaser.Scene {
   private reg!: AgentRegistry;
   private panel!: StatusPanel;
@@ -100,19 +112,20 @@ export class InazumaScene extends Phaser.Scene {
     const isLive = params.has("live");
     const ttImgPromise = loadImage("assets/tiny-town-tilemap.png");   // tilemap 立即开始加载 (两种模式共用)
     const portraitPromise = loadPortraits();                          // 本地原神像素头像 (可选)
+    const fullbodyPromise = loadFullbody();                           // 本地原神像素全身 Sprite (可选)
     if (isLive) {
       // 直播模式 (?live): 轮询 live.jsonl 实时跟随运行中的模拟 (见 M5 扩展)。
       this.loadingText.setText("等待模拟开始… (直播模式, 轮询 live.jsonl)");
       this.live = new LiveSource("live.jsonl");
       this.showLiveBadge();
-      this.startLivePolling(ttImgPromise, portraitPromise);
+      this.startLivePolling(ttImgPromise, portraitPromise, fullbodyPromise);
       return;
     }
     // 默认回放 stub 时间线; ?timeline=<file> 可回放其它样本 (如 real_timeline.json 旧格式真实样本, M5)。
     const tlFile = params.get("timeline") ?? "stub_timeline.json";
     this.addLiveHint();   // 普通回放页常驻提示: 点它进直播模式 (?live), 实时看运行中的模拟
-    Promise.all([loadTimeline(tlFile), ttImgPromise, portraitPromise])
-      .then(([tl, ttImg, portraits]) => this.setup(tl, ttImg, portraits))
+    Promise.all([loadTimeline(tlFile), ttImgPromise, portraitPromise, fullbodyPromise])
+      .then(([tl, ttImg, portraits, fullbody]) => this.setup(tl, ttImg, portraits, fullbody))
       .catch((e: unknown) => {
         this.loadingText.setText("加载失败:\n" + String(e) +
           "\n\n请确认 public/stub_timeline.json 与 public/assets/tiny-town-tilemap.png 存在。");
@@ -134,7 +147,7 @@ export class InazumaScene extends Phaser.Scene {
   // 直播模式: 每 1s 轮询 live.jsonl。收到 meta + ≥1 步 → 建场景并跳到最新步跟随;
   // 之后每来新步 → addStep + 时间轴增刻度 + 跳到最新 (跟随); 收到 done → 停止轮询、
   // 隐藏 LIVE 标记, 时间线完整可往回拖 (切回普通回放)。
-  private startLivePolling(ttImgPromise: Promise<HTMLImageElement>, portraitPromise: Promise<Map<string, HTMLImageElement>>): void {
+  private startLivePolling(ttImgPromise: Promise<HTMLImageElement>, portraitPromise: Promise<Map<string, HTMLImageElement>>, fullbodyPromise: Promise<Map<string, HTMLImageElement>>): void {
     this.liveTimer = this.time.addEvent({
       delay: 1000, loop: true,
       callback: async () => {
@@ -145,8 +158,8 @@ export class InazumaScene extends Phaser.Scene {
         // 1) 首次收到 meta + ≥1 步 → 建场景。时间线用 buildLiveTimeline 拷贝 allSteps
         //    (已含本 poll 的 newSteps), 故本轮不再 addStep (setupThisPoll 防重复)。
         if (!this.liveSetupDone && meta && this.liveStepCount >= 1) {
-          const [ttImg, portraits] = await Promise.all([ttImgPromise, portraitPromise]);
-          this.setup(this.buildLiveTimeline(meta), ttImg, portraits);
+          const [ttImg, portraits, fullbody] = await Promise.all([ttImgPromise, portraitPromise, fullbodyPromise]);
+          this.setup(this.buildLiveTimeline(meta), ttImg, portraits, fullbody);
           this.liveSetupDone = true;
           setupThisPoll = true;
           this.controller.seek(this.controller.totalSteps - 1);   // 跳到最新步跟随
@@ -200,7 +213,7 @@ export class InazumaScene extends Phaser.Scene {
     this.liveBadge = null;
   }
 
-  private setup(tl: Timeline, ttImg: HTMLImageElement, portraits: Map<string, HTMLImageElement>): void {
+  private setup(tl: Timeline, ttImg: HTMLImageElement, portraits: Map<string, HTMLImageElement>, fullbody: Map<string, HTMLImageElement>): void {
     this.loadingText.destroy();
     const day0 = tl.steps[0].states;
 
@@ -214,7 +227,7 @@ export class InazumaScene extends Phaser.Scene {
 
     // M3 真实像素地图: 地面 (Ground) + 建筑 (Buildings) + 活动点/前景道具, 全部参与 y-sort。
     // 角色与建筑/道具同处一个深度空间, 按 y 排序 → 角色从屋顶/树后走过时正确遮挡 (计划 §M3)。
-    buildArt(this, ttImg);
+    buildArt(this, ttImg, fullbody);
     this.add.image(480, 270, "ground").setOrigin(0.5, 0.5).setDepth(0);
 
     // 建筑: 每地点一栋, 底边锚在地点锚点略后方, 角色站在建筑前。
@@ -229,7 +242,7 @@ export class InazumaScene extends Phaser.Scene {
         .setOrigin(0.5, 1).setDepth(Math.round(a.y - 8));
       img.alpha = 0.96;
       // 地点标签 (保留, 缩小放上方)
-      this.add.text(a.x, a.y - a.h / 2 - 14, a.label, {
+      this.add.text(a.x, a.y - a.h / 2 - 14 - LOCATION_LABEL_LIFT, a.label, {
         fontFamily: "monospace", fontSize: "11px", color: "#cfc6b8", stroke: "#000000", strokeThickness: 2,
       }).setOrigin(0.5, 1).setDepth(500);
     }
@@ -559,11 +572,11 @@ export class InazumaScene extends Phaser.Scene {
     const actor = this.reg.get(conv.actor);
     const target = conv.target ? this.reg.get(conv.target) : undefined;
     if (actor) {
-      this.actorBubble.setAnchor(actor.gameObject);
+      this.actorBubble.setAnchor(actor.gameObject, actor.charHeight);
       this.actorBubble.show(conv.utterance, conv.actor === "旅行者" ? "player" : "npc");
     }
     if (target && conv.reply) {
-      this.replyBubble.setAnchor(target.gameObject);
+      this.replyBubble.setAnchor(target.gameObject, target.charHeight);
       this.replyBubble.show(conv.reply, "npc");
     } else {
       this.replyBubble.hide();   // 无回复 → 清掉上一段旧回复, 防错配

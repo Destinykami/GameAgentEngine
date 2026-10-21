@@ -30,6 +30,7 @@ export class SpeechBubble {
   private tail!: Phaser.GameObjects.Rectangle;
   private text!: Phaser.GameObjects.Text;
   private anchor: Phaser.GameObjects.Container | null = null;   // 跟随的 sprite
+  private headOffset = 16;   // 锚点(脚底)到头顶距离
   private visible = false;
   private dx = 0;   // 相对锚点的水平偏移 (对话双方同地点时左右错开)
   private dy = 0;   // 相对锚点的垂直偏移
@@ -57,8 +58,9 @@ export class SpeechBubble {
   }
 
   // 锚定到某个 sprite (气泡随其移动), null 表示固定世界坐标。
-  setAnchor(sprite: Phaser.GameObjects.Container | null): void {
+  setAnchor(sprite: Phaser.GameObjects.Container | null, headOffset = 16): void {
     this.anchor = sprite;
+    this.headOffset = headOffset;
   }
 
   // 相对锚点的偏移 (对话双方同地点时左右错开气泡)。
@@ -115,7 +117,8 @@ export class SpeechBubble {
     const yMin = TOP_SAFE + hh, yMax = sh - MARGIN - hh;
     const clampX = (v: number): number => Math.max(xMin, Math.min(xMax, v));
     const clampY = (v: number): number => Math.max(yMin, Math.min(yMax, v));
-    const aboveY = this.anchor.y - 16 - hh - 6 + this.dy;
+    const headY = this.anchor.y - this.headOffset;
+    const aboveY = headY - hh - 6 + this.dy;
     const belowY = this.anchor.y + 26 + hh + this.dy;   // 26px 让开脚下的名字牌
     // 上方/下方都得真的放在角色之外: 若上方被顶部栏压到 yMin (等于贴在角色身上),
     // 不应因为"零 HUD 重叠"就选中它。上方放不下就翻到下方, 反之亦然。
@@ -163,7 +166,7 @@ export class SpeechBubble {
     } else {
       const halfH = hh + TAIL;
       x = this.anchor.x + this.dx;
-      y = this.anchor.y - 16 - halfH - 6 + this.dy;
+      y = this.anchor.y - this.headOffset - halfH - 6 + this.dy;
     }
     x = Math.max(hw + 4, Math.min(this.scene.scale.width - hw - 4, x));
     y = Math.max(hh + 4, Math.min(this.scene.scale.height - hh - 4, y));

@@ -18,3 +18,17 @@ export function portraitTextureKey(name: string): string {
 export function portraitUrl(file: string): string {
   return `assets/portraits/${file}.png`;
 }
+
+// 全身 Sprite: 6 张 10 帧表 (480x64, 每帧 48x64)。同样仅本地、gitignored。
+export const FULLBODY_FILES: Record<string, string> = {
+  旅行者: "PlayerBoy",
+  桃音: "Kokomi",
+  刚郎: "Itto",
+  小梅: "Sayu",
+  执行官: "Wanderer",
+  雷电将军: "Shougun",
+};
+
+export function fullbodyUrl(file: string): string {
+  return `assets/fullbody/${file}.png`;
+}

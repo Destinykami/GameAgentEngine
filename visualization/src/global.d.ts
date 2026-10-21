@@ -4,3 +4,4 @@
 
 // Vite define: 本地原神像素头像 6 张是否齐全 (vite.config.ts 构建期检测)。
 declare const __OFFICIAL_PORTRAITS__: boolean;
+declare const __OFFICIAL_FULLBODY__: boolean;

@@ -61,7 +61,56 @@ function drawTiledTile(ctx: CanvasRenderingContext2D, img: CanvasImageSource, ti
 
 // ttImg: Kenney Tiny Town tilemap 的 HTMLImageElement (场景自行 fetch, 不依赖 Phaser 纹理解码——
 // 无头 WebGL 下纹理 source.data 可能为 null)。
-export function buildArt(scene: Phaser.Scene, ttImg: HTMLImageElement): void {
+const FB_FRAME_NAMES = ["idleA", "idleB", "walk1", "walk2",
+  "hammerA", "hammerB", "healA", "healB", "readA", "readB"] as const;
+
+// 本地原神全身 Sprite 表: 480x64, 10 帧横向排列。生成纹理 + idle/walk/活动动画。
+function buildFullbodyChar(scene: Phaser.Scene, cn: string, sheet: HTMLImageElement): void {
+  const fw = Math.floor(sheet.width / FB_FRAME_NAMES.length);
+  const fh = sheet.height;
+  FB_FRAME_NAMES.forEach((name, i) => {
+    const key = i < 4 ? `char_${cn}_${name}` : `act_${cn}_${name}`;
+    makeTexture(scene, key, fw, fh, (ctx) => {
+      ctx.drawImage(sheet, i * fw, 0, fw, fh, 0, 0, fw, fh);
+    });
+  });
+  const anim = (key: string, frames: string[], frameRate: number): void => {
+    if (scene.anims.exists(key)) scene.anims.remove(key);
+    scene.anims.create({ key, frames: frames.map((k) => ({ key: k })), frameRate, repeat: -1 });
+  };
+  anim(`idle_${cn}`, [`char_${cn}_idleA`, `char_${cn}_idleB`], 2);
+  anim(`walk_${cn}`, [`char_${cn}_walk1`, `char_${cn}_walk2`], 8);
+  for (const ak of ["hammer", "heal", "read"]) {
+    const rate = ak === "hammer" ? 6 : ak === "heal" ? 3 : 2;
+    anim(`${ak}_${cn}`, [`act_${cn}_${ak}A`, `act_${cn}_${ak}B`], rate);
+  }
+}
+
+// 回退: 原 16x16 手绘原创角色 (无本地原神素材时)
+function buildHandChar(scene: Phaser.Scene, cn: string): void {
+  const frames = framesFor(cn);
+  const bc = bodyColorOf(cn);
+  for (const f of ["idleA", "idleB", "walk1", "walk2"] as const) {
+    makeTexture(scene, `char_${cn}_${f}`, 16, 16, (ctx) => drawGrid(ctx, frames[f], 0, 0, bc));
+  }
+  if (!scene.anims.exists(`idle_${cn}`)) {
+    scene.anims.create({ key: `idle_${cn}`, frames: [{ key: `char_${cn}_idleA` }, { key: `char_${cn}_idleB` }], frameRate: 2, repeat: -1 });
+  }
+  if (!scene.anims.exists(`walk_${cn}`)) {
+    scene.anims.create({ key: `walk_${cn}`, frames: [{ key: `char_${cn}_walk1` }, { key: `char_${cn}_walk2` }], frameRate: 8, repeat: -1 });
+  }
+  for (const [ak, [fa, fb]] of Object.entries(ACTIVITY_FRAMES)) {
+    makeTexture(scene, `act_${cn}_${ak}A`, 16, 16, (ctx) => drawGrid(ctx, sub(fa), 0, 0, bc));
+    makeTexture(scene, `act_${cn}_${ak}B`, 16, 16, (ctx) => drawGrid(ctx, sub(fb), 0, 0, bc));
+    const key = `${ak}_${cn}`;
+    if (!scene.anims.exists(key)) {
+      const rate = ak === "hammer" ? 6 : ak === "heal" ? 3 : 2;
+      scene.anims.create({ key, frames: [{ key: `act_${cn}_${ak}A` }, { key: `act_${cn}_${ak}B` }], frameRate: rate, repeat: -1 });
+    }
+  }
+}
+
+export function buildArt(scene: Phaser.Scene, ttImg: HTMLImageElement, fullbody?: Map<string, HTMLImageElement>): void {
   // 1. 地面 (真实 tile)
   const grid = buildGroundGrid();
   makeTexture(scene, "ground", MAP_COLS * TILE_PX, MAP_ROWS * TILE_PX, (ctx) => {
@@ -99,27 +148,11 @@ export function buildArt(scene: Phaser.Scene, ttImg: HTMLImageElement): void {
     makeTexture(scene, `prop_${name}`, w, h, (ctx) => drawGrid(ctx, g, 0, 0));
   }
 
-  // 5. 角色帧 + 6. 动画 (idle/walk/活动循环) — 手绘原创, 不变
+  // 5. 角色帧 + 6. 动画 (idle/walk/活动循环)
+  // 优先用本地原神全身 Sprite 表; 没有则回退到原 16x16 手绘原创角色。
   for (const cn of Object.keys(CHAR_BODY_COLOR)) {
-    const frames = framesFor(cn);
-    const bc = bodyColorOf(cn);
-    for (const f of ["idleA", "idleB", "walk1", "walk2"] as const) {
-      makeTexture(scene, `char_${cn}_${f}`, 16, 16, (ctx) => drawGrid(ctx, frames[f], 0, 0, bc));
-    }
-    if (!scene.anims.exists(`idle_${cn}`)) {
-      scene.anims.create({ key: `idle_${cn}`, frames: [{ key: `char_${cn}_idleA` }, { key: `char_${cn}_idleB` }], frameRate: 2, repeat: -1 });
-    }
-    if (!scene.anims.exists(`walk_${cn}`)) {
-      scene.anims.create({ key: `walk_${cn}`, frames: [{ key: `char_${cn}_walk1` }, { key: `char_${cn}_walk2` }], frameRate: 8, repeat: -1 });
-    }
-    for (const [ak, [fa, fb]] of Object.entries(ACTIVITY_FRAMES)) {
-      makeTexture(scene, `act_${cn}_${ak}A`, 16, 16, (ctx) => drawGrid(ctx, sub(fa), 0, 0, bc));
-      makeTexture(scene, `act_${cn}_${ak}B`, 16, 16, (ctx) => drawGrid(ctx, sub(fb), 0, 0, bc));
-      const key = `${ak}_${cn}`;
-      if (!scene.anims.exists(key)) {
-        const rate = ak === "hammer" ? 6 : ak === "heal" ? 3 : 2;
-        scene.anims.create({ key, frames: [{ key: `act_${cn}_${ak}A` }, { key: `act_${cn}_${ak}B` }], frameRate: rate, repeat: -1 });
-      }
-    }
+    const sheet = fullbody?.get(cn);
+    if (sheet) buildFullbodyChar(scene, cn, sheet);
+    else buildHandChar(scene, cn);
   }
 }

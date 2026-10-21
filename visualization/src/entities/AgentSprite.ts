@@ -14,7 +14,6 @@ export const SPRITE_COLORS: Record<string, number> = {
   执行官:   0xe57373,
   雷电将军: 0xba68c8,
 };
-const BODY_W = 18;   // 血条宽 (略宽于 16px 角色)
 
 export class AgentSprite {
   private scene: Phaser.Scene;
@@ -24,6 +23,9 @@ export class AgentSprite {
   private label: Phaser.GameObjects.Text;
   private deadOverlay: Phaser.GameObjects.Text;
   private maxHealth: number;
+  private barW: number;
+  private barTotal: number;
+  private barY: number;
   private activeTween: Phaser.Tweens.Tween | null = null;
   private name0: string;
   private activity: string | null = null;   // 当前活动动画 key (Phase 3 视觉活动投影)
@@ -39,12 +41,17 @@ export class AgentSprite {
     this.char = scene.add.sprite(0, 0, `char_${name}_idleA`).setOrigin(0.5, 1);
     this.char.play(`idle_${name}`);
 
-    const hpBar = scene.add.rectangle(0, -20, BODY_W + 6, 4, 0x222228);
-    this.hpFill = scene.add.rectangle(-(BODY_W + 6) / 2, -20, BODY_W + 6, 4, 0x66bb6a).setOrigin(0, 0.5);
+    // 血条/点击区随角色纹理尺寸自适应 (16px 回退角色 或 48x64 全身 Sprite)。
+    const cw = this.char.width, ch = this.char.height;
+    this.barW = Math.max(20, Math.round(cw * 0.7));
+    this.barTotal = this.barW + 6;
+    this.barY = -ch - 8;
+    const hpBar = scene.add.rectangle(0, this.barY, this.barTotal, 4, 0x222228);
+    this.hpFill = scene.add.rectangle(-this.barTotal / 2, this.barY, this.barTotal, 4, 0x66bb6a).setOrigin(0, 0.5);
     this.label = scene.add.text(0, 8, name, {
       fontFamily: "monospace", fontSize: "12px", color: "#e8e6e3", align: "center",
     }).setOrigin(0.5, 0);
-    this.deadOverlay = scene.add.text(0, -8, "✝", {
+    this.deadOverlay = scene.add.text(0, -Math.round(ch * 0.5), "✝", {
       fontFamily: "monospace", fontSize: "18px", color: "#ff5252",
     }).setOrigin(0.5, 0.5).setVisible(false);
 
@@ -55,6 +62,7 @@ export class AgentSprite {
   }
 
   get name(): string { return this.name0; }
+  get charHeight(): number { return this.char.height; }
   get x(): number { return this.container.x; }
   get y(): number { return this.container.y; }
   get gameObject(): Phaser.GameObjects.Container { return this.container; }
@@ -81,7 +89,8 @@ export class AgentSprite {
   }
 
   onClick(cb: () => void): void {
-    const hit = new Phaser.Geom.Rectangle(-10, -22, 20, 30);
+    const cw = this.char.width, ch = this.char.height;
+    const hit = new Phaser.Geom.Rectangle(-cw / 2 - 4, -ch - 4, cw + 8, ch + 8);
     this.container.setInteractive({
       hitArea: hit,
       hitAreaCallback: (p: { x: number; y: number }) => hit.contains(p.x, p.y),
@@ -137,9 +146,9 @@ export class AgentSprite {
 
   setHealth(hp: number): void {
     const frac = this.maxHealth > 0 ? Math.max(0, Math.min(1, hp / this.maxHealth)) : 0;
-    const w = Math.round((BODY_W + 6) * frac);
+    const w = Math.round(this.barTotal * frac);
     this.hpFill.setSize(Math.max(0, w), 4);
-    this.hpFill.setPosition(-(BODY_W + 6) / 2, -20);
+    this.hpFill.setPosition(-this.barTotal / 2, this.barY);
   }
 
   setDead(dead: boolean): void {

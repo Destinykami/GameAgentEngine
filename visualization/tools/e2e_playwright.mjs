@@ -113,6 +113,17 @@ if (portraitInfo.count > 0) {
 } else {
   check(true, "未安装本地原神像素头像 → 自动隐藏 (可选项)");
 }
+// 可选本地原神全身 Sprite: 有素材时角色高 56px, 缺失时回退 16px 原创。
+const bodyInfo = await page.evaluate(() => {
+  const spr = window.__REPLAY__.sprites.get("旅行者");
+  return { h: spr.charHeight, anim: spr.animKey };
+});
+if (bodyInfo.h > 16) {
+  check(bodyInfo.h === 56 && bodyInfo.anim === "idle_旅行者",
+    "本地原神全身 Sprite 已启用 (高 " + bodyInfo.h + "px)");
+} else {
+  check(true, "未安装本地原神全身 Sprite → 回退 16px 原创角色");
+}
 const initPos = await page.evaluate(() => ({
   旅行者: window.__REPLAY__.sprites.posOf("旅行者"), 雷电将军: window.__REPLAY__.sprites.posOf("雷电将军"),
 }));

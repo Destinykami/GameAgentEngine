@@ -9,6 +9,8 @@ syslibs/
 e2e_shots/
 *.deb
 
-# 原神官方角色头像 (仅个人本地学习用; © HoYoverse/miHoYo, 不随仓库分发)
+# 原神官方角色头像/全身立绘及像素化衍生图 (仅个人本地学习用; © HoYoverse/miHoYo, 不随仓库分发)
 public/assets/portraits/
 public/assets/portraits-src/
+public/assets/fullbody/
+public/assets/fullbody-src/
