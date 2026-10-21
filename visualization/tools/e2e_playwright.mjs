@@ -180,7 +180,11 @@ await page.evaluate(() => window.__REPLAY__.controller.next());
 await sleep(120);   // 移动途中 (Tween 600ms), 应播 walk 动画
 const walkAnim = await page.evaluate(() => window.__REPLAY__.sprites.animKeyOf("旅行者"));
 check(walkAnim === "walk_旅行者", "移动途中播 walk 动画 (实际 " + walkAnim + ")");
-await sleep(800);   // 等移动完成
+// 等移动 Tween 完成回 idle (轮询, 不固定 sleep; 无头环境下固定 800ms 偶发不够)
+await page.waitForFunction(
+  () => window.__REPLAY__.sprites.animKeyOf("旅行者") === "idle_旅行者",
+  { timeout: 3000 },
+).catch(() => {});
 const after = await page.evaluate(() => ({
   index: window.__REPLAY__.controller.currentIndex,
   旅行者: window.__REPLAY__.sprites.posOf("旅行者"),
@@ -467,8 +471,15 @@ const auditFix = await page2.evaluate(async () => {
   const A = convIdx[0], B = convIdx[convIdx.length - 1];
   rep.controller.seek(A); await sleep2(160);
   const txtA = s.actorBubble.bubbleText();
-  rep.controller.seek(B); await sleep2(300);   // 等淡入 (140ms) 结束
+  rep.controller.seek(B);
   const root = s.actorBubble.root;
+  // 等淡入完成 (轮询, 不固定 300ms; 无头环境负载高时 140ms tween 可能延后),
+  // 再等 200ms 确认新气泡没有被旧淡出回调关掉。
+  for (let i = 0; i < 40; i++) {
+    if (root.visible && root.alpha > 0.9) break;
+    await sleep2(50);
+  }
+  await sleep2(200);
   out.f2 = { txtB: s.actorBubble.bubbleText(), rootVisible: root.visible, rootAlpha: root.alpha,
              ok: txtA !== s.actorBubble.bubbleText() && root.visible === true && root.alpha > 0.9 };
   // #5 重播立即显示第 0 步: 末步 → play(), 面板须立即显示第 0 天。
