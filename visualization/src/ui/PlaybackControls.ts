@@ -22,19 +22,21 @@ export class PlaybackControls {
     this.controller = controller;
     const style = { fontFamily: "monospace", fontSize: "16px", color: "#e8e6e3" };
     // 按钮只画视觉 (底 + 文本), 命中区存入 this.buttons 供场景级 handleClick 用。
-    const btn = (label: string, dx: number, cb: () => void) => {
+    // 图标只用 ASCII / 常见字形: ⏮/⏭/⏸ 在回退的 monospace 字体里缺字形, 会渲染成豆腐块。
+    const btn = (label: string, dx: number, cb: () => void, size = 14) => {
       scene.add.rectangle(x + dx, y, BTN_W, BTN_H, 0x232329).setStrokeStyle(1, 0x4a4a5a).setDepth(1000);
-      const t = scene.add.text(x + dx, y, label, { ...style }).setOrigin(0.5).setDepth(1001);
+      const t = scene.add.text(x + dx, y, label, { ...style, fontSize: `${size}px` })
+        .setOrigin(0.5).setDepth(1001);
       this.buttons.push({ cx: x + dx, cy: y, cb });
       return t;
     };
-    btn("⏮", -150, () => controller.prev());
-    this.playBtn = btn("▶", -75, () => controller.toggle());
-    btn("⏭", 0, () => controller.next());
-    btn("−", 70, () => controller.setSpeed(controller.currentSpeed - 0.25));
+    btn("|<", -150, () => controller.prev(), 12);
+    this.playBtn = btn("▶", -75, () => controller.toggle(), 15);
+    btn(">|", 0, () => controller.next(), 12);
+    btn("-", 70, () => controller.setSpeed(controller.currentSpeed - 0.25), 15);
     this.speedLabel = scene.add.text(x + 100, y, "1.00x", { ...style, fontSize: "13px", color: "#d9a441" })
       .setOrigin(0.5).setDepth(1001);
-    btn("+", 130, () => controller.setSpeed(controller.currentSpeed + 0.25));
+    btn("+", 130, () => controller.setSpeed(controller.currentSpeed + 0.25), 15);
     this.progress = scene.add.text(x + 200, y, "", { ...style, fontSize: "13px", color: "#9a9aa2" })
       .setOrigin(0, 0.5).setDepth(1001);
 
@@ -56,7 +58,7 @@ export class PlaybackControls {
 
   private refresh(): void {
     const c = this.controller;
-    this.playBtn.setText(c.isPlaying ? "⏸" : "▶");
+    this.playBtn.setText(c.isPlaying ? "||" : "▶");
     this.speedLabel.setText(c.currentSpeed.toFixed(2) + "x");
     this.progress.setText(`步 ${c.currentIndex + 1}/${c.totalSteps}`);
   }
