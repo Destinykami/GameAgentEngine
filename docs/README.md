@@ -23,7 +23,7 @@
 | [NPC 认知编排边界](modules/npc-runtime.md) | 已封装，247 个离线测试通过 | `src/game_agent/cognition/npc.py` |
 | [空间感知与距离调度](modules/perception.md) | 已实现，247 个离线测试通过 | `src/game_agent/world/perception.py` |
 | [包入口与依赖加载](modules/package-api.md) | 已实现，251 个离线测试通过 | `src/game_agent/__init__.py` |
-| [决策与关系记忆边界](modules/decision.md) | 已实现，255 个离线测试通过 | `src/game_agent/cognition/autonomous.py` / `src/game_agent/cognition/reacting.py` |
+| [决策与关系记忆边界](modules/decision.md) | 自治边界已实现，255 个离线测试通过；事件反应另见专项蓝图 | `src/game_agent/cognition/autonomous.py` / `src/game_agent/cognition/reacting/` |
 | [场景效果与行为链](modules/world-extensions.md) | 已实现，256 个离线测试通过 | `src/game_agent/world/extensions.py` |
 | [社交观察与传闻路由](modules/social.md) | 已实现，257 个离线测试通过 | `src/game_agent/world/social.py` / `src/game_agent/world/social_contracts.py` |
 | [动作执行](modules/actions.md) | 已实现，258 个离线测试通过 | `src/game_agent/world/actions.py` |
@@ -31,9 +31,10 @@
 | [反思模块](modules/reflection.md) | 已拆分，291 个离线测试通过 | `src/game_agent/cognition/reflection/` |
 | [规划模块](modules/planning.md) | 已拆分，303 个离线测试通过 | `src/game_agent/cognition/planning/` |
 | [对话模块](modules/dialogue.md) | 已拆分，315 个离线测试通过 | `src/game_agent/cognition/dialogue/` |
+| [事件反应与关系信任](modules/reaction.md) | 已拆分，332 个离线测试通过 | `src/game_agent/cognition/reacting/` |
 | [源码布局](source-layout.md) | 已迁移并移除旧包兼容层，280 个离线测试通过 | `src/game_agent/`、`pyproject.toml` |
 
-当前累计验证：315 个离线测试通过。对话模块的 32 个单轮检查点、60 个 NPC 检查点、11 组轮流场景及 16 步时间线与重构前相同。规划、反思及此前源码布局、记忆拆分的验证记录保留在相应蓝图中。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
+当前累计验证：332 个离线测试通过。事件反应与关系信任的 224 个直接决策检查点、5 个 LRU 检查点、72 个 NPC 检查点及 16 步时间线与重构前相同。此前模块的验证记录保留在相应蓝图中。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
 
 ## 当前范围与验证约束
 

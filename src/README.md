@@ -17,3 +17,5 @@
 `game_agent/cognition/planning/` 内按生成编排（`engine.py`）、时间规则（`rules.py`）、规划记忆（`memory.py`）、计划状态（`state.py`）与窄接口（`contracts.py`）组织；NPC 通过 `PlanState` 管理当前计划，公共引擎入口保持 `from game_agent.cognition.planning import PlanningEngine`。
 
 `game_agent/cognition/dialogue/` 内按单轮生成（`engine.py`）、上下文准备（`context.py`）、双人轮流（`exchange.py`）与窄接口（`contracts.py`）组织，公共入口保持 `from game_agent.cognition.dialogue import DialogueManager`；对话观察写入仍由 NPC / World 负责。
+
+`game_agent/cognition/reacting/` 内按反应编排（`engine.py`）、评分与 LRU（`scoring.py`）、关系信任（`trust.py`）、纯效用及返回数据（`policy.py`）与窄接口（`contracts.py`）组织，公共入口保持 `from game_agent.cognition.reacting import ReactionDecider, ReactionDecision`。

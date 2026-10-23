@@ -28,7 +28,7 @@ NPC 对玩家 p 的面 (每玩家独立成流, 动态)
 | Memory Stream + Retrieval | `src/game_agent/memory/store.py` | 每条记忆带 `player_id`; 检索三维评分 (recency/importance/relevance) 之外, 对当前玩家记忆加权 |
 | Reflection | `src/game_agent/cognition/reflection/` | 自我、关系与身份反思；生成编排、证据写入和冲突处理分开，设计见 [反思蓝图](docs/modules/reflection.md) |
 | Planning | `src/game_agent/cognition/planning/` | 日计划及一次子任务分解、反应后重规划；时间规则、计划记忆与当前状态分开，见 [规划蓝图](docs/modules/planning.md) |
-| Reacting | `src/game_agent/cognition/reacting.py` | 效用函数 `U=w_s·V_s+w_g·V_g−C_int`, 事件价值与关系信任度均由 LLM 判断 (签名缓存), 人格权重 + 信任调制 |
+| Reacting | `src/game_agent/cognition/reacting/` | 评分、关系信任、纯效用策略和缓存职责分开，保留人格权重与信任调制，见 [事件反应蓝图](docs/modules/reaction.md) |
 | Dialogue | `src/game_agent/cognition/dialogue/` | 检索“当前对话者的面 + 共享流”；上下文、生成与轮流发言分开，见 [对话蓝图](docs/modules/dialogue.md) |
 | 成本闸门 (blog 问题一) | `src/game_agent/cognition/npc.py` | 分级认知 (full/compressed/idle) + 决策缓存 |
 | 记忆卫生链 | `src/game_agent/memory/store.py` / `src/game_agent/cognition/reflection/` | 观察去重、级联切断、语义去重、LLM 冲突失效、降权遗忘、夜间情节固化 (episode) |
@@ -283,7 +283,7 @@ w.npc("桃音").trust_toward("旅行者")  # 千人千面
 `src/game_agent/evaluation/probes.py` 把"它真的千人千面了吗"变成对真实 LLM 的集成回归。每个探针混合
 **确定性架构断言** (信任度差异、特质稳定, 不依赖 LLM 措辞) 与 **宽松真实 LLM
 断言** (对话不同、非全知不编造、计划目标导向, 对措辞鲁棒)。需 LLM 可达,
-不可达时 `pytest` 自动 skip。当前 **315 个离线测试已通过**；以下 6 个探针保留，因真实 API 不可达，本轮未执行：
+不可达时 `pytest` 自动 skip。当前 **332 个离线测试已通过**；以下 6 个探针保留，因真实 API 不可达，本轮未执行：
 
 1. **一致性探针** — 对两个玩家信任度不同, 且同一问话回答不同。
 2. **非全知探针** — 没观察过的玩家, 不应自信编造其背叛。判定用 **LLM 裁判**

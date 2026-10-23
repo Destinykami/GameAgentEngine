@@ -20,13 +20,15 @@ from tests.test_persistence import _StubLLM, TRAITS
 def test_npc_decision_cache_is_bounded_and_clears_decider():
     npc = NPC("T", dict(TRAITS), llm=_StubLLM(), embedder=HashEmbedder())
     npc.set_tier("full")
+    npc.observe("P 帮我修好了咖啡机", 0.0, player_id="P")
     for i in range(NPC_CACHE_LIMIT + 50):
         npc.react(f"event unique{i} alpha{i}", "P", float(i))
     assert len(npc._cache) <= NPC_CACHE_LIMIT
-    assert len(npc.decider._value_cache) <= EVENT_VALUE_CACHE_LIMIT
+    assert npc.decider.cache_sizes()["events"] <= EVENT_VALUE_CACHE_LIMIT
+    assert npc.decider.cache_sizes()["trust"] == 1
     npc.clear_cache()
     assert npc._cache == {}
-    assert npc.decider._value_cache == {}
+    assert npc.decider.cache_sizes() == {"events": 0, "trust": 0}
 
 
 def test_save_filters_phantom_and_cross_stream_evidence():

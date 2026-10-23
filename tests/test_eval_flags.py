@@ -316,5 +316,5 @@ def test_npc_defaults_preserve_current_behavior():
     assert npc.reflection.conflict_policy == "full"
     assert npc.reflection.evidence_types == ("observation",)
     assert npc.reflection.evidence_min_relevance == 0.0
-    assert npc.decider._use_relationship is True
+    assert npc.decider.use_relationship is True
     assert (npc.planner.daily_plan_count, npc.planner.replan_count) == (0, 0)

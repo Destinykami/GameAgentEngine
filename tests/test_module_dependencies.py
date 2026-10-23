@@ -22,6 +22,9 @@ import pytest
     "cognition.dialogue", "cognition.dialogue.engine",
     "cognition.dialogue.context", "cognition.dialogue.contracts",
     "cognition.dialogue.exchange",
+    "cognition.reacting", "cognition.reacting.engine",
+    "cognition.reacting.trust", "cognition.reacting.scoring",
+    "cognition.reacting.policy", "cognition.reacting.contracts",
 ])
 def test_foundation_import_does_not_load_runtime_or_model_adapters(module):
     code = f'''
