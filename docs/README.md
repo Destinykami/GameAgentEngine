@@ -23,8 +23,9 @@
 | [空间感知与距离调度](modules/perception.md) | 已实现，247 个离线测试通过 | `persona_agent/perception.py` |
 | [包入口与依赖加载](modules/package-api.md) | 已实现，251 个离线测试通过 | `persona_agent/__init__.py` |
 | [决策与关系记忆边界](modules/decision.md) | 已实现，255 个离线测试通过 | `autonomous.py` / `reacting.py` |
+| [场景效果与行为链](modules/world-extensions.md) | 已实现，256 个离线测试通过 | `world_extensions.py` |
 
-当前累计验证：255 个离线测试通过，16 步确定性时间线与迁移前一致。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
+当前累计验证：256 个离线测试通过，16 步确定性时间线与迁移前一致。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
 
 ## 当前范围与验证约束
 

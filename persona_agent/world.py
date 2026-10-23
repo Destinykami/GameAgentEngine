@@ -14,6 +14,7 @@ from .autonomous import (AutonomousDecider, DecisionContext,
 from .events import VisualEvent
 from .perception import PresenceTracker, cognitive_tier, visible_entities
 from .world_store import WorldStore
+from .world_extensions import WorldExtensions
 from .world_model import Location, Entity, Player, distance, location_distance
 from .memory import HEARSAY_MAX_HOP   # 传闻链上限 (S4); memory 不依赖 world, 无循环
 
@@ -77,8 +78,7 @@ class World:
         # 同型动作达阈值触发世界事件 (链断重置), 与 add_action_effect 同族:
         # 引擎只计数分派, 规则语义由世界层注册, 缺省无规则 = 现行为。
         self._rumor_spread = rumor_spread
-        self._chain_rules: dict[str, tuple[int, str]] = {}
-        self._chain_counters: dict[str, dict[tuple[str, str], int]] = {}
+        self._extensions = WorldExtensions()
         # M1 记忆固化 (缺省关): 每晚 consolidate_hour 把当天观察压缩成 episode。
         # M3 身份信念注入 (缺省关): 开启后 decide_agent 把身份信念拼进感知上下文。
         self._consolidation = consolidation
@@ -106,7 +106,6 @@ class World:
         # 引擎只负责动作空间+物理规则 (移动/伤害/历史/视觉事件), "这个动作在本世界
         # 还引发什么" (理由生成/锻刀/世界事件等具体世界行为) 全部由世界层经此注入,
         # 引擎不硬编码任何具体世界的行为。默认空 = 纯物理引擎, 行为不变。
-        self.action_effects: dict[str, list] = {}
         if path is not None:
             self._open(path)
 
@@ -327,6 +326,15 @@ class World:
             norm["utterance"] = str(utterance)
         return norm
 
+    @property
+    def action_effects(self) -> dict[str, list]:
+        """兼容原公开效果映射；状态由扩展注册器持有。"""
+        return self._extensions.action_effects
+
+    @action_effects.setter
+    def action_effects(self, effects: dict[str, list]) -> None:
+        self._extensions.action_effects = effects
+
     def add_action_effect(self, action: str, fn) -> None:
         """注册世界层动作效果钩子 (引擎与世界行为解耦的扩展点)。
 
@@ -336,13 +344,12 @@ class World:
         什么具体效果" (理由生成/锻刀/目击/世界事件) 留给世界层决定 —— 引擎不硬编码
         任何具体世界的行为。target 对 move/flee/wait 等无目标动作为 None。
         """
-        self.action_effects.setdefault(action, []).append(fn)
+        self._extensions.add_action_effect(action, fn)
 
     def _run_effects(self, action: str, agent: Entity, target: "Entity | None",
                      action_dict: dict, ve: VisualEvent) -> None:
         """依次执行本动作注册的所有世界层效果钩子 (无注册则什么都不做)。"""
-        for eff in self.action_effects.get(action, []):
-            eff(self, agent, target, action_dict, ve)
+        self._extensions.run_effects(self, action, agent, target, action_dict, ve)
 
     # ----------------------------------------------------- S5 内生事件 (行为链)
     def add_chain_rule(self, action: str, threshold: int, description: str) -> None:
@@ -353,7 +360,7 @@ class World:
         与 add_action_effect 同族: 引擎只计数与分派, "什么算链、触发什么事件"
         的语义由世界层注册 (如"搜查连空三次→署内问责")。缺省无规则 = 现行为。
         """
-        self._chain_rules[action] = (threshold, description)
+        self._extensions.add_chain_rule(action, threshold, description)
 
     def _chain_update(self, agent: Entity, action: str, target: Entity) -> None:
         """带目标动作执行后更新行为链计数; 达阈触发世界事件。
@@ -362,20 +369,8 @@ class World:
         该动作类型没有注册规则, 如 talk) 都会打断其余链。先无条件清掉非本键的
         计数, 再看本键有没有规则: 无规则的动作只断链不累积。
         """
-        key = (action, target.name)
-        counters = self._chain_counters.get(agent.name)
-        if counters:
-            for other in [k for k in counters if k != key]:
-                del counters[other]   # 断链
-        rule = self._chain_rules.get(action)
-        if rule is None:
-            return   # 无规则: 只断链, 不累积
-        threshold, description = rule
-        if counters is None:
-            counters = self._chain_counters[agent.name] = {}
-        counters[key] = counters.get(key, 0) + 1
-        if counters[key] >= threshold:
-            counters[key] = 0     # 触发后清零, 下一轮链重新累积
+        description = self._extensions.record_action(agent.name, action, target.name)
+        if description is not None:
             self.world_event(description, self.clock, at=agent.location.name)
 
     def _within_reach(self, agent: Entity, target: Entity | None) -> bool:
