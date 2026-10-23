@@ -17,6 +17,7 @@
 | 模块蓝图 | 状态 | 实现入口 |
 |---|---|---|
 | [世界实体与空间模型](modules/world-model.md) | 已实现，246 个离线测试通过 | `persona_agent/world_model.py` |
+| [结构化事件契约](modules/events.md) | 已实现，246 个离线测试通过 | `persona_agent/events.py` |
 
 ## 当前范围与验证约束
 
