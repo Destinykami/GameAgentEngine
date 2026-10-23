@@ -26,79 +26,18 @@ importance/10 (不归一化)。这是有意取舍: importance 是 1-10 的绝对
 
 from __future__ import annotations
 
-import json
-import sqlite3
-import threading
-from dataclasses import dataclass, field, asdict
 from typing import Any, Iterable, Sequence
 
 from .embeddings import Embedder, cosine_similarity
-
-RECENCY_DECAY = 0.995
-ALPHA_RECENCY = 1.0
-ALPHA_IMPORTANCE = 1.0
-ALPHA_RELEVANCE = 1.0
-
-# 观察层去重: 同玩家的近义观察 (>= 阈值) 合并而非重复入库。
-# 观察比反思更公式化、近义重复更多。反思去重 (E6) 从 0.95 降到 0.92 后,
-# 两层阈值对齐到 0.92 —— 观察层本就取这个值, 保持一致。
-OBS_DEDUP_THRESHOLD = 0.92
-
-# 合并强化限速 (F2-1): 同一条观察反复"发生"时, importance 每受一次 merge 就
-# +1 会把在场观察顶满 10 (世界层每步 perceive 都会 merge 一次)。重复仍是
-# 记忆强化, 但 importance 强化按游戏时间窗限速: 只有距上次强化 >= 6h 才 +1,
-# 其他 merge 只刷新 last_accessed (recency 语义不变)。
-MERGE_REINFORCE_INTERVAL = 6.0
-
-# 遗忘 = 部分衰减降权 (不直接删除): importance *= 0.5 ** (age / half_life),
-# 渐近降到 MIN_IMPORTANCE 为止, 记忆**保留**(valid 恒为 1), 只是 importance
-# 被调低。检索的 importance 维用 importance/10, 所以老记忆自然跌出前排,
-# 但仍在库里 —— 被回忆(last_accessed 刷新)或 merge 时又能升回来。
-# - age: 距 max(timestamp, last_accessed) 的小时数 —— 被回忆过的记忆衰减更慢
-# - 半衰期: 原始观察最先淡去, 反思(高阶认知)留存最久, 计划隔夜即过期
-# - FORGET_FLOOR 是强度(0-1)下限; MIN_IMPORTANCE = FORGET_FLOOR*10 是
-#   对应的 importance(0-10)下限 —— 降权到此为止, 不再删。
-# 传闻折扣 (S4): 传闻记忆的检索分数按传播跳数打折 (每跳 ×0.8) —— 谣言不是亲见,
-# 离源头越远, 检索排名越低。非传闻记忆 (hop=0) 折扣恒 1.0, 现行为不变。
-HEARSAY_DECAY = 0.8
-# 传闻链上限: 超过 3 跳的转述不再入库 (谣言到第三手就该停, 否则世界会被
-# "听说听说听说……" 灌满)。
-HEARSAY_MAX_HOP = 3
-
-FORGET_FLOOR = 0.15
-MIN_IMPORTANCE = FORGET_FLOOR * 10.0   # = 1.5, importance 降权下限
-FORGET_HALF_LIVES: dict[str, float] = {
-    "observation": 48.0,   # ~2 天: 没被固化、没被回忆的原始事件先降权
-    "reflection": 168.0,   # ~1 周: 高阶认知降权最慢
-    "episode": 168.0,      # ~1 周: 固化后的情节摘要与反思同档
-    "identity": 336.0,     # ~2 周: 身份层信念最稳定
-    "plan": 24.0,          # ~1 天: 计划隔夜即降权
-}
-
-
-@dataclass
-class MemoryRecord:
-    content: str
-    timestamp: float
-    importance: float = 5.0
-    type: str = "observation"          # observation | reflection | plan
-    player_id: str | None = None
-    evidence: list[int] = field(default_factory=list)
-    confidence: float = 1.0            # 当前置信度 (反思会被冲突衰减)
-    base_confidence: float = 1.0       # 创建时的初始置信度 (幂等衰减的重算基准)
-    # 衰减的起始基线 (E1 幂等水位, 同 base_confidence 思路): 重要性从这条基线按
-    # 0.5**(age/hl) 重算, 重扫不漂移不复合。默认 None → add() 回退到 importance,
-    # 所以只设 importance 的调用方 (observe/_save_plan/测试) 自动正确; merge 提升
-    # importance 时会同步抬高这条基线 (合并是真实重要性事件, 衰减不能把增益抹掉)。
-    base_importance: float | None = None
-    valid: bool = True
-    last_accessed: float | None = None
-    hearsay: bool = False              # S4: 传闻记忆 (非亲见, 检索按 hop 打折)
-    hop: int = 0                       # S4: 传播跳数 (0=亲见, 上限 HEARSAY_MAX_HOP)
-    consolidated: bool = False         # M1: 已被固化进情节摘要 (仍 valid 可检索, 退出冲突扫描)
-    # F2-1: 上次 importance 强化时间 (merge 限速); None = 用 timestamp 兜底
-    last_reinforced: float | None = None
-    id: int | None = None              # 由数据库分配
+from .memory_model import MemoryRecord
+from .memory_policy import (
+    ALPHA_IMPORTANCE, ALPHA_RECENCY, ALPHA_RELEVANCE, FORGET_FLOOR,
+    FORGET_HALF_LIVES, HEARSAY_DECAY, HEARSAY_MAX_HOP, MERGE_REINFORCE_INTERVAL,
+    MIN_IMPORTANCE, OBS_DEDUP_THRESHOLD, RECENCY_DECAY,
+    apply_observation_merge, decay_updates,
+)
+from .memory_ranking import rank_memories
+from .memory_repository import MemoryRepository
 
 
 class MemoryStore:
@@ -106,136 +45,15 @@ class MemoryStore:
 
     def __init__(self, embedder: Embedder, path: str = ":memory:") -> None:
         self._embedder = embedder
-        self._conn = sqlite3.connect(path, check_same_thread=False)
-        self._lock = threading.Lock()
-        self._init_schema()
-        # 缓存每条记忆的向量, 避免重复编码。
-        # L4: 此缓存是进程内、无上限、**不跨进程持久化**。HashEmbedder (确定性哈希,
-        # 纯内存) 下冷启动无感; 但 RealEmbedder (网络) 下从磁盘恢复一个大世界后,
-        # 首波检索要为每条记忆重新嵌入 (O(n) 次网络调用) —— 这是"向量不入库"的
-        # 有意取舍: 持久化向量要每条存几百维浮点, 库膨胀且与嵌入模型版本耦合。
-        # 量大 (上千记忆 + 频繁重启) 后再议持久化或 LRU 上限。
+        self._repository = MemoryRepository(path)
+        # 每 Store 独立的非持久化向量缓存；冷启动仍批量补 miss。
         self._vec_cache: dict[int, list[float]] = {}
-
-    def _init_schema(self) -> None:
-        with self._lock, self._conn:
-            self._conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS memory (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    type TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    timestamp REAL NOT NULL,
-                    importance REAL NOT NULL DEFAULT 5.0,
-                    player_id TEXT,
-                    evidence TEXT DEFAULT '[]',
-                    confidence REAL DEFAULT 1.0,
-                    valid INTEGER DEFAULT 1,
-                    last_accessed REAL,
-                    base_confidence REAL DEFAULT 1.0,
-                    base_importance REAL,
-                    hearsay INTEGER DEFAULT 0,
-                    hop INTEGER DEFAULT 0,
-                    consolidated INTEGER DEFAULT 0,
-                    last_reinforced REAL
-                )
-                """
-            )
-            # 旧库迁移: H1 之前建的库没有 base_confidence 列, 补齐 (缺省 1.0,
-            # 旧反思的首次衰减以 1.0 为基准, 比真实初始值略高, 一次性小漂移可接受)
-            cols = {r[1] for r in self._conn.execute("PRAGMA table_info(memory)")}
-            if "base_confidence" not in cols:
-                self._conn.execute(
-                    "ALTER TABLE memory ADD COLUMN base_confidence REAL DEFAULT 1.0"
-                )
-            # 旧库迁移 (E1): base_importance 是衰减基线, 必须逐行 = 当前 importance
-            # (不能用常量缺省 —— 各行 importance 不同)。旧行从当前值起继续衰减,
-            # 一次性重置基线, 可接受。
-            if "base_importance" not in cols:
-                self._conn.execute(
-                    "ALTER TABLE memory ADD COLUMN base_importance REAL"
-                )
-                self._conn.execute(
-                    "UPDATE memory SET base_importance = importance "
-                    "WHERE base_importance IS NULL"
-                )
-            # 旧库迁移 (S4): hearsay/hop 是传闻链状态, 旧行全是亲见 (0/0)
-            if "hearsay" not in cols:
-                self._conn.execute(
-                    "ALTER TABLE memory ADD COLUMN hearsay INTEGER DEFAULT 0"
-                )
-            if "hop" not in cols:
-                self._conn.execute(
-                    "ALTER TABLE memory ADD COLUMN hop INTEGER DEFAULT 0"
-                )
-            # 旧库迁移 (M1): consolidated 是固化标记, 旧行全部未固化 (0)
-            if "consolidated" not in cols:
-                self._conn.execute(
-                    "ALTER TABLE memory ADD COLUMN consolidated INTEGER DEFAULT 0"
-                )
-            # 旧库迁移 (F2-1): 强化限速时间锚点。旧行从 last_accessed/timestamp
-            # 起算, 避免升级后第一次 merge 立刻 +1。
-            if "last_reinforced" not in cols:
-                self._conn.execute(
-                    "ALTER TABLE memory ADD COLUMN last_reinforced REAL"
-                )
-                self._conn.execute(
-                    "UPDATE memory SET last_reinforced = "
-                    "COALESCE(last_accessed, timestamp) "
-                    "WHERE last_reinforced IS NULL"
-                )
-            self._conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_player ON memory(player_id)"
-            )
-            self._conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_type ON memory(type)"
-            )
-            # NPC 元数据 (名称/人格/游戏时钟): 与记忆流同库, 一个 NPC 一个 .db
-            self._conn.execute(
-                "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
-            )
 
     # ------------------------------------------------------------------ 写入
     def add(self, rec: MemoryRecord) -> int:
         """写入一条记忆, 返回分配的 id。"""
-        # 衰减基线: 未显式设定时回退到 importance (E1) —— 只设 importance 的
-        # 调用方 (observe/_save_plan/_save_obs/测试) 自动把基线设为初始重要性。
-        base_imp = (rec.base_importance if rec.base_importance is not None
-                    else rec.importance)
-        last_reinforced = (rec.last_reinforced if rec.last_reinforced is not None
-                           else rec.timestamp)
-        with self._lock, self._conn:
-            cur = self._conn.execute(
-                """
-                INSERT INTO memory
-                    (type, content, timestamp, importance, player_id,
-                     evidence, confidence, valid, last_accessed,
-                     base_confidence, base_importance, hearsay, hop,
-                     consolidated, last_reinforced)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    rec.type,
-                    rec.content,
-                    rec.timestamp,
-                    rec.importance,
-                    rec.player_id,
-                    json.dumps(rec.evidence),
-                    rec.confidence,
-                    1 if rec.valid else 0,
-                    rec.last_accessed,
-                    rec.base_confidence,
-                    base_imp,
-                    1 if rec.hearsay else 0,
-                    rec.hop,
-                    1 if rec.consolidated else 0,
-                    last_reinforced,
-                ),
-            )
-            new_id = int(cur.lastrowid)
-            # 立即编码缓存
-            vec = self._embedder.embed([rec.content])[0]
-            self._vec_cache[new_id] = vec
+        with self._repository.insert(rec) as new_id:
+            self._vec_cache[new_id] = self._embedder.embed([rec.content])[0]
             return new_id
 
     # ------------------------------------------------------------------ 读取
@@ -300,39 +118,11 @@ class MemoryStore:
         NULL)。对话检索用它隔离其他玩家的私有记忆; 默认 False 保持旧语义
         (只取该玩家面)。
         """
-        sql = "SELECT * FROM memory WHERE valid = 1"
-        args: list = []
-        if shared:
-            sql += " AND player_id IS NULL"
-        elif player_id is not None:
-            if include_shared:
-                sql += " AND (player_id = ? OR player_id IS NULL)"
-            else:
-                sql += " AND player_id = ?"
-            args.append(player_id)
-        if types:
-            placeholders = ",".join("?" for _ in types)
-            sql += f" AND type IN ({placeholders})"
-            args.extend(types)
-        if consolidated is not None:   # M1: None=不过滤(现行为), True/False 按固化标记筛
-            sql += " AND consolidated = ?"
-            args.append(1 if consolidated else 0)
-        if hearsay_only:
-            sql += " AND hearsay = 1"   # F4-1: 只看传闻记忆 (转述候选)
-        sql += " ORDER BY id"
-        with self._lock:
-            rows = self._conn.execute(sql, args).fetchall()
-        return [self._row_to_rec(r) for r in rows]
+        return self._repository.all_valid(
+            player_id=player_id, types=types, shared=shared,
+            consolidated=consolidated, include_shared=include_shared,
+            hearsay_only=hearsay_only)
 
-    def _row_to_rec(self, row: tuple) -> MemoryRecord:
-        return MemoryRecord(
-            id=row[0], type=row[1], content=row[2], timestamp=row[3],
-            importance=row[4], player_id=row[5], evidence=json.loads(row[6]),
-            confidence=row[7], valid=bool(row[8]), last_accessed=row[9],
-            base_confidence=row[10], base_importance=row[11],
-            hearsay=bool(row[12]), hop=row[13], consolidated=bool(row[14]),
-            last_reinforced=row[15] if len(row) > 15 else None,
-        )
 
     # ------------------------------------------------------------------ 检索
     def retrieve(self, query: str, now: float,
@@ -374,62 +164,18 @@ class MemoryStore:
         """
         q_vec = self._embedder.embed([query])[0]
         cands = self.all_valid(player_id=player_id, types=types, shared=shared,
-                               include_shared=include_shared,
-                               hearsay_only=hearsay_only)
+                               include_shared=include_shared, hearsay_only=hearsay_only)
         if not cands:
             return []
-
-        # 计算原始分数
-        recs = [c.last_accessed if c.last_accessed is not None else c.timestamp
-                for c in cands]
-        deltas = [max(0.0, now - t) for t in recs]
-        recency = [RECENCY_DECAY ** d for d in deltas]
-        importance = [c.importance / 10.0 for c in cands]
-        c_vecs = self._ensure_vecs(cands)   # F6-8: 批量补 miss
-        relevance = [cosine_similarity(v, q_vec) for v in c_vecs]
-
-        # 相关性下限 (M7): 归一化前按原始余弦剔除无关候选, 挡住 min-max 把
-        # "小存储里最不差的那条"抬成满分塞进 top_k 的灌水。
-        if min_relevance > 0.0:
-            keep = [s >= min_relevance for s in relevance]
-            cands = [c for c, k in zip(cands, keep) if k]
-            recency = [r for r, k in zip(recency, keep) if k]
-            importance = [i for i, k in zip(importance, keep) if k]
-            relevance = [s for s, k in zip(relevance, keep) if k]
-            if not cands:
-                return []
-
-        # Min-Max 归一化
-        def norm(vals: list[float]) -> list[float]:
-            lo, hi = min(vals), max(vals)
-            if hi - lo < 1e-9:
-                return [1.0 for _ in vals]
-            return [(v - lo) / (hi - lo) for v in vals]
-
-        # importance 是绝对显著度，不随候选集合变化而重新拉伸。
-        r_norm, s_norm = norm(recency), norm(relevance)
-        raw = []
-        for c, r, i, s in zip(cands, r_norm, importance, s_norm):
-            score = (ALPHA_RECENCY * r + ALPHA_IMPORTANCE * i +
-                     ALPHA_RELEVANCE * s)
-            # 置信度折减 (H2): 被冲突衰减的反思按信念强度打折 —— check_conflicts
-            # 的幂等衰减每多一条冲突证据就折半一次, 这里乘 confidence 与之一一对应,
-            # 削弱的信念检索排名随之下降 (博客 2.2.5 "防不可靠推断被放大" 的落点)。
-            # 观察/计划的 confidence 恒 1.0, 不受影响。
-            score *= c.confidence
-            # 传闻折扣 (S4): 按传播跳数打折 —— 亲见 (hop=0) 恒 1.0, 现行为不变。
-            if c.hearsay and c.hop > 0:
-                score *= HEARSAY_DECAY ** c.hop
-            # 千人千面: 属于当前玩家的记忆获得额外加权
-            if include_player and c.player_id == include_player:
-                score += 0.5
-            raw.append((score, c))
-
-        raw.sort(key=lambda x: x[0], reverse=True)
+        relevance = [cosine_similarity(v, q_vec) for v in self._ensure_vecs(cands)]
+        ranked = rank_memories(
+            cands, relevance, now, top_k=top_k, include_player=include_player,
+            min_score=min_score, min_relevance=min_relevance,
+            recency_decay=RECENCY_DECAY,
+            weights=(ALPHA_RECENCY, ALPHA_IMPORTANCE, ALPHA_RELEVANCE),
+            hearsay_decay=HEARSAY_DECAY)
         results = []
-        for score, c in raw[:top_k]:
-            if score < min_score:
-                continue
+        for score, c in ranked:
             # 更新 last_accessed (recency 的语义: 距上次检索的时间); 反思证据检索
             # 传 mark_accessed=False 关闭 —— 候选 ≠ 回忆 (M7)。
             if mark_accessed:
@@ -449,48 +195,27 @@ class MemoryStore:
             })
         return results
 
+
+
     def _mark_accessed(self, mem_id: int, now: float) -> None:
-        with self._lock, self._conn:
-            self._conn.execute(
-                "UPDATE memory SET last_accessed = ? WHERE id = ?",
-                (now, mem_id),
-            )
+        self._repository.mark_accessed(mem_id, now)
 
     # ------------------------------------------------------- 反思失效/更新
     def invalidate(self, mem_id: int, reason: str = "") -> None:
         """把某条反思标记为失效 (冲突时)。"""
-        with self._lock, self._conn:
-            self._conn.execute(
-                "UPDATE memory SET valid = 0 WHERE id = ?", (mem_id,)
-            )
+        self._repository.invalidate(mem_id, reason)
         self._vec_cache.pop(mem_id, None)
 
     def update_confidence(self, mem_id: int, confidence: float) -> None:
         """更新反思置信度 (证据冲突时衰减)。"""
-        confidence = max(0.0, min(1.0, confidence))
-        with self._lock, self._conn:
-            self._conn.execute(
-                "UPDATE memory SET confidence = ? WHERE id = ?",
-                (confidence, mem_id),
-            )
+        self._repository.update_confidence(mem_id, max(0.0, min(1.0, confidence)))
 
     def _set_importance(self, mem_id: int, importance: float) -> None:
         """设某条记忆的 importance (遗忘降权用; 只降不升, 下限 MIN_IMPORTANCE)。"""
-        importance = max(MIN_IMPORTANCE, min(10.0, importance))
-        with self._lock, self._conn:
-            self._conn.execute(
-                "UPDATE memory SET importance = ? WHERE id = ?",
-                (importance, mem_id),
-            )
+        self._repository.set_importance(mem_id, max(MIN_IMPORTANCE, min(10.0, importance)))
 
     def count(self, player_id: str | None = None) -> int:
-        sql = "SELECT COUNT(*) FROM memory WHERE valid = 1"
-        args: list = []
-        if player_id is not None:
-            sql += " AND player_id = ?"
-            args.append(player_id)
-        with self._lock:
-            return int(self._conn.execute(sql, args).fetchone()[0])
+        return self._repository.count(player_id)
 
     # ------------------------------------------------------------------ 观察去重
     def find_similar_observation(self, content: str,
@@ -550,71 +275,29 @@ class MemoryStore:
         亲见则不降级; 两者都是传闻时保留更近的 hop。这样"先听传闻、后亲眼
         见到"不会让亲见被永久按传闻打折。
         """
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT importance, base_importance, last_reinforced, "
-                "hearsay, hop, content FROM memory WHERE id = ?", (mem_id,)
-            ).fetchone()
-            if row is None:
-                raise ValueError(f"观察 {mem_id} 不存在")
-            (importance, base_importance, last_reinforced,
-             old_hearsay, old_hop, old_content) = row
-            # F2-1: importance 强化按时间窗限速; 无强化时仍刷新 last_accessed
-            # (重复发生 = 被回忆, 抗遗忘), 但不抬高 importance/base。
-            reinforce = (last_reinforced is None
-                         or now - last_reinforced >= MERGE_REINFORCE_INTERVAL)
-            new_imp = min(10.0, importance + 1.0) if reinforce else importance
-            new_base = (new_imp if reinforce
-                        else (base_importance if base_importance is not None
-                              else importance))
-            new_reinforced = now if reinforce else last_reinforced
-            out_content = old_content
-            if new_content is not None and len(new_content) > len(old_content):
-                out_content = new_content
-                self._vec_cache.pop(mem_id, None)   # 内容变了, 向量缓存失效
-            out_hearsay, out_hop = bool(old_hearsay), old_hop
-            if new_hearsay is not None:
-                if old_hearsay and not new_hearsay:
-                    out_hearsay, out_hop = 0, 0       # 亲见升级
-                elif old_hearsay and new_hearsay:
-                    out_hop = min(old_hop, new_hop)  # 保留更近来源
-                else:
-                    out_hearsay, out_hop = 0, 0       # 亲见保持亲见
-            with self._conn:
-                self._conn.execute(
-                    "UPDATE memory SET last_accessed = ?, importance = ?, "
-                    "base_importance = ?, last_reinforced = ?, "
-                    "hearsay = ?, hop = ?, content = ? WHERE id = ?",
-                    (now, new_imp, new_base, new_reinforced,
-                     int(out_hearsay), out_hop, out_content, mem_id))
-            return new_imp
+        with self._repository.edit_observation(mem_id) as rec:
+            old_content = rec.content
+            apply_observation_merge(
+                rec, now, new_hearsay=new_hearsay, new_hop=new_hop,
+                new_content=new_content, reinforce_interval=MERGE_REINFORCE_INTERVAL)
+            if rec.content != old_content:
+                self._vec_cache.pop(mem_id, None)
+            return rec.importance
 
     def mark_consolidated(self, mem_ids: Iterable[int]) -> int:
         """M1 固化标记: 把被情节摘要 (episode) 吸收的原始观察标 consolidated=1。
         记忆仍 valid、仍可检索, 只是退出冲突扫描 (由 episode 顶替"更晚证据"角色)。
         返回标记的条数。"""
-        ids = [i for i in mem_ids if i is not None]
-        if not ids:
-            return 0
-        q = ",".join("?" for _ in ids)
-        with self._lock, self._conn:
-            cur = self._conn.execute(
-                f"UPDATE memory SET consolidated = 1 WHERE id IN ({q}) AND consolidated = 0",
-                ids)
-            return cur.rowcount
+        return self._repository.mark_consolidated(mem_ids)
 
     def all_invalid(self) -> list[MemoryRecord]:
         """取全部已失效记忆 (冲突失效), 按时间排序, 供审查。
 
         注意: 遗忘改为降权后不再产生失效记录, 这里只剩冲突失效的反思。
-        F6-9: 复用 _row_to_rec 读全列, 新加字段 (hearsay/hop/consolidated/
+        仓储统一读取完整记录，新加字段 (hearsay/hop/consolidated/
         last_reinforced) 不再被截断或默认化。
         """
-        with self._lock:
-            rows = self._conn.execute(
-                "SELECT * FROM memory WHERE valid = 0 ORDER BY timestamp, id"
-            ).fetchall()
-        return [self._row_to_rec(r) for r in rows]
+        return self._repository.all_invalid()
 
     # ------------------------------------------------------------------ 遗忘
     def decay_and_forget(self, now: float,
@@ -635,60 +318,29 @@ class MemoryStore:
         保护: 被有效反思引用为证据的观察不降权 —— 它已固化为高阶认知,
         降了它会削弱反思的证据链。保护集按当前有效反思快照计算。
         """
-        hl = half_lives or FORGET_HALF_LIVES
-        mems = self.all_valid()
-        if not mems:
-            return []
-        # 保护集: 有效反思的证据 id (反思只引用观察, 见 reflection.py)
-        protected: set[int] = set()
-        for m in mems:
-            if m.type == "reflection" and m.evidence:
-                protected.update(m.evidence)
-        downweighted: list[int] = []
-        for m in mems:
-            if m.type == "observation" and m.id in protected:
-                continue
-            anchor = max(m.timestamp,
-                         m.last_accessed if m.last_accessed is not None
-                         else m.timestamp)
-            age = max(0.0, now - anchor)
-            factor = 0.5 ** (age / hl.get(m.type, 48.0))
-            # E1: 从基线重算 (幂等), 不再乘已衰减的当前值。基线缺失 (极端旧行)
-            # 回退到当前 importance, 至少不比旧行为更糟。
-            base = m.base_importance if m.base_importance is not None \
-                else m.importance
-            new_imp = max(MIN_IMPORTANCE, base * factor)
-            if new_imp < m.importance - 1e-9:   # importance 实际下调 (只降不升)
-                self._set_importance(m.id, new_imp)
-                downweighted.append(m.id)
+        downweighted = []
+        for rec, importance in decay_updates(
+                self.all_valid(), now, half_lives or FORGET_HALF_LIVES, MIN_IMPORTANCE):
+            self._set_importance(rec.id, importance)
+            downweighted.append(rec.id)
         return downweighted
 
     # ------------------------------------------------------------------ 元数据
     def set_meta(self, key: str, value: Any) -> None:
         """存一条 NPC 元数据 (JSON 序列化)。"""
-        with self._lock, self._conn:
-            self._conn.execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
-                (key, json.dumps(value)),
-            )
+        self._repository.set_meta(key, value)
 
     def get_meta(self, key: str, default: Any = None) -> Any:
         """取一条 NPC 元数据; 不存在返回 default。"""
-        with self._lock:
-            row = self._conn.execute(
-                "SELECT value FROM meta WHERE key = ?", (key,)
-            ).fetchone()
-        return json.loads(row[0]) if row else default
+        return self._repository.get_meta(key, default)
 
     def db_path(self) -> str | None:
         """文件库的绝对路径; :memory: 返回 None。"""
-        row = self._conn.execute("PRAGMA database_list").fetchone()
-        return row[2] if row and row[2] not in (":memory:", None, "") else None
+        return self._repository.db_path()
 
     def is_persistent(self) -> bool:
         """是否为文件库 (可持久化); :memory: 返回 False。"""
-        return self.db_path() is not None
+        return self._repository.is_persistent()
 
     def close(self) -> None:
-        with self._lock:
-            self._conn.close()
+        self._repository.close()

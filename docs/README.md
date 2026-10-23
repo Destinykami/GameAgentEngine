@@ -26,9 +26,9 @@
 | [场景效果与行为链](modules/world-extensions.md) | 已实现，256 个离线测试通过 | `world_extensions.py` |
 | [社交观察与传闻路由](modules/social.md) | 已实现，257 个离线测试通过 | `social.py` / `social_contracts.py` |
 | [动作执行](modules/actions.md) | 已实现，258 个离线测试通过 | `actions.py` |
-| [记忆模块](modules/memory.md) | 评分已修正，266 个离线测试通过；职责拆分中 | `memory.py` |
+| [记忆模块](modules/memory.md) | 已拆分，275 个离线测试通过 | `memory.py`、`memory_model.py`、`memory_ranking.py`、`memory_policy.py`、`memory_repository.py` |
 
-当前累计验证：266 个离线测试通过。此前结构迁移的 16 步时间线保持一致；绝对重要性修正后已建立新的结构迁移基线。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
+当前累计验证：275 个离线测试通过。记忆层与绝对重要性修正提交的 43 个状态 / 缓存检查点及 16 步时间线一致。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
 
 ## 当前范围与验证约束
 

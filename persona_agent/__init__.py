@@ -11,7 +11,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .npc import NPC
-    from .memory import MemoryRecord, MemoryStore
+    from .memory_model import MemoryRecord
+    from .memory import MemoryStore
     from .llm import LLMClient, LLMContext
     from .llm_real import RealLLM, DEFAULT_BASE_URL, DEFAULT_MODEL
     from .embeddings import Embedder, HashEmbedder
@@ -57,7 +58,7 @@ _EXPORTS = {
     "Player": (".world_model", "Player"),
     "distance": (".world_model", "distance"),
     "location_distance": (".world_model", "location_distance"),
-    "MemoryRecord": (".memory", "MemoryRecord"),
+    "MemoryRecord": (".memory_model", "MemoryRecord"),
     "MemoryStore": (".memory", "MemoryStore"),
     "LLMClient": (".llm", "LLMClient"),
     "LLMContext": (".llm", "LLMContext"),
