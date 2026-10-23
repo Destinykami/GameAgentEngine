@@ -83,8 +83,8 @@ def test_shared_conflicts_run_on_self_reflection_trigger():
     ref_id = npc.store.add(MemoryRecord(
         content="我信任外来者", timestamp=0.0, type="reflection",
         player_id=None, confidence=0.8))
-    npc.observe("外来者背叛了我", 1.0)
-    npc._importance_accum = npc._reflection_threshold   # 强制触发一次自我反思
+    npc.observe("外来者背叛了我", 1.0,
+                importance=npc.runtime_state().reflection_threshold)
     npc.maybe_reflect_self(2.0)
     assert ref_id in {m.id for m in npc.store.all_invalid()}, \
         "maybe_reflect_self 应顺带跑共享冲突检查"

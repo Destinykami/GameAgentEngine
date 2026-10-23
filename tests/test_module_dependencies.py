@@ -25,15 +25,20 @@ import pytest
     "cognition.reacting", "cognition.reacting.engine",
     "cognition.reacting.trust", "cognition.reacting.scoring",
     "cognition.reacting.policy", "cognition.reacting.contracts",
+    "cognition.npc", "cognition.npc.state", "cognition.npc.contracts",
+    "cognition.npc.observation", "cognition.npc.consolidation",
+    "cognition.npc.context", "cognition.npc.reactions", "cognition.npc.persistence",
 ])
 def test_foundation_import_does_not_load_runtime_or_model_adapters(module):
     code = f'''
 import importlib
 import sys
 importlib.import_module("game_agent.{module}")
-for name in ("game_agent.world.runtime", "game_agent.cognition.npc", "game_agent.memory.store",
+for name in ("game_agent.world.runtime", "game_agent.cognition.npc.engine", "game_agent.memory.store",
              "game_agent.models.llm_http", "game_agent.models.embeddings_http", "sqlite3"):
     assert name not in sys.modules, name
+if not {module!r}.startswith("cognition.npc"):
+    assert "game_agent.cognition.npc" not in sys.modules
 '''
     result = subprocess.run([sys.executable, "-c", code],
                             cwd=Path(__file__).resolve().parents[1],

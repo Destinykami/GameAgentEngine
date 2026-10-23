@@ -30,7 +30,7 @@ def test_step_flushes_social_queue_and_reflects(tmp_path):
     a = w.npc("A")
     obs = a.store.all_valid(player_id="B", types=["observation"])
     assert obs, "A 应观察到新出现的 B"
-    assert a._reflected_obs.get("B", 0) > 0, "full 档新观察应触发关系反思"
+    assert a.runtime_state().reflected_obs.get("B", 0) > 0, "full 档新观察应触发关系反思"
     assert a.store.all_valid(player_id="B", types=["reflection"]), \
         "关系反思应实际落库"
     w.close()

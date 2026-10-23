@@ -8,6 +8,8 @@
 
 World 仍负责把运行状态组织成快照、恢复注册表与自治模型绑定；每个 NPC 的数据库仍由 NPC / MemoryStore 管理。本阶段不提取 NPC 记忆库，也不改变现有数据库格式。
 
+后续 [NPC 编排收尾](npc-runtime.md) 已将 NPC 的元数据读写与恢复规则提取到 `src/game_agent/cognition/npc/persistence.py`，NPC 工厂继续组装实际记忆库和认知组件。四个原保存键、逐键写入顺序、旧库默认值及部分状态恢复范围保持不变；MemoryStore / MemoryRepository 继续独占记忆库连接和表结构。
+
 ## 接口与状态归属
 
 - `WorldSnapshot` 包含实体列表与 JSON 元数据，不持有数据库连接或认知对象。

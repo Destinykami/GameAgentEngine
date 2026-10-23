@@ -20,7 +20,7 @@
 | [世界实体与空间模型](modules/world-model.md) | 已实现，246 个离线测试通过 | `src/game_agent/world/entities.py` |
 | [结构化事件契约](modules/events.md) | 已实现，246 个离线测试通过 | `src/game_agent/world/events.py` |
 | [世界持久化](modules/persistence.md) | 已实现，247 个离线测试通过 | `src/game_agent/world/persistence.py` |
-| [NPC 认知编排边界](modules/npc-runtime.md) | 已封装，247 个离线测试通过 | `src/game_agent/cognition/npc.py` |
+| [NPC 认知编排边界](modules/npc-runtime.md) | 编排收尾已拆分，354 个离线测试通过 | `src/game_agent/cognition/npc/` |
 | [空间感知与距离调度](modules/perception.md) | 已实现，247 个离线测试通过 | `src/game_agent/world/perception.py` |
 | [包入口与依赖加载](modules/package-api.md) | 已实现，251 个离线测试通过 | `src/game_agent/__init__.py` |
 | [决策与关系记忆边界](modules/decision.md) | 自治边界已实现，255 个离线测试通过；事件反应另见专项蓝图 | `src/game_agent/cognition/autonomous.py` / `src/game_agent/cognition/reacting/` |
@@ -34,7 +34,7 @@
 | [事件反应与关系信任](modules/reaction.md) | 已拆分，332 个离线测试通过 | `src/game_agent/cognition/reacting/` |
 | [源码布局](source-layout.md) | 已迁移并移除旧包兼容层，280 个离线测试通过 | `src/game_agent/`、`pyproject.toml` |
 
-当前累计验证：332 个离线测试通过。事件反应与关系信任的 224 个直接决策检查点、5 个 LRU 检查点、72 个 NPC 检查点及 16 步时间线与重构前相同。此前模块的验证记录保留在相应蓝图中。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
+当前累计验证：354 个离线测试通过。NPC 编排收尾的 735 个行为检查点、6 个数据库双向加载检查点及 16 步时间线与重构前相同；12 个编排方法在归一状态引用后 AST 一致。此前模块的验证记录保留在相应蓝图中。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
 
 ## 当前范围与验证约束
 

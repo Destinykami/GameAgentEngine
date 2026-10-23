@@ -23,11 +23,11 @@ def test_npc_decision_cache_is_bounded_and_clears_decider():
     npc.observe("P 帮我修好了咖啡机", 0.0, player_id="P")
     for i in range(NPC_CACHE_LIMIT + 50):
         npc.react(f"event unique{i} alpha{i}", "P", float(i))
-    assert len(npc._cache) <= NPC_CACHE_LIMIT
+    assert npc.cache_sizes()["decisions"] <= NPC_CACHE_LIMIT
     assert npc.decider.cache_sizes()["events"] <= EVENT_VALUE_CACHE_LIMIT
     assert npc.decider.cache_sizes()["trust"] == 1
     npc.clear_cache()
-    assert npc._cache == {}
+    assert npc.cache_sizes()["decisions"] == 0
     assert npc.decider.cache_sizes() == {"events": 0, "trust": 0}
 
 

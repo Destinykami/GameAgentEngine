@@ -70,10 +70,10 @@ def test_relation_observations_do_not_accumulate_self_trigger():
     for i in range(31):
         npc.observe(f"player event unique{i} alpha{i}", float(i),
                     player_id="P")
-    assert npc._importance_accum == 0.0, \
+    assert npc.runtime_state().importance_accum == 0.0, \
         "关系观察不应累积自我反思触发器"
     assert npc.maybe_reflect_self(40.0) == []
-    assert npc._importance_accum == 0.0
+    assert npc.runtime_state().importance_accum == 0.0
 
 
 def test_shared_observations_still_trigger_self_reflection():
@@ -81,10 +81,10 @@ def test_shared_observations_still_trigger_self_reflection():
     npc = _npc()
     for i in range(31):
         npc.observe(f"shared event unique{i} alpha{i}", float(i))
-    assert npc._importance_accum == 155.0
+    assert npc.runtime_state().importance_accum == 155.0
     ids = npc.maybe_reflect_self(40.0)
     assert ids, "共享观察超过阈值后应触发自我反思"
-    assert npc._importance_accum == 0.0
+    assert npc.runtime_state().importance_accum == 0.0
     assert npc.store.all_valid(shared=True, types=["reflection"])
 
 
@@ -108,4 +108,4 @@ def test_one_shared_observation_not_re_reflected_by_relation_batches():
                         float(batch * 40 + i + 1), player_id="P")
         assert npc.maybe_reflect_self(float(batch * 40 + 40)) == []
     assert llm.question_calls == 0, "关系观察批次不应触发自我反思"
-    assert npc._importance_accum == 5.0
+    assert npc.runtime_state().importance_accum == 5.0

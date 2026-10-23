@@ -45,7 +45,7 @@ def run_session(npc: NPC, session_no: int) -> None:
     print(f"   Aria: '你最近都在忙什么? 我们还聊过什么?'")
     print(f"   {npc.name}: {reply}")
     npc.save()
-    print(f"   已保存 (游戏时钟: {npc._game_time:.1f}h)")
+    print(f"   已保存 (游戏时钟: {npc.game_time:.1f}h)")
 
 
 def main() -> int:

@@ -94,7 +94,7 @@ def test_create_save_load_roundtrip(tmp_path):
     assert npc2.persona_traits == TRAITS
     assert npc2.memory_count() == count_before
     assert npc2.trust_toward("Aria") == npc.trust_toward("Aria")  # 信任状态随记忆恢复
-    assert npc2._game_time == pytest.approx(11.0)  # 游戏时钟恢复
+    assert npc2.game_time == pytest.approx(11.0)  # 游戏时钟恢复
 
     # create 幂等: 对同名再 create 等价于 load
     npc3 = NPC.create("Testling", dict(TRAITS), llm=_StubLLM(),

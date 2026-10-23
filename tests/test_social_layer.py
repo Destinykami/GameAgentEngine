@@ -208,7 +208,7 @@ def test_social_perception_idle_tier_none(tmp_path):
     """idle 档: 不感知任何 NPC (零观察), 且零 LLM 调用 (成本闸门)。"""
     w = _world(tmp_path, social_perception=True)
     _setup(w, tmp_path)
-    assert w.npc("E")._tier == "idle"
+    assert w.npc("E").tier == "idle"
     assert w.perceive("E", 10.0) == []
     assert w.npc("E").store.all_valid() == []
     assert w.npc("E").llm.importance_calls == 0   # type: ignore[attr-defined]

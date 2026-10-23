@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 
-from game_agent import Location, NPC, World
+from game_agent import Location, MemoryRecord, NPC, World
 from tests.test_persistence import _StubLLM, TRAITS
 
 
@@ -77,14 +77,15 @@ def test_flee_threat_filter(tmp_path):
 def test_npc_transient_state_roundtrip(tmp_path):
     npc = NPC.create("T", dict(TRAITS), llm=_StubLLM(),
                      data_dir=str(tmp_path))
-    npc._reflected_obs = {"P": 3}
+    for index in range(3):
+        npc.store.add(MemoryRecord(f"P 的观察 {index}", 1.0, player_id="P"))
+    npc.maybe_reflect_relationship("P", 12.0)
     npc.plan_state.replace([(7, 9, "写代码")])
-    npc._game_time = 12.0
     npc.save()
     npc2 = NPC.load(os.path.join(str(tmp_path), "T.db"), llm=_StubLLM())
-    assert npc2._reflected_obs == {"P": 3}
+    assert npc2.runtime_state().reflected_obs == {"P": 3}
     assert npc2.plan_state.blocks == [(7, 9, "写代码")]
-    assert npc2._last_sweep == 12.0
+    assert npc2.runtime_state().last_sweep == 12.0
 
 
 def test_world_day_anchors_roundtrip(tmp_path):

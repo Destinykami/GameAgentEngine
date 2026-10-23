@@ -126,13 +126,13 @@ def test_auto_sweep_on_time_advance(tmp_path):
     assert obs[old].importance == pytest.approx(MIN_IMPORTANCE)
 
 
-def test_repeated_observation_merges_plus_one_not_double_count(tmp_path):
+def test_repeated_observation_merges_plus_one_not_double_count(tmp_path, monkeypatch):
     """重复观察走生产路径 (observe → 去重合并): 强化是固定 +1, 不是把新观察的
     完整 importance 再加一遍 (事件重要性首次入库时已计入, 再加 = 双重计分)。"""
     npc = _make(tmp_path)
     first = npc.observe("Aria 帮 Fade 修了咖啡机", 0.0, player_id="Aria")
     # 跳过 6h 自动遗忘清扫, 单独验证 merge 的强化 (否则 +1 前会先被降权)
-    npc._last_sweep = 8.0
+    monkeypatch.setattr(npc, "forget", lambda now: [])
     second = npc.observe("Aria 帮 Fade 修了咖啡机", 7.0, player_id="Aria")
     assert second == first, "近义观察应合并进同一条记录"
     obs = _by_id(npc, "observation")
@@ -209,9 +209,9 @@ def test_merge_does_not_accumulate_reflection_trigger(tmp_path):
     # 同一条观察重放 6 次: 首次新入库 (+5), 后 5 次近义合并 (+0)
     for i in range(6):
         npc.observe("旅行者 出现在 治疗堂, 靠近 桃音", float(i))
-    assert npc._importance_accum == pytest.approx(5.0), \
-        f"重放 6 次只应累积首次新观察 (5.0), 实际 {npc._importance_accum} (旧实现=30.0)"
+    assert npc.runtime_state().importance_accum == pytest.approx(5.0), \
+        f"重放 6 次只应累积首次新观察 (5.0), 实际 {npc.runtime_state().importance_accum} (旧实现=30.0)"
     assert len(npc.store.all_valid(types=["observation"])) == 1, "近义观察应合并成 1 条"
     # 一条全新观察 = 新信息, 照常累积 +5
     npc.observe("执行官 在 市场 收缴神之眼", 10.0)
-    assert npc._importance_accum == pytest.approx(10.0), "新观察照常累积"
+    assert npc.runtime_state().importance_accum == pytest.approx(10.0), "新观察照常累积"

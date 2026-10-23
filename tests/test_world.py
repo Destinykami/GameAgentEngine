@@ -391,10 +391,10 @@ def test_schedule_tiers_idle_no_accumulation(tmp_path):
     w.add_player("旅行者", "神樱庭")            # 远离桃音 → idle
     tiers = w.schedule_tiers(now=1.0)
     assert tiers["桃音"] == "idle"
-    assert w.npc("桃音")._tier == "idle"
+    assert w.npc("桃音").tier == "idle"
     # idle 时 observe 仍记录记忆, 但不累积重要性 → 不触发反思
     w.npc("桃音").observe("旅行者 在远处忙别的", 1.0, player_id="旅行者")
-    assert w.npc("桃音")._importance_accum == 0.0, "idle 不累积重要性"
+    assert w.npc("桃音").runtime_state().importance_accum == 0.0, "idle 不累积重要性"
     assert w.npc("桃音").memory_count(player_id="旅行者") == 1, "idle 仍记录记忆"
     w.close()
 
@@ -404,12 +404,12 @@ def test_tier_switch_affects_perception(tmp_path):
     w = _world_with_npc_player(tmp_path)
     w.add_player("旅行者", "治疗堂")            # 同区域 → full
     w.schedule_tiers(now=1.0)
-    assert w.npc("桃音")._tier == "full"
+    assert w.npc("桃音").tier == "full"
     w.perceive("桃音", now=1.0)
     assert "靠近" in w.npc("桃音").store.all_valid(player_id="旅行者")[0].content
     w.move("旅行者", "神樱庭", now=2.0)         # 远离 → idle
     w.schedule_tiers(now=2.0)
-    assert w.npc("桃音")._tier == "idle"
+    assert w.npc("桃音").tier == "idle"
     assert w.perceive("桃音", now=2.0) == [], "idle 不感知"
     w.close()
 

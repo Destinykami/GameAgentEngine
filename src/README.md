@@ -19,3 +19,5 @@
 `game_agent/cognition/dialogue/` 内按单轮生成（`engine.py`）、上下文准备（`context.py`）、双人轮流（`exchange.py`）与窄接口（`contracts.py`）组织，公共入口保持 `from game_agent.cognition.dialogue import DialogueManager`；对话观察写入仍由 NPC / World 负责。
 
 `game_agent/cognition/reacting/` 内按反应编排（`engine.py`）、评分与 LRU（`scoring.py`）、关系信任（`trust.py`）、纯效用及返回数据（`policy.py`）与窄接口（`contracts.py`）组织，公共入口保持 `from game_agent.cognition.reacting import ReactionDecider, ReactionDecision`。
+
+`game_agent/cognition/npc/` 内按编排与组装（`engine.py`）、运行状态（`state.py`）、观察（`observation.py`）、固化（`consolidation.py`）、完整反应缓存（`reactions.py`）、只读记忆视图（`context.py`）、元数据保存恢复（`persistence.py`）及窄接口（`contracts.py`）组织。公共入口保持 `from game_agent import NPC`；公开时钟、运行状态副本与缓存数量供调用方诊断。
