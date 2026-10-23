@@ -28,6 +28,9 @@ import pytest
     "cognition.npc", "cognition.npc.state", "cognition.npc.contracts",
     "cognition.npc.observation", "cognition.npc.consolidation",
     "cognition.npc.context", "cognition.npc.reactions", "cognition.npc.persistence",
+    "models.config", "models.llm_http", "models.llm_http.parsing",
+    "models.llm_http.usage", "models.llm_http.dialogue", "models.llm_http.memory",
+    "models.llm_http.planning", "models.llm_http.actions",
 ])
 def test_foundation_import_does_not_load_runtime_or_model_adapters(module):
     code = f'''
@@ -35,10 +38,12 @@ import importlib
 import sys
 importlib.import_module("game_agent.{module}")
 for name in ("game_agent.world.runtime", "game_agent.cognition.npc.engine", "game_agent.memory.store",
-             "game_agent.models.llm_http", "game_agent.models.embeddings_http", "sqlite3"):
+             "game_agent.models.llm_http.client", "game_agent.models.embeddings_http", "sqlite3"):
     assert name not in sys.modules, name
 if not {module!r}.startswith("cognition.npc"):
     assert "game_agent.cognition.npc" not in sys.modules
+if not {module!r}.startswith("models.llm_http"):
+    assert "game_agent.models.llm_http" not in sys.modules
 '''
     result = subprocess.run([sys.executable, "-c", code],
                             cwd=Path(__file__).resolve().parents[1],

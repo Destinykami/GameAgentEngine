@@ -13,14 +13,12 @@ from __future__ import annotations
 import json
 import time
 import urllib.error
-import urllib.request
 from typing import Sequence
 
 from .embeddings import Embedder
-
-DEFAULT_BASE_URL = "http://10.121.39.10:30006"
-DEFAULT_MODEL = "Alibaba-NLP/gte-Qwen2-1.5B-instruct"
-
+from .config import (DEFAULT_EMBEDDING_BASE_URL as DEFAULT_BASE_URL,
+                     DEFAULT_EMBEDDING_MODEL as DEFAULT_MODEL, EndpointConfig)
+from .transport import post_json
 
 class RealEmbedder(Embedder):
     """调用远程 embedding 端点。embed(texts) 一次请求批量编码, 返回归一化向量。"""
@@ -28,11 +26,8 @@ class RealEmbedder(Embedder):
     def __init__(self, base_url: str = DEFAULT_BASE_URL,
                  model: str = DEFAULT_MODEL, api_key: str | None = None,
                  timeout: float = 30.0, max_retries: int = 2) -> None:
-        self._base_url = base_url.rstrip("/")
-        self._model = model
-        self._api_key = api_key
-        self._timeout = timeout
-        self._max_retries = max_retries
+        self.endpoint = EndpointConfig(base_url.rstrip("/"), model, api_key,
+                                       timeout, max_retries)
         self._dim: int | None = None   # 首次 embed 后懒发现
 
     @property
@@ -44,18 +39,11 @@ class RealEmbedder(Embedder):
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
         texts = list(texts)
-        payload = json.dumps({"model": self._model, "input": texts}).encode("utf-8")
+        payload = json.dumps({"model": self.endpoint.model, "input": texts}).encode("utf-8")
         last_err: Exception | None = None
-        for attempt in range(self._max_retries + 1):
+        for attempt in range(self.endpoint.max_retries + 1):
             try:
-                req = urllib.request.Request(
-                    self._base_url + "/v1/embeddings",
-                    data=payload, method="POST",
-                    headers={"Content-Type": "application/json",
-                             **({"Authorization": f"Bearer {self._api_key}"}
-                                if self._api_key else {})})
-                with urllib.request.urlopen(req, timeout=self._timeout) as resp:
-                    payload_out = json.loads(resp.read().decode("utf-8"))
+                payload_out = post_json(self.endpoint, "/v1/embeddings", payload)
                 items = payload_out["data"]
                 items.sort(key=lambda d: d.get("index", 0))
                 vecs = [self._normalize(d["embedding"]) for d in items]
@@ -66,7 +54,7 @@ class RealEmbedder(Embedder):
                     TimeoutError, OSError, KeyError, json.JSONDecodeError,
                     IndexError, ValueError) as e:
                 last_err = e
-                if attempt < self._max_retries:
+                if attempt < self.endpoint.max_retries:
                     time.sleep(1.0 * (attempt + 1))
                     continue
                 raise RuntimeError(f"embedding 请求失败: {e}") from e
