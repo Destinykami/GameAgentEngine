@@ -6,13 +6,11 @@
 
 from __future__ import annotations
 
-import json
 import os
 import random
-import sqlite3
-import threading
 
 from .events import VisualEvent
+from .world_store import WorldStore
 from .world_model import Location, Entity, Player, distance, location_distance
 from .memory import HEARSAY_MAX_HOP   # 传闻链上限 (S4); memory 不依赖 world, 无循环
 
@@ -91,8 +89,7 @@ class World:
         self._player_perception_transition = player_perception_transition
         self._player_seen: dict[str, dict[str, tuple[str, str]]] = {}
         self.path = path
-        self._conn: sqlite3.Connection | None = None
-        self._lock = threading.RLock()
+        self._storage: WorldStore | None = None
         self._last_plan_day = -1   # 已生成过日计划的天 (0-based); step 每天早晨自动规划
         # E16: 本步发生的社交交互 (目标 NPC, 行动者名)。execute_action 的
         # talk/attack/help 对目标 NPC observe 后登记进来, step_autonomous 统一
@@ -757,7 +754,7 @@ class World:
         # 4. E16/R4/R5: 社交交互过关系反思层 —— 消费 _step_social (flush_social
         # 带 try/finally, 异常也清空不重复处理)。信任度随之惰性更新, 参与后续判定。
         self.flush_social(now)
-        if self._conn is not None:
+        if self._storage is not None:
             self.save()
         return events, decisions
 
@@ -943,7 +940,7 @@ class World:
         # 登记 _step_social, 此前只有 step_autonomous 调 flush_social, 导致
         # step 驱动时队列跨步积压且关系反思永不跑。
         self.flush_social(now)
-        if self._conn is not None:
+        if self._storage is not None:
             self.save()
         return {"clock": self.clock, "tiers": tiers, "new_observations": new_obs}
 
@@ -960,75 +957,20 @@ class World:
 
     # ------------------------------------------------------------- 持久化
     def _open(self, path: str) -> None:
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        self._conn = sqlite3.connect(path, check_same_thread=False)
-        self._conn.execute(
-            "CREATE TABLE IF NOT EXISTS entity ("
-            "name TEXT PRIMARY KEY, kind TEXT, location TEXT, x REAL, y REAL,"
-            " health INTEGER DEFAULT 100, attack INTEGER DEFAULT 10,"
-            " defense INTEGER DEFAULT 0, goal TEXT DEFAULT '',"
-            " dead INTEGER DEFAULT 0, role TEXT DEFAULT '',"
-            " history TEXT DEFAULT '[]', reasons TEXT DEFAULT '[]')")
-        # 旧库迁移 (M9): M9 之前建的 world.db 只有 name/kind/location/x/y 五列,
-        # 实体物理状态 (血/攻防/目标/死亡/角色/历史/理由) 从未落库, 恢复即全丢。
-        # 按 Entity 默认值补列 —— 旧库本就没存过这些状态, 默认值是唯一合理兜底。
-        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(entity)")}
-        for col, ddl in (
-                ("health", "INTEGER DEFAULT 100"),
-                ("attack", "INTEGER DEFAULT 10"),
-                ("defense", "INTEGER DEFAULT 0"),
-                ("goal", "TEXT DEFAULT ''"),
-                ("dead", "INTEGER DEFAULT 0"),
-                ("role", "TEXT DEFAULT ''"),
-                ("history", "TEXT DEFAULT '[]'"),
-                ("reasons", "TEXT DEFAULT '[]'")):
-            if col not in cols:
-                self._conn.execute(f"ALTER TABLE entity ADD COLUMN {col} {ddl}")
-        self._conn.execute(
-            "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")
+        self._storage = WorldStore(path)
 
     def save(self) -> None:
-        """把世界状态 (实体全量状态 + 时钟) 写入 world.db。
-
-        实体不止位置: 血/攻防/目标/死亡/角色/历史/理由一并落库 (M9) ——
-        跨进程恢复后将军的血量、旅行者的攻与已积累的理由、角色的特殊判定
-        都不该丢, 否则自治弧线从一半重头再来。
-        """
-        if self._conn is None:
+        """保存世界快照，并在世界库提交前尽力保存各 NPC 独立库。"""
+        if self._storage is None:
             raise RuntimeError("该世界是内存世界, 无法持久化 (构造时请传 path)")
-        with self._lock, self._conn:
-            self._conn.execute("DELETE FROM entity")
-            for ent in self.entities.values():
-                self._conn.execute(
-                    "INSERT INTO entity (name, kind, location, x, y,"
-                    " health, attack, defense, goal, dead, role, history,"
-                    " reasons) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (ent.name, ent.kind, ent.location.name,
-                     ent.location.x, ent.location.y,
-                     ent.health, ent.attack, ent.defense, ent.goal,
-                     1 if ent.dead else 0, ent.role,
-                     json.dumps(ent.history), json.dumps(ent.reasons)))
-            self._conn.execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES ('clock', ?)",
-                (json.dumps(self.clock),))
-            # NPC 注册表: {name: data_dir}, 供 load 恢复各 NPC 的记忆与面
-            self._conn.execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES ('npcs', ?)",
-                (json.dumps(self._npc_data_dirs),))
-            # F5-1: 自治 agent 名单 (与 npcs 数据目录分开), 供 load 恢复注册。
-            self._conn.execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES ('agent_npcs', ?)",
-                (json.dumps(sorted(n for n in self._agent_llms
-                                   if n in self._npcs)),))
-            # F6-7: 调度/固化的日锚点, 避免重载后重复规划/固化。
-            self._conn.execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES ('last_plan_day', ?)",
-                (json.dumps(self._last_plan_day),))
-            self._conn.execute(
-                "INSERT OR REPLACE INTO meta (key, value) VALUES "
-                "('last_consolidate_day', ?)",
-                (json.dumps(self._last_consolidate_day),))
-            # F6-7: 各 NPC 的瞬态 (reflected_obs/plan_blocks/game_time) 一并落库。
+        metadata = {
+            "clock": self.clock,
+            "npcs": self._npc_data_dirs,
+            "agent_npcs": sorted(n for n in self._agent_llms if n in self._npcs),
+            "last_plan_day": self._last_plan_day,
+            "last_consolidate_day": self._last_consolidate_day,
+        }
+        with self._storage.write_snapshot(self.entities.values(), metadata):
             for npc in self._npcs.values():
                 try:
                     npc.save()
@@ -1036,77 +978,45 @@ class World:
                     continue
 
     def load(self, llm=None, embedder=None, agent_llms: dict | None = None) -> None:
-        """从 world.db 恢复世界状态 (实体全量状态 + 时钟 + NPC 注册表)。
+        """恢复世界状态；提供 llm 时恢复 NPC 认知与自治注册。
 
-        传入 llm/embedder 时, 同时按注册表重新实例化各 NPC (从各自独立 db
-        恢复其全部记忆流与面)。不传则只恢复实体与位置时钟 (NPC 需另行 add_npc)。
-        实体的血/攻防/目标/死亡/角色/历史/理由一并恢复 (M9), 跨进程续跑不失态。
-
-        agent_llms: 可选 {name: LLM}, 用于恢复每个 NPC 各自的 LLM 实例;
-        未提供的自治 NPC 回退到统一传入的 `llm` (旧调用方式兼容)。
+        区域配置和运行依赖由调用方提供。agent_llms 可为各自治 NPC 重新绑定
+        独立模型实例，未指定者使用统一 llm；模型对象不存入数据库。
         """
-        if self._conn is None:
+        if self._storage is None:
             raise RuntimeError("该世界是内存世界, 无法加载")
-        with self._lock:
-            for row in self._conn.execute(
-                    "SELECT name, kind, location, x, y, health, attack, defense,"
-                    " goal, dead, role, history, reasons FROM entity"):
-                (name, kind, loc_name, x, y, health, attack, defense,
-                 goal, dead, role, history, reasons) = row
-                loc = self.locations.get(loc_name)
-                if loc is None:   # 区域表漂移兜底: 按存下的坐标重建
-                    loc = Location(loc_name, x, y)
-                    self.locations[loc_name] = loc
-                self.entities[name] = Entity(
-                    kind=kind, name=name, location=loc,
-                    health=health if health is not None else 100,
-                    attack=attack if attack is not None else 10,
-                    defense=defense if defense is not None else 0,
-                    goal=goal or "", dead=bool(dead),
-                    role=role or "",
-                    history=json.loads(history) if history else [],
-                    reasons=json.loads(reasons) if reasons else [])
-            row = self._conn.execute(
-                "SELECT value FROM meta WHERE key='clock'").fetchone()
-            if row:
-                self.clock = float(json.loads(row[0]))
-            for key, attr, default in (("last_plan_day", "_last_plan_day", -1),
-                                       ("last_consolidate_day",
-                                        "_last_consolidate_day", -1)):
-                row = self._conn.execute(
-                    "SELECT value FROM meta WHERE key=?", (key,)).fetchone()
-                if row:
-                    setattr(self, attr, int(json.loads(row[0])))
-                else:
-                    setattr(self, attr, default)
-            # 恢复 NPC: 按注册表从各自独立 db 重新加载 (记忆流 + 面全部恢复)
-            row = self._conn.execute(
-                "SELECT value FROM meta WHERE key='npcs'").fetchone()
-            if row and llm is not None:
-                from .npc import NPC   # 函数级导入, 避免循环依赖
-                for name, data_dir in json.loads(row[0]).items():
+        with self._storage.read_snapshot() as snapshot:
+            for ent in snapshot.entities:
+                loc = self.locations.get(ent.location.name)
+                if loc is None:
+                    loc = ent.location
+                    self.locations[loc.name] = loc
+                ent.location = loc
+                self.entities[ent.name] = ent
+            meta = snapshot.metadata
+            if "clock" in meta:
+                self.clock = float(meta["clock"])
+            self._last_plan_day = int(meta.get("last_plan_day", -1))
+            self._last_consolidate_day = int(meta.get("last_consolidate_day", -1))
+            if "npcs" in meta and llm is not None:
+                from .npc import NPC
+                for name, data_dir in meta["npcs"].items():
                     npc = NPC.load(os.path.join(data_dir, f"{name}.db"),
                                    llm, embedder=embedder)
                     self._npcs[name] = npc
                     self._npc_data_dirs[name] = data_dir
-            # F5-1: 恢复自治 agent 注册 (名单存 world.db meta; LLM 实例由调用方
-            # 传入, 不能从磁盘反序列化)。旧库无 agent_npcs = 不注册, 现行为不变。
-            row = self._conn.execute(
-                "SELECT value FROM meta WHERE key='agent_npcs'").fetchone()
-            if row and llm is not None:
-                for name in json.loads(row[0]):
-                    if name not in self._npcs:
-                        continue
-                    chosen = (agent_llms or {}).get(name, llm)
-                    self.register_agent(name, chosen)
+            if "agent_npcs" in meta and llm is not None:
+                for name in meta["agent_npcs"]:
+                    if name in self._npcs:
+                        self.register_agent(name, (agent_llms or {}).get(name, llm))
 
     def close(self) -> None:
-        """关闭世界库与各 NPC 的记忆库 (F6-9: 不留 sqlite 句柄)。"""
+        """关闭各 NPC 记忆库和世界存储。"""
         for npc in self._npcs.values():
             try:
                 npc.store.close()
             except Exception:
                 pass
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        if self._storage is not None:
+            self._storage.close()
+            self._storage = None

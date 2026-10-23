@@ -18,6 +18,7 @@
 |---|---|---|
 | [世界实体与空间模型](modules/world-model.md) | 已实现，246 个离线测试通过 | `persona_agent/world_model.py` |
 | [结构化事件契约](modules/events.md) | 已实现，246 个离线测试通过 | `persona_agent/events.py` |
+| [世界持久化](modules/persistence.md) | 已实现，247 个离线测试通过 | `persona_agent/world_store.py` |
 
 ## 当前范围与验证约束
 
