@@ -7,7 +7,7 @@ import sys
 import pytest
 
 
-@pytest.mark.parametrize("module", ["world_model", "events", "perception"])
+@pytest.mark.parametrize("module", ["world_model", "events", "perception", "autonomous"])
 def test_foundation_import_does_not_load_runtime_or_model_adapters(module):
     code = f'''
 import importlib

@@ -9,6 +9,8 @@ from __future__ import annotations
 import os
 import random
 
+from .autonomous import (AutonomousDecider, DecisionContext,
+                         describe_state, describe_visible)
 from .events import VisualEvent
 from .perception import PresenceTracker, cognitive_tier, visible_entities
 from .world_store import WorldStore
@@ -49,6 +51,7 @@ class World:
         self._npcs: dict[str, "NPC"] = {}   # NPC 认知对象 (实体注册表的子集)
         self._npc_data_dirs: dict[str, str] = {}   # NPC → 其独立 db 的 data_dir (持久化注册表)
         self._agent_llms: dict[str, object] = {}   # agent → 其 LLM (决策用, 自治循环)
+        self._decision = AutonomousDecider()
         self._agent_personas: dict[str, dict] = {}   # agent → 人格特质 (决策用)
         self.reason_cap = 3          # 一个 agent 最多积累几条理由/证据 (通用容量, 情境可覆盖)
         self.clock: float = 0.0            # 游戏内时间 (小时, 单调递增)
@@ -214,59 +217,29 @@ class World:
         return player
 
     def agent_perception(self, agent: Entity) -> str:
-        """构建 agent 的感知视图 (非全知): 视距内存活实体 + 其血量/位置。"""
-        visible = [f"{other.name}(血{other.health},在{other.location.name})"
-                   for other in visible_entities(
-                       agent, self.entities.values(), self.perception_radius)]
-        return "; ".join(visible) if visible else "(空无一人)"
+        """基础物理感知；仅包含视距内存活实体。"""
+        return describe_visible(visible_entities(
+            agent, self.entities.values(), self.perception_radius))
 
     def agent_state(self, agent: Entity) -> str:
-        locs = "/".join(self.locations.keys())
-        s = (f"血{agent.health}, 攻{agent.attack}, 防{agent.defense}, "
-             f"在{agent.location.name} (可选区域: {locs})")
-        if agent.reasons:   # 已积累的理由 (让 agent 知道已做什么、别重复)
-            s += " | 已积累的理由: " + " / ".join(agent.reasons)
-        return s
+        return describe_state(agent, self.locations.keys())
 
     def decide_agent(self, agent: Entity, memory_context: str = "") -> dict:
-        """agent 决策下一步: LLM 战略判断 (非全知, 只看自己感知+记忆+目标)。
-
-        R1: 对 NPC agent, 把对视距内、有关系记忆 (观察/反思) 的实体的信任度显式
-        拼进 perception 喂给 decide_action。信任已由 talk/attack/help 更新 (E16),
-        但决策接口此前只能靠 LLM 从记忆文本猜信任, 无因果接线 —— 现在信任值直接
-        进决策输入, 稳定区分"可信/不可信"的交互对象。无関係记忆的不列 (避免陌生
-        人 trust 0 灌水)。不改 decide_action 方法签名, 信任随上下文文本进输入。
-        """
+        """通过自治决策模块选择动作；本门面只提供可见状态与运行依赖。"""
         llm = self._agent_llms.get(agent.name)
         if llm is None:
             return {"action": "wait", "reason": "无 LLM"}
-        perception = self.agent_perception(agent)
-        if memory_context:
-            perception += " | 自己的记忆: " + memory_context
-        npc = self._npcs.get(agent.name)
-        if npc is not None:
-            trust_bits: list[str] = []
-            for other in self.entities.values():
-                if other is agent or other.dead:
-                    continue
-                if distance(agent, other) > self.perception_radius:
-                    continue   # 视距外
-                if not npc.has_relationship(other.name):
-                    continue   # 无关系记忆, 不列 (陌生人 trust 0 无信息量)
-                trust = npc.trust_toward(other.name)
-                trust_bits.append(f"{other.name} {trust:+.2f}")
-            if trust_bits:
-                perception += " | 对视距内对象的信任度: " + ", ".join(trust_bits)
-            # M3 身份信念注入 (缺省关): 身份信念是跨玩家泛化的自我认知
-            # (type=identity, 共享流), 进决策上下文 —— 影响 NPC 对一切来往者的
-            # 行为基调。只取最新一条 (身份是稳定的, 旧的被新泛化取代)。
-            if self._use_identity_beliefs:
-                ident = npc.identity_belief()
-                if ident:
-                    perception += " | 身份信念: " + ident
-        return llm.decide_action(agent.name, agent.goal,
-                                 self._agent_personas.get(agent.name, {}),
-                                 perception, agent.history, self.agent_state(agent))
+        context = DecisionContext(
+            agent_name=agent.name, goal=agent.goal,
+            persona_traits=self._agent_personas.get(agent.name, {}),
+            visible=tuple(visible_entities(
+                agent, self.entities.values(), self.perception_radius)),
+            perception=self.agent_perception(agent), history=agent.history,
+            state=self.agent_state(agent))
+        return self._decision.decide(
+            llm, context, memory_context=memory_context,
+            cognition=self._npcs.get(agent.name),
+            use_identity_beliefs=self._use_identity_beliefs)
 
     def _observe_target_social(self, target: Entity, agent: Entity,
                                action_desc: str) -> "NPC | None":
@@ -628,8 +601,8 @@ class World:
             memory_context = ""
             if name in self._npcs:   # NPC 用自己的记忆流做非全知上下文
                 npc = self._npcs[name]
-                # F1-6: 只取共享流 + 视距内实体的关系记忆。别的玩家的私有记忆
-                # 不能进入本次决策上下文 (否则 B 会基于 A 的秘密做决定)。
+                # 已确认：共享流 + 全部可见对象的关系面，保留末 5 条窗口。
+                # 视距外对象不进入上下文；对话回复仍使用单一对话者的关系面。
                 visible = {e.name for e in visible_entities(
                     agent, self.entities.values(), self.perception_radius)}
                 memory_context = npc.decision_context(visible)
