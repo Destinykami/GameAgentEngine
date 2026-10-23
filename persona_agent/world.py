@@ -10,6 +10,7 @@ import os
 import random
 
 from .events import VisualEvent
+from .perception import PresenceTracker, cognitive_tier, visible_entities
 from .world_store import WorldStore
 from .world_model import Location, Entity, Player, distance, location_distance
 from .memory import HEARSAY_MAX_HOP   # 传闻链上限 (S4); memory 不依赖 world, 无循环
@@ -65,8 +66,8 @@ class World:
         # 过渡驱动: 只对"新出现在视距内"的 NPC 产生观察, 重复在场不重复入库
         # (离开后重现会再触发)。idle 档经 perceive 入口早退自动排除。
         self._social_perception = social_perception
-        # 每 NPC 当前视距内的 NPC 名集合 (出现检测的内存态, 同 _plan_blocks 不持久化)
-        self._social_seen: dict[str, set[str]] = {}
+        # 每个世界独立的在场变化检测器；出现水位仍不持久化。
+        self._presence = PresenceTracker()
         # S4 谣言传播 (缺省 False = 现行为): talk 的话语被范围内第三方 NPC 听到
         # (传闻观察 hop=1), 持有未封顶传闻的 NPC 下次谈吐时转述给对话者 (hop+1)。
         # S5 内生事件钩子: {action: (阈值, 描述)} —— 同一 actor 对同一 target 连续
@@ -87,7 +88,6 @@ class World:
         # F6-11 (可选, 缺省关): 玩家感知改过渡驱动 —— 只在玩家新进入视距/
         # 换区域/档位变化时生成观察, 重复在场不再每步 observe+merge。
         self._player_perception_transition = player_perception_transition
-        self._player_seen: dict[str, dict[str, tuple[str, str]]] = {}
         self.path = path
         self._storage: WorldStore | None = None
         self._last_plan_day = -1   # 已生成过日计划的天 (0-based); step 每天早晨自动规划
@@ -177,59 +177,14 @@ class World:
         重复感知同一在场走既有观察去重 (0.92 合并), 不灌水。返回观察 id 列表。
         """
         npc = self._npcs.get(npc_name)
-        if npc is None or npc.tier == "idle":
+        if npc is None:
             return []
-        me = self.entities[npc_name]
-        if me.dead:
-            return []   # 死去的 NPC 不再感知 (同 world_event/step 的死亡检查)
-        r = self.perception_radius if radius is None else radius
-        ids: list[int] = []
-        transition = self._player_perception_transition
-        seen = self._player_seen.setdefault(npc_name, {}) if transition else None
-        current: set[str] = set()
-        for ent in self.entities.values():
-            if ent.kind != "player" or ent.dead or distance(me, ent) > r:
-                continue   # 非玩家 / 死者 / 视距外
-            if transition:
-                current.add(ent.name)
-                key = (ent.location.name, npc.tier)
-                if seen.get(ent.name) == key:
-                    continue   # F6-11: 过渡驱动, 同一在场状态不重复 observe
-                seen[ent.name] = key
-            if npc.tier == "full":
-                content = f"{ent.name} 出现在 {me.location.name}, 靠近 {npc_name}"
-            else:   # compressed
-                content = f"{ent.name} 在 {me.location.name}"
-            ids.append(npc.observe(content, now, player_id=ent.name))
-        if transition:
-            for pname in [n for n in seen if n not in current]:
-                seen.pop(pname, None)   # 离开视距 → 重进时重新观察
-        # S2 社交在场感知 (缺省关): NPC 感知视距内其他 NPC 的**出现**。
-        # 过渡驱动而非逐步重放: 只对新进入视距的 NPC 产生观察 (重复在场不重复
-        # 入库, 0.92 去重仍是兜底); 离开视距即移出 seen, 重现会再触发。
-        # 档位同玩家感知: full=富细节, compressed=仅在场, idle 经入口早退无感知。
-        # 新观察同时登记 _step_social —— 关系反思走 E16 的 flush_social 路径
-        # (full 档且新观察才反思, 幂等/异常安全), 信任度随之惰性更新。
-        if self._social_perception:
-            seen = self._social_seen.setdefault(npc_name, set())
-            current: set[str] = set()
-            for ent in self.entities.values():
-                if (ent.kind != "npc" or ent is me or ent.dead
-                        or distance(me, ent) > r):
-                    continue
-                current.add(ent.name)
-            for other in sorted(current - seen):
-                if npc.tier == "full":
-                    content = f"{other} 出现在 {me.location.name}, 靠近 {npc_name}"
-                else:   # compressed
-                    content = f"{other} 在 {me.location.name}"
-                ids.append(npc.observe(content, now, player_id=other))
-                self._step_social.append((npc, other))
-            # 就地更新 seen 为当前在场集合 (不能 seen &= current: 首步 seen 为空,
-            # 交集恒空, 出现集合记不住, 每步都当"新出现")。离开者自然移出, 重现再触发。
-            seen.clear()
-            seen.update(current)
-        return ids
+        return self._presence.perceive(
+            self.entities[npc_name], npc, self.entities.values(), now,
+            self.perception_radius if radius is None else radius,
+            social_perception=self._social_perception,
+            player_transition=self._player_perception_transition,
+            on_social=lambda other: self._step_social.append((npc, other)))
 
     def player_action(self, player_name: str, action: str, target_npc: str,
                       now: float) -> int:
@@ -260,12 +215,9 @@ class World:
 
     def agent_perception(self, agent: Entity) -> str:
         """构建 agent 的感知视图 (非全知): 视距内存活实体 + 其血量/位置。"""
-        visible = []
-        for other in self.entities.values():
-            if other is agent or other.dead:
-                continue
-            if distance(agent, other) <= self.perception_radius:
-                visible.append(f"{other.name}(血{other.health},在{other.location.name})")
+        visible = [f"{other.name}(血{other.health},在{other.location.name})"
+                   for other in visible_entities(
+                       agent, self.entities.values(), self.perception_radius)]
         return "; ".join(visible) if visible else "(空无一人)"
 
     def agent_state(self, agent: Entity) -> str:
@@ -678,9 +630,8 @@ class World:
                 npc = self._npcs[name]
                 # F1-6: 只取共享流 + 视距内实体的关系记忆。别的玩家的私有记忆
                 # 不能进入本次决策上下文 (否则 B 会基于 A 的秘密做决定)。
-                visible = {e.name for e in self.entities.values()
-                           if e is not agent and not e.dead
-                           and distance(agent, e) <= self.perception_radius}
+                visible = {e.name for e in visible_entities(
+                    agent, self.entities.values(), self.perception_radius)}
                 memory_context = npc.decision_context(visible)
                 # 档位决策门控 (消融开关, 缺省关): idle NPC 规则等待, 零 LLM。
                 if self._decision_tier_gate and npc.tier == "idle":
@@ -812,23 +763,8 @@ class World:
         - 无玩家在视距内 / 世界无玩家              → idle   (空闲省认知)
         这是 blog「问题一」的落地: 认知开销随距离自动降档。
         """
-        me = self.entities[npc_name]
-        if me.dead:
-            return "idle"   # 死去的 NPC 不参与认知调度
-        nearest: float | None = None
-        for ent in self.entities.values():
-            if ent.kind != "player" or ent.dead:
-                continue
-            d = distance(me, ent)
-            if nearest is None or d < nearest:
-                nearest = d
-        if nearest is None:
-            return "idle"
-        if nearest <= self.full_radius:
-            return "full"
-        if nearest <= self.perception_radius:
-            return "compressed"
-        return "idle"
+        return cognitive_tier(self.entities[npc_name], self.entities.values(),
+                              self.full_radius, self.perception_radius)
 
     def schedule_tiers(self, now: float) -> dict[str, str]:
         """按距离给所有 NPC 自动设档, 返回 {npc: 档位}。step (阶段5) 每步调用。"""
