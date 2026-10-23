@@ -1,6 +1,6 @@
 """计划块归一化/校验返回回归 (F5-3)。
 
-非整数浮点块不得让 f"{start:02d}" 打崩; make_daily_plan 返回给 NPC._plan_blocks
+非整数浮点块不得让 f"{start:02d}" 打崩; make_daily_plan 返回给 NPC.plan_state.blocks
 的必须是真正入库的校验后块。
 """
 
@@ -24,7 +24,7 @@ def test_float_plan_blocks_are_dropped_not_crash(tmp_path):
     plans = [m.content for m in npc.store.all_valid(types=["plan"])]
     assert any(p.startswith("07-09 正常") for p in plans), "整数值浮点应接受"
     assert not any("半日浮点" in p for p in plans), "7.5/9.5 应丢弃, 不静默取整"
-    assert npc._plan_blocks == [(7, 9, "正常")], \
+    assert npc.plan_state.blocks == [(7, 9, "正常")], \
         "返回给 react 的必须是校验后的块"
 
 

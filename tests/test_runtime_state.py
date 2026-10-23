@@ -78,12 +78,12 @@ def test_npc_transient_state_roundtrip(tmp_path):
     npc = NPC.create("T", dict(TRAITS), llm=_StubLLM(),
                      data_dir=str(tmp_path))
     npc._reflected_obs = {"P": 3}
-    npc._plan_blocks = [(7, 9, "写代码")]
+    npc.plan_state.replace([(7, 9, "写代码")])
     npc._game_time = 12.0
     npc.save()
     npc2 = NPC.load(os.path.join(str(tmp_path), "T.db"), llm=_StubLLM())
     assert npc2._reflected_obs == {"P": 3}
-    assert npc2._plan_blocks == [(7, 9, "写代码")]
+    assert npc2.plan_state.blocks == [(7, 9, "写代码")]
     assert npc2._last_sweep == 12.0
 
 

@@ -21,6 +21,8 @@ src/
 
 反思模块后续已整理为 `cognition/reflection/` 子包，内部区分生成编排、证据写入、冲突处理、窄接口与规则；详见[反思设计](modules/reflection.md)。
 
+规划模块后续已整理为 `cognition/planning/` 子包，内部区分生成编排、纯时间规则、规划记忆、计划状态与窄接口；详见[规划设计](modules/planning.md)。
+
 ## 模块边界
 
 - 原有依赖方向和逻辑不变，本次只调整物理布局、导入、安装与文档。

@@ -23,7 +23,8 @@ from ..models.embeddings import Embedder, HashEmbedder
 from ..models.llm import LLMClient
 from ..memory.store import HEARSAY_MAX_HOP, MemoryRecord, MemoryStore
 from ..world.social_contracts import Hearsay
-from .planning import PlanningEngine
+from .planning import PlanningEngine, PlanState
+from .planning.memory import previous_day_context, shared_world_context
 from .reacting import ReactionDecider, ReactionDecision
 from .reflection import ReflectionEngine
 
@@ -63,8 +64,7 @@ class NPC:
         # 成本闸门状态
         # 自我反思触发器: 只由共享流观察累加 (关系观察走 _reflected_obs 门控)
         self._importance_accum = 0.0
-        self._current_plan = ""        # 反应后重规划的中断原因覆盖 (如"处理火灾"), 优先于日计划块
-        self._plan_blocks: list[tuple[int, int, str]] = []   # 当日计划块 (start, end, activity)
+        self.plan_state = PlanState()
         self._tier: str = "full"        # full | compressed | idle
         # 决策缓存: 键 → 完整 ReactionDecision (F5-2: 不再只存 action 字符串,
         # 否则缓存命中时要从自然语言反解析 react/utility, 事件文本含"接受"就会
@@ -310,10 +310,7 @@ class NPC:
         # 计划上下文: 显式参数 > 当前时刻正在进行的计划块 > 重规划中断覆盖。
         # 不再用"日计划已生成"空话 —— score_event 需要知道 NPC 正忙什么才能
         # 判断目标契合度与打断代价。
-        if current_plan is not None:
-            plan = current_plan
-        else:
-            plan = self._current_activity(now) or self._current_plan
+        plan = self.plan_state.context(now, explicit=current_plan)
         # 决策缓存: 按事件+玩家+关系档位缓存 (关系档位粗粒度, 避免过度失效)。
         # F5-4: use_relationship=False 的消融臂不应计算 trust, 缓存键也不带
         # trust 维度 (固定 "-"), 否则同一事件仍会因信任不同而拆缓存。
@@ -352,19 +349,14 @@ class NPC:
         # ("第1天"其实是第二天, 对 LLM 无意义)。库里的昨日计划记忆就是"昨天干
         # 了什么" (新一天计划经 M4 失效替换前它们仍 valid)。首日无计划时退回
         # 调用方传入的标签。
-        plans = self.store.all_valid(types=["plan"])
-        if plans:
-            previous_day = "前一天活动: " + " | ".join(p.content for p in plans)
+        previous_day = previous_day_context(self.store, previous_day)
         # 世界背景只用共享流观察: 关系观察属于某个玩家的面, 不能进共享 plan
         # 的生成上下文 (否则 A 的秘密会随 plan 泄漏给 B)。E2: shared=True 是
         # "只取 NULL 流", player_id=None 是"不过滤", 二者不能混。
-        recent = [m.content for m in self.store.all_valid(
-            shared=True, types=["observation"])[-10:]]
-        context = " | ".join(recent) if recent else ""
+        context = shared_world_context(self.store)
         ids, blocks = self.planner.make_daily_plan(self.store, self.persona_traits,
                                                    previous_day, date, now, context=context)
-        self._plan_blocks = blocks       # 存块, 供 react 按当前时刻取"正在进行的计划"
-        self._current_plan = ""          # 日计划接管"当前正忙", 清除重规划的中断覆盖
+        self.plan_state.replace(blocks)
         return ids
 
     def replan(self, now: float, interruption: str,
@@ -378,29 +370,12 @@ class NPC:
         self._advance(now)
         # E14: 重规划也带世界背景 (近期观察), 同 generate_daily_plan —— 被打断后
         # 仍要在眼狩令等世界背景下重排剩余日程, 而非"岁月静好"。只取共享流。
-        recent = [m.content for m in self.store.all_valid(
-            shared=True, types=["observation"])[-10:]]
-        context = " | ".join(recent) if recent else ""
+        context = shared_world_context(self.store)
         ids, blocks = self.planner.replan_from_now(
             self.store, self.persona_traits, now, interruption,
             context=context, interruption_player=interruption_player)
-        self._plan_blocks = blocks       # 重规划后的新块接管"当前正忙"
-        self._current_plan = interruption   # 中断原因作兜底覆盖 (新块未覆盖此刻时生效)
+        self.plan_state.replace(blocks, interruption=interruption)
         return ids
-
-    # ---------------------------------------------------------------- 当前计划
-    def _current_activity(self, now: float) -> str:
-        """当前时刻正在进行的计划活动 (按 now 的当天小时匹配计划块)。
-
-        计划块为 (start, end, activity), start/end 是当天小时; now 是单调递增的
-        游戏内小时, 当天小时 = now % 24。匹配不到 (计划未覆盖此刻) 返回 ""。
-        让 react 的 score_event 拿到"当前正忙的真实活动", 而非"日计划已生成"空话。
-        """
-        hour = now % 24
-        for start, end, activity in self._plan_blocks:
-            if start <= hour < end:
-                return activity
-        return ""
 
     # ---------------------------------------------------------------- 认知档位
     def set_tier(self, tier: str) -> None:
@@ -499,14 +474,7 @@ class NPC:
         # F6-7: 恢复瞬态。旧库没有这两个 meta 时回退为空/空串 (旧行为)。
         reflected = store.get_meta("reflected_obs", {}) or {}
         npc._reflected_obs = {str(k): int(v) for k, v in reflected.items()}
-        blocks = store.get_meta("plan_blocks", []) or []
-        restored: list[tuple[int, int, str]] = []
-        for b in blocks:
-            if (isinstance(b, (list, tuple)) and len(b) == 3
-                    and isinstance(b[0], (int, float))
-                    and isinstance(b[1], (int, float))):
-                restored.append((int(b[0]), int(b[1]), str(b[2])))
-        npc._plan_blocks = restored
+        npc.plan_state = PlanState.from_saved(store.get_meta("plan_blocks", []))
         npc._last_sweep = npc._game_time
         return npc
 
@@ -524,6 +492,6 @@ class NPC:
         # 不丢当前时刻的计划上下文。
         self.store.set_meta("reflected_obs", dict(self._reflected_obs))
         self.store.set_meta("plan_blocks",
-                            [list(b) for b in self._plan_blocks])
+                            self.plan_state.saved_blocks())
         if self._data_path is None:
             self._data_path = self.store.db_path()

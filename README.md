@@ -27,7 +27,7 @@ NPC 对玩家 p 的面 (每玩家独立成流, 动态)
 |---|---|---|
 | Memory Stream + Retrieval | `src/game_agent/memory/store.py` | 每条记忆带 `player_id`; 检索三维评分 (recency/importance/relevance) 之外, 对当前玩家记忆加权 |
 | Reflection | `src/game_agent/cognition/reflection/` | 自我、关系与身份反思；生成编排、证据写入和冲突处理分开，设计见 [反思蓝图](docs/modules/reflection.md) |
-| Planning | `src/game_agent/cognition/planning.py` | 层次化 (日→小时→分钟); plan 作为记忆参与检索; 反应后从当前时刻重规划 |
+| Planning | `src/game_agent/cognition/planning/` | 日计划及一次子任务分解、反应后重规划；时间规则、计划记忆与当前状态分开，见 [规划蓝图](docs/modules/planning.md) |
 | Reacting | `src/game_agent/cognition/reacting.py` | 效用函数 `U=w_s·V_s+w_g·V_g−C_int`, 事件价值与关系信任度均由 LLM 判断 (签名缓存), 人格权重 + 信任调制 |
 | Dialogue | `src/game_agent/cognition/dialogue.py` | 非全知: 只用"当前对话者的面 + 共享流", 检索时把"对话者是谁"并入查询 |
 | 成本闸门 (blog 问题一) | `src/game_agent/cognition/npc.py` | 分级认知 (full/compressed/idle) + 决策缓存 |
@@ -283,7 +283,7 @@ w.npc("桃音").trust_toward("旅行者")  # 千人千面
 `src/game_agent/evaluation/probes.py` 把"它真的千人千面了吗"变成对真实 LLM 的集成回归。每个探针混合
 **确定性架构断言** (信任度差异、特质稳定, 不依赖 LLM 措辞) 与 **宽松真实 LLM
 断言** (对话不同、非全知不编造、计划目标导向, 对措辞鲁棒)。需 LLM 可达,
-不可达时 `pytest` 自动 skip。当前 **291 个离线测试已通过**；以下 6 个探针保留，因真实 API 不可达，本轮未执行：
+不可达时 `pytest` 自动 skip。当前 **303 个离线测试已通过**；以下 6 个探针保留，因真实 API 不可达，本轮未执行：
 
 1. **一致性探针** — 对两个玩家信任度不同, 且同一问话回答不同。
 2. **非全知探针** — 没观察过的玩家, 不应自信编造其背叛。判定用 **LLM 裁判**

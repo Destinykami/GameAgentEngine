@@ -143,5 +143,5 @@ def test_all_bad_plan_empty_store(tmp_path):
     ids = npc.generate_daily_plan(previous_day="", date="第一天", now=7.0)
     assert ids == []
     assert npc.store.all_valid(types=["plan"]) == []
-    assert npc._plan_blocks == []
-    assert npc._current_activity(9.5) == ""
+    assert npc.plan_state.blocks == []
+    assert npc.plan_state.current_activity(9.5) == ""
