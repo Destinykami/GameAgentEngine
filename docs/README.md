@@ -28,9 +28,10 @@
 | [社交观察与传闻路由](modules/social.md) | 已实现，257 个离线测试通过 | `src/game_agent/world/social.py` / `src/game_agent/world/social_contracts.py` |
 | [动作执行](modules/actions.md) | 已实现，258 个离线测试通过 | `src/game_agent/world/actions.py` |
 | [记忆模块](modules/memory.md) | 已拆分，275 个离线测试通过 | `src/game_agent/memory/store.py`、`src/game_agent/memory/models.py`、`src/game_agent/memory/ranking.py`、`src/game_agent/memory/policies.py`、`src/game_agent/memory/repository.py` |
+| [反思模块](modules/reflection.md) | 已拆分，291 个离线测试通过 | `src/game_agent/cognition/reflection/` |
 | [源码布局](source-layout.md) | 已迁移并移除旧包兼容层，280 个离线测试通过 | `src/game_agent/`、`pyproject.toml` |
 
-当前累计验证：280 个离线测试通过。移除旧包的 6 个专属兼容测试后，正式入口与依赖隔离检查继续通过；编辑安装及独立环境 wheel 安装验证通过，产物仅包含正式包。此前源码迁移的 25 个实现模块通过逻辑 AST 对比，16 步时间线与迁移前一致；记忆层与绝对重要性修正提交的 43 个状态 / 缓存检查点及 16 步时间线一致。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
+当前累计验证：291 个离线测试通过。反思模块在 9 组配置下的 99 个记忆 / 调用 / 缓存 / 重开库检查点及 16 步时间线与重构前相同。此前旧包兼容层移除、源码布局和记忆拆分的验证记录保留在相应蓝图中。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
 
 ## 当前范围与验证约束
 

@@ -1,7 +1,7 @@
 """反思去重嵌入成本测试 (L1 回归)。
 
-_save 去重改走 store 缓存向量: 已有反思的向量在 add 时已缓存, 去重比较零嵌入,
-每次 _save 只嵌入新洞察一次 (O(1)), 不再把该玩家全部已有反思整批重嵌入 (O(n))。
+ReflectionWriter 去重改走 store 缓存向量: 已有反思的向量在 add 时已缓存, 去重比较零嵌入,
+每次保存只嵌入新洞察一次 (O(1)), 不再把该玩家全部已有反思整批重嵌入 (O(n))。
 用计数嵌入器断言: reflect_relationship 的嵌入调用数不随已有反思数增长。
 无网络。
 """
@@ -15,6 +15,7 @@ import pytest
 from game_agent import MemoryRecord, MemoryStore
 from game_agent.models.embeddings import Embedder, HashEmbedder
 from game_agent.cognition.reflection import ReflectionEngine
+from game_agent.cognition.reflection.writing import ReflectionWriter
 from tests.test_persistence import _StubLLM
 
 
@@ -48,7 +49,7 @@ def test_save_dedup_uses_cached_vectors(tmp_path):
 
     before = embedder.calls
     engine.reflect_relationship(store, "Aria", now=11.0)
-    # retrieve 嵌入查询 (1) + _save 嵌入新洞察 (1, 判重用) + store.add 入库再嵌 (1)
+    # retrieve 嵌入查询 (1) + save 嵌入新洞察 (1, 判重用) + store.add 入库再嵌 (1)
     # = 3; 已有 10 条反思走 store 缓存 (0)。旧实现多一次整批重嵌入已有反思 = 4。
     assert embedder.calls == before + 3, \
         (f"应只多 3 次嵌入 (查询+新洞察×2), 实际多 {embedder.calls - before} 次 "
@@ -93,14 +94,14 @@ def test_dedup_threshold_boundary_0_92(tmp_path):
     store = MemoryStore(emb)
     store.add(MemoryRecord(content="认知 A", timestamp=0.0, type="reflection",
                            player_id="Aria", confidence=0.6))
-    engine = ReflectionEngine(_StubLLM(), emb)   # 默认 DEDUP_THRESHOLD=0.92
+    writer = ReflectionWriter(emb)   # 默认 DEDUP_THRESHOLD=0.92
 
     # 0.93 >= 0.92 → 去重 (旧 0.95 阈值下 0.93 会入库, 这正是 E6 的失效场景)
-    dup_id = engine._save(store, now=1.0, content="认知 B (0.93 近重复)",
-                          evidence=[], player_id="Aria", confidence=0.6)
+    dup_id = writer.save(store, now=1.0, content="认知 B (0.93 近重复)",
+                         evidence=[], player_id="Aria", confidence=0.6)
     assert dup_id is None, "相似度 0.93 >= 0.92 应去重 (旧阈值 0.95 会放行)"
 
     # 0.90 < 0.92 → 保留 (独立洞察, 不过度去重)
-    keep_id = engine._save(store, now=2.0, content="认知 C (0.90 独立)",
-                           evidence=[], player_id="Aria", confidence=0.6)
+    keep_id = writer.save(store, now=2.0, content="认知 C (0.90 独立)",
+                          evidence=[], player_id="Aria", confidence=0.6)
     assert keep_id is not None, "相似度 0.90 < 0.92 应保留 (独立洞察)"

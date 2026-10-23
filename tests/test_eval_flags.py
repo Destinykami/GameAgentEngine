@@ -313,8 +313,8 @@ def test_planning_counters_increment():
 def test_npc_defaults_preserve_current_behavior():
     """缺省 NPC 的全套开关 = 现行为 (锁住'增量不改存量'的铁律)。"""
     npc = NPC("缺省人", {"social": 0.5}, llm=_StubLLM(), embedder=HashEmbedder())
-    assert npc.reflection._conflict_policy == "full"
-    assert npc.reflection._evidence_types == ("observation",)
-    assert npc.reflection._evidence_min_relevance == 0.0
+    assert npc.reflection.conflict_policy == "full"
+    assert npc.reflection.evidence_types == ("observation",)
+    assert npc.reflection.evidence_min_relevance == 0.0
     assert npc.decider._use_relationship is True
     assert (npc.planner.daily_plan_count, npc.planner.replan_count) == (0, 0)

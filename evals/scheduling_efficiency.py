@@ -112,7 +112,7 @@ def build_world(config: str, n: int, emb):
                         reflection_threshold=REFLECT_THRESHOLD)
         if cfg["capped"]:
             # 候选证据限制: 反思证据检索的相关性下限 (top_k 保持 10, 未另设参数)
-            npc.reflection._evidence_min_relevance = CAP_MIN_RELEVANCE
+            npc.reflection.evidence_min_relevance = CAP_MIN_RELEVANCE
         e = w.get(name)
         e.health, e.attack, e.defense, e.goal = hp, atk, dfn, goal
         w._agent_llms[name] = llm        # 同 world_auto_sim 的自治注册惯例

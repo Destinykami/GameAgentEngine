@@ -26,12 +26,12 @@ NPC 对玩家 p 的面 (每玩家独立成流, 动态)
 | 论文模块 | 文件 | 为千人千面扩展了什么 |
 |---|---|---|
 | Memory Stream + Retrieval | `src/game_agent/memory/store.py` | 每条记忆带 `player_id`; 检索三维评分 (recency/importance/relevance) 之外, 对当前玩家记忆加权 |
-| Reflection | `src/game_agent/cognition/reflection.py` | 分**自我反思**与**关系反思**两条轨; 带证据引用 + LLM 矛盾强度冲突失效/衰减 |
+| Reflection | `src/game_agent/cognition/reflection/` | 自我、关系与身份反思；生成编排、证据写入和冲突处理分开，设计见 [反思蓝图](docs/modules/reflection.md) |
 | Planning | `src/game_agent/cognition/planning.py` | 层次化 (日→小时→分钟); plan 作为记忆参与检索; 反应后从当前时刻重规划 |
 | Reacting | `src/game_agent/cognition/reacting.py` | 效用函数 `U=w_s·V_s+w_g·V_g−C_int`, 事件价值与关系信任度均由 LLM 判断 (签名缓存), 人格权重 + 信任调制 |
 | Dialogue | `src/game_agent/cognition/dialogue.py` | 非全知: 只用"当前对话者的面 + 共享流", 检索时把"对话者是谁"并入查询 |
 | 成本闸门 (blog 问题一) | `src/game_agent/cognition/npc.py` | 分级认知 (full/compressed/idle) + 决策缓存 |
-| 记忆卫生链 | `src/game_agent/memory/store.py` / `src/game_agent/cognition/reflection.py` | 观察去重、级联切断、语义去重、LLM 冲突失效、降权遗忘、夜间情节固化 (episode) |
+| 记忆卫生链 | `src/game_agent/memory/store.py` / `src/game_agent/cognition/reflection/` | 观察去重、级联切断、语义去重、LLM 冲突失效、降权遗忘、夜间情节固化 (episode) |
 | NPC↔NPC 社交层 | `src/game_agent/world/runtime.py` / `src/game_agent/cognition/npc.py` | 记忆流从 per-player 泛化到 per-entity; NPC 互相感知、关系反思、信任; 谣言按传播跳数折扣 |
 | **游戏世界层** | `src/game_agent/world/runtime.py` | 多 NPC + 多玩家空间共存、空间感知、**距离自动调度档位**、世界事件、自治模拟、动作效果钩子、行为链事件、结构化视觉事件、独立持久化 |
 | 评测与可视化 | `evals/` / `visualization/` | 三组消融实验; Phaser 像素风时间线回放器 (含直播跟随) |
@@ -99,7 +99,7 @@ cd visualization && npm install && npm run dev
 
 1. **级联切断**: 反思找证据时限定 `types=["observation"]` —— 反思只能由真实
    观察支撑, 不能拿别的反思当证据 (否则一代代复述放大自己)。
-2. **语义去重**: `ReflectionEngine._save` 保存前, 新洞察与同一条流已有反思做
+2. **语义去重**: `ReflectionWriter.save` 保存前, 新洞察与同一条流已有反思做
    余弦比对, `>= 0.92` 视为同一条认知的复述, 跳过不入库。阈值来自
    gte-Qwen2 实测: 措辞不同的重复稳定落 0.85~0.94, 不同面向的独立洞察
    多 <= ~0.90; E6 从 0.95 下调到 0.92 (0.95 在真实数据几乎不生效)。
@@ -283,7 +283,7 @@ w.npc("桃音").trust_toward("旅行者")  # 千人千面
 `src/game_agent/evaluation/probes.py` 把"它真的千人千面了吗"变成对真实 LLM 的集成回归。每个探针混合
 **确定性架构断言** (信任度差异、特质稳定, 不依赖 LLM 措辞) 与 **宽松真实 LLM
 断言** (对话不同、非全知不编造、计划目标导向, 对措辞鲁棒)。需 LLM 可达,
-不可达时 `pytest` 自动 skip。当前 **280 个离线测试已通过**；以下 6 个探针保留，因真实 API 不可达，本轮未执行：
+不可达时 `pytest` 自动 skip。当前 **291 个离线测试已通过**；以下 6 个探针保留，因真实 API 不可达，本轮未执行：
 
 1. **一致性探针** — 对两个玩家信任度不同, 且同一问话回答不同。
 2. **非全知探针** — 没观察过的玩家, 不应自信编造其背叛。判定用 **LLM 裁判**

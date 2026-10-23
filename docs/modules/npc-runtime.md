@@ -8,6 +8,8 @@ NPC 负责认知组件组装、记忆写入、认知档位、反思触发、缓�
 
 组件仍由 NPC 持有；本次不重写 MemoryStore、ReflectionEngine、PlanningEngine、ReactionDecider 或 DialogueManager。两条决策路径继续保留原行为。
 
+后续[反思模块重构](reflection.md)已将生成、写入和冲突职责分开；此处的 NPC 触发阈值、水位、共享冲突签名和调用顺序保持不变。
+
 ## 本次公开接口
 
 | 接口 | 契约 |

@@ -1,7 +1,7 @@
 """P2 记忆卫生回归 (F6-2/F6-3/F6-9)。
 
 - 缓存有上限且 clear_cache 连 decider 一起清。
-- _save 二次校验证据 id: 幻影/跨玩家被过滤; identity 的跨流证据保留。
+- ReflectionWriter 二次校验证据 id: 幻影/跨玩家被过滤; identity 的跨流证据保留。
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 from game_agent import MemoryRecord, NPC
 from game_agent.models.embeddings import HashEmbedder
 from game_agent.memory.store import MemoryStore
-from game_agent.cognition.reflection import ReflectionEngine
+from game_agent.cognition.reflection.writing import ReflectionWriter
 from game_agent.cognition.npc import NPC_CACHE_LIMIT
 from game_agent.cognition.reacting import EVENT_VALUE_CACHE_LIMIT
 from tests.test_persistence import _StubLLM, TRAITS
@@ -31,13 +31,13 @@ def test_npc_decision_cache_is_bounded_and_clears_decider():
 
 def test_save_filters_phantom_and_cross_stream_evidence():
     store = MemoryStore(HashEmbedder())
-    engine = ReflectionEngine(_StubLLM(), HashEmbedder())
+    writer = ReflectionWriter(HashEmbedder())
     shared_id = store.add(MemoryRecord(content="共享观察", timestamp=0.0,
                                        type="observation", player_id=None))
     a_id = store.add(MemoryRecord(content="Aria 的观察", timestamp=1.0,
                                   type="observation", player_id="Aria"))
-    rec_id = engine._save(store, 2.0, "共享反思", [shared_id, a_id, 9999],
-                          None, 0.8, shared=True)
+    rec_id = writer.save(store, 2.0, "共享反思", [shared_id, a_id, 9999],
+                         None, 0.8, shared=True)
     rec = [m for m in store.all_valid(shared=True, types=["reflection"])
            if m.id == rec_id][0]
     assert rec.evidence == [shared_id], "跨玩家/幻影证据应被过滤"
@@ -45,15 +45,15 @@ def test_save_filters_phantom_and_cross_stream_evidence():
 
 def test_identity_evidence_keeps_cross_stream_reflection():
     store = MemoryStore(HashEmbedder())
-    engine = ReflectionEngine(_StubLLM(), HashEmbedder())
+    writer = ReflectionWriter(HashEmbedder())
     obs_id = store.add(MemoryRecord(content="共享观察", timestamp=0.0,
                                     type="observation", player_id=None))
     rel_id = store.add(MemoryRecord(content="Aria 值得信任", timestamp=1.0,
                                     type="reflection", player_id="Aria"))
-    ident_id = engine._save(store, 2.0, "我倾向于信任来客",
-                            [obs_id, rel_id], None, 0.8,
-                            rtype="identity", shared=True,
-                            cross_stream=True)
+    ident_id = writer.save(store, 2.0, "我倾向于信任来客",
+                           [obs_id, rel_id], None, 0.8,
+                           rtype="identity", shared=True,
+                           cross_stream=True)
     ident = [m for m in store.all_valid(shared=True, types=["identity"])
              if m.id == ident_id][0]
     assert ident.evidence == [obs_id, rel_id]

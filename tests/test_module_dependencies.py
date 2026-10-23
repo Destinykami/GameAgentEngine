@@ -13,6 +13,9 @@ import pytest
     "world.extensions", "world.social", "world.actions", "memory.models",
     "memory.policies", "memory.ranking", "world", "memory", "models",
     "cognition", "evaluation",
+    "cognition.reflection", "cognition.reflection.engine",
+    "cognition.reflection.contracts", "cognition.reflection.policies",
+    "cognition.reflection.writing", "cognition.reflection.conflicts",
 ])
 def test_foundation_import_does_not_load_runtime_or_model_adapters(module):
     code = f'''
