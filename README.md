@@ -2,7 +2,7 @@
 
 > 重构设计入口：**[docs/README.md](docs/README.md)**，包含按当前代码核对的系统总览、模块蓝图划分、重构路线与设计模板。
 >
-> 当前源码采用 **[src/game_agent](src/game_agent/)**，按认知、记忆、世界、模型和评测探针分组；[源码布局](docs/source-layout.md) 说明安装与旧导入兼容。原 [OVERVIEW.md](OVERVIEW.md) 保留重构前的机制说明与历史状态。
+> 当前源码采用 **[src/game_agent](src/game_agent/)**，按认知、记忆、世界、模型和评测探针分组；[源码布局](docs/source-layout.md) 说明安装与导入契约，仅支持 `game_agent` 包路径。原 [OVERVIEW.md](OVERVIEW.md) 保留重构前的机制说明与历史状态。
 
 基于 [Generative Agents: Interactive Simulacra of Human Behavior](https://arxiv.org/abs/2304.03442)
 的思路, 构建能随玩家互动历史**动态变化面孔**的游戏 NPC。
@@ -283,7 +283,7 @@ w.npc("桃音").trust_toward("旅行者")  # 千人千面
 `src/game_agent/evaluation/probes.py` 把"它真的千人千面了吗"变成对真实 LLM 的集成回归。每个探针混合
 **确定性架构断言** (信任度差异、特质稳定, 不依赖 LLM 措辞) 与 **宽松真实 LLM
 断言** (对话不同、非全知不编造、计划目标导向, 对措辞鲁棒)。需 LLM 可达,
-不可达时 `pytest` 自动 skip。当前 **286 个离线测试已通过**；以下 6 个探针保留，因真实 API 不可达，本轮未执行：
+不可达时 `pytest` 自动 skip。当前 **280 个离线测试已通过**；以下 6 个探针保留，因真实 API 不可达，本轮未执行：
 
 1. **一致性探针** — 对两个玩家信任度不同, 且同一问话回答不同。
 2. **非全知探针** — 没观察过的玩家, 不应自信编造其背叛。判定用 **LLM 裁判**

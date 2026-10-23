@@ -31,7 +31,7 @@ for name in ("game_agent.world.runtime", "game_agent.cognition.npc", "game_agent
     assert result.returncode == 0, result.stderr
 
 
-def test_lazy_public_exports_preserve_legacy_identity_and_discovery():
+def test_lazy_public_exports_preserve_identity_and_discovery():
     import game_agent
     from game_agent.memory import models as memory_model, store as memory
     from game_agent.world import entities as world_model, runtime as world

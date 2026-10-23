@@ -15,7 +15,7 @@ dev = ["pytest>=7.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["game_agent*", "persona_agent*"]
+include = ["game_agent*"]
 namespaces = false
 
 [tool.pytest.ini_options]
