@@ -1,5 +1,7 @@
 # persona_agent — 千人千面游戏 NPC 框架
 
+> 重构设计入口：**[docs/README.md](docs/README.md)**，包含按当前代码核对的系统总览、模块蓝图划分、重构路线与设计模板。
+>
 > 先看 **[OVERVIEW.md](OVERVIEW.md)** 的系统总览 (自我/面解耦、LLM 推理栈、
 > 记忆卫生链、判断型决策、成本管理、验证体系)。本 README 是逐模块的实现细节。
 
