@@ -23,6 +23,8 @@ src/
 
 规划模块后续已整理为 `cognition/planning/` 子包，内部区分生成编排、纯时间规则、规划记忆、计划状态与窄接口；详见[规划设计](modules/planning.md)。
 
+对话模块后续已整理为 `cognition/dialogue/` 子包，内部区分上下文准备、单轮生成、双人轮流与窄接口；NPC 和 World 继续负责原有对话观察回流，详见[对话设计](modules/dialogue.md)。
+
 ## 模块边界
 
 - 原有依赖方向和逻辑不变，本次只调整物理布局、导入、安装与文档。

@@ -30,9 +30,10 @@
 | [记忆模块](modules/memory.md) | 已拆分，275 个离线测试通过 | `src/game_agent/memory/store.py`、`src/game_agent/memory/models.py`、`src/game_agent/memory/ranking.py`、`src/game_agent/memory/policies.py`、`src/game_agent/memory/repository.py` |
 | [反思模块](modules/reflection.md) | 已拆分，291 个离线测试通过 | `src/game_agent/cognition/reflection/` |
 | [规划模块](modules/planning.md) | 已拆分，303 个离线测试通过 | `src/game_agent/cognition/planning/` |
+| [对话模块](modules/dialogue.md) | 已拆分，315 个离线测试通过 | `src/game_agent/cognition/dialogue/` |
 | [源码布局](source-layout.md) | 已迁移并移除旧包兼容层，280 个离线测试通过 | `src/game_agent/`、`pyproject.toml` |
 
-当前累计验证：303 个离线测试通过。规划模块的 44 个引擎检查点、12 个 NPC 检查点、1,734 次时间规则比较及 16 步时间线与重构前相同，旧新数据库双向加载一致。反思模块及此前源码布局、记忆拆分的验证记录保留在相应蓝图中。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
+当前累计验证：315 个离线测试通过。对话模块的 32 个单轮检查点、60 个 NPC 检查点、11 组轮流场景及 16 步时间线与重构前相同。规划、反思及此前源码布局、记忆拆分的验证记录保留在相应蓝图中。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
 
 ## 当前范围与验证约束
 
