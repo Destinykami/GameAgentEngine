@@ -31,6 +31,10 @@ import pytest
     "models.config", "models.llm_http", "models.llm_http.parsing",
     "models.llm_http.usage", "models.llm_http.dialogue", "models.llm_http.memory",
     "models.llm_http.planning", "models.llm_http.actions",
+    "scenarios", "scenarios.inazuma", "scenarios.inazuma.definition",
+    "scenarios.inazuma.effects", "scenarios.inazuma.judgment", "scenarios.inazuma.outcome",
+    "scenarios.inazuma.setup", "scenarios.inazuma.scripted", "scenarios.inazuma.reporting",
+    "runners", "runners.artifacts", "runners.presentation",
 ])
 def test_foundation_import_does_not_load_runtime_or_model_adapters(module):
     code = f'''

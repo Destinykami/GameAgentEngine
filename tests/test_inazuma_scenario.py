@@ -2,7 +2,7 @@
 
 引擎 (game_agent/world.py) 保持通用, 只出动作空间+物理规则; "对话谁得什么证据 /
 找铁匠是否锻刀 / 执行官收缴持眼者是否算目击" 这些具体世界行为, 由情境层
-(examples/world_auto_sim.py) 经 World 的动作效果钩子注入。本测试验证:
+(game_agent/scenarios/inazuma/effects.py) 经 World 的动作效果钩子注入。本测试验证:
 1. talk → LLM 从对话生成证据 (新颖性对照 + 文本去重双保险);
 2. talk 铁匠 → 锻刀升攻 (与证据独立);
 3. help 持眼者 / 执行官收缴持眼者被目击 → 模板证据 (非对话, 不走 LLM);
@@ -12,8 +12,6 @@
 """
 from __future__ import annotations
 
-import importlib.util
-import os
 import tempfile
 
 
@@ -36,11 +34,7 @@ class _AskStub(_StubLLM):
         return self._queue.pop(0) if self._queue else "NONE"
 
 
-# 以模块方式载入情境 (不跑 main), 取其效果函数与 register_scenario。
-_WAS_PATH = os.path.join(os.path.dirname(__file__), "..", "examples", "world_auto_sim.py")
-_spec = importlib.util.spec_from_file_location("world_auto_sim", _WAS_PATH)
-was = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(was)
+from game_agent.scenarios.inazuma.effects import register_scenario
 
 LOCATIONS = [Location("主城街道", 0, 0), Location("治疗堂", 1, 0),
              Location("锻造坊", 2, 0), Location("眼狩署", 0, 1),
@@ -62,7 +56,7 @@ def _world(register: bool = True, llm: _AskStub | None = None) -> tuple[World, _
     w.add_agent_player("旅行者", "主城街道", "x", llm=llm,
                        health=300, attack=12, defense=5)
     if register:
-        was.register_scenario(w)
+        register_scenario(w)
     return w, llm
 
 

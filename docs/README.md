@@ -34,8 +34,10 @@
 | [事件反应与关系信任](modules/reaction.md) | 已拆分，332 个离线测试通过 | `src/game_agent/cognition/reacting/` |
 | [源码布局](source-layout.md) | 已迁移并移除旧包兼容层，280 个离线测试通过 | `src/game_agent/`、`pyproject.toml` |
 | [模型接入与输出解析](modules/model-adapters.md) | 已拆分，372 个离线测试通过 | `src/game_agent/models/llm_http/`、`config.py`、`transport.py`、`embeddings_http.py` |
+| [世界循环与公开编排](modules/world-runtime.md) | 组件已提取，场景查询边界已收尾 | `src/game_agent/world/runtime.py` |
+| [稻妻场景与运行产物](modules/scenarios.md) | 已拆分，395 个离线测试通过 | `src/game_agent/scenarios/inazuma/`、`src/game_agent/runners/` |
 
-当前累计验证：372 个离线测试通过。模型接入的 504 个任务输入/输出检查点、13 个 HTTP/重试/向量检查点与原实现相同；12 类任务核心在归一请求及解析引用、忽略文档缩进后 AST 一致。此前模块的验证记录保留在相应蓝图中。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
+当前累计验证：395 个离线测试通过。4 组自治离线配置及完整脚本周剧情的输出、模型调用和数据库与旧入口一致，自治 JSON/JSONL 字节及 16 步时间线一致。此前模块的验证记录保留在相应蓝图中。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
 
 ## 当前范围与验证约束
 

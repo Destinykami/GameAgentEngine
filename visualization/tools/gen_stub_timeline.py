@@ -122,11 +122,9 @@ def main() -> int:
     llm = _StubLLM()
 
     for name, traits, loc, hp, atk, dfn, role in NPCS:
-        w.add_npc(name, traits, llm=llm, data_dir=tmp, location=loc)
+        w.add_npc(name, traits, llm=llm, data_dir=tmp, location=loc, autonomous=True)
         e = w.get(name)
         e.health, e.attack, e.defense, e.role = hp, atk, dfn, role
-        w._agent_llms[name] = llm
-        w._agent_personas[name] = traits
     w.add_agent_player("旅行者", "稻妻主城", "劝雷电将军废止眼狩令", llm=llm,
                        health=300, attack=12, defense=5)
 

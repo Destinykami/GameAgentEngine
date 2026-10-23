@@ -170,6 +170,10 @@ class World:
     def npc(self, name: str) -> "NPC | None":
         return self._npcs.get(name)
 
+    def agent_model(self, name: str):
+        """查询已注册的自治模型；不暴露可变注册表。"""
+        return self._agent_llms.get(name)
+
     # ------------------------------------------------------------- 空间感知
     def perceive(self, npc_name: str, now: float,
                  radius: float | None = None) -> list[int]:

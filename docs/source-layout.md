@@ -14,7 +14,9 @@ src/
     ├── memory/           # 记录、门面、排序、维护策略和 SQLite 仓储
     ├── world/            # 世界运行、实体、感知、动作、事件、社交和世界持久化
     ├── models/           # LLM / 向量接口、哈希实现及兼容 HTTP 适配
-    └── evaluation/       # 真实模型集成探针，导入时不执行探测
+    ├── evaluation/       # 真实模型集成探针，导入时不执行探测
+    ├── scenarios/        # 人物、地图、具体规则及故事顺序
+    └── runners/          # 显式运行循环、输出目录和时间线产物
 ```
 
 示例、离线测试、评测运行器和可视化继续分别放在根目录的 `examples/`、`tests/`、`evals/`、`visualization/`，不混入运行时实现。
@@ -28,6 +30,8 @@ src/
 事件反应后续已整理为 `cognition/reacting/` 子包，内部区分反应编排、事件评分、关系信任、纯效用策略与窄接口；自治路径保持独立，详见[事件反应设计](modules/reaction.md)。
 
 NPC 编排后续已整理为 `cognition/npc/` 子包，内部区分运行状态、观察写入、按流固化、完整反应缓存、只读记忆视图、元数据持久化及窄接口；`engine.py` 保留组件组装与调用顺序，详见[NPC 设计](modules/npc-runtime.md)。
+
+模型接入后续已分离 `models/config.py`、单次 HTTP 和 `models/llm_http/` 任务子包，详见[模型接入设计](modules/model-adapters.md)。具体场景在 `scenarios/inazuma/`，运行及产物在 `runners/`，示例仅提供原路径入口；通用 World 不依赖场景，详见[场景设计](modules/scenarios.md)。
 
 ## 模块边界
 
