@@ -11,7 +11,7 @@
 | [模块设计模板](templates/module-design.md) | 后续每个模块蓝图的统一格式 | 可直接使用 |
 | [源码布局与包命名](source-layout.md) | src 布局、模块目录、安装与导入契约 | 已实现并移除旧包兼容层，280 个离线测试通过 |
 
-各模块拟建立的设计稿见总览中的“模块蓝图目录”；已展开的蓝图和实施状态见下表。详细接口、状态机与迁移方案在对应设计稿中逐步记录。
+模块蓝图均已落盘，实施状态见下表；接口、状态归属、保留行为和验证证据记录在各设计中。总览描述当前实现，原历史材料继续保留。
 
 ## 模块实施记录
 
@@ -37,8 +37,9 @@
 | [世界循环与公开编排](modules/world-runtime.md) | 组件已提取，场景查询边界已收尾 | `src/game_agent/world/runtime.py` |
 | [稻妻场景与运行产物](modules/scenarios.md) | 已拆分，395 个离线测试通过 | `src/game_agent/scenarios/inazuma/`、`src/game_agent/runners/` |
 | [评测场景与指标](modules/evaluation.md) | 已拆分，410 个离线测试通过 | `src/game_agent/evaluation/`、`evals/fixtures/`、`evals/experiments/` |
+| [回放与可视化](modules/visualization.md) | 已拆分，417 个 Python 测试、5 个前端测试及 98 项浏览器断言通过 | `visualization/src/replay/`、`visualization/src/scenes/`、`src/game_agent/runners/replay/` |
 
-当前累计验证：410 个离线测试通过。评测的 40 组记忆轨迹、27 个决策情境、6 组调度配置及三个控制器离线输出与旧实现一致；13 个试验/控制器核心 AST 一致。此前模块的验证记录保留在相应蓝图中。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
+当前累计验证：417 个 Python 离线测试、5 个前端离线测试及 98 项浏览器断言通过；TypeScript/Vite 构建及时间线数据校验通过。此前模块的原实现对照记录保留在相应蓝图中。各行测试数为该模块提交时的记录；未运行真实模型、真实模拟或在线评测。
 
 ## 当前范围与验证约束
 

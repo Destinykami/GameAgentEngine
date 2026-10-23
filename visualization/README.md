@@ -3,6 +3,8 @@
 基于 Phaser 的像素风只读回放器，可视化 `稻妻城多智能体自治世界模拟` 跑出来的时间线。
 实现 [`../VisualizationPlan.md`](../VisualizationPlan.md) 的 M0–M2 里程碑。
 
+当前职责与验证以 [回放设计](../docs/modules/visualization.md) 为准：Scene 只做组装，`scenes/assets.ts` 管素材与地图，`replay/` 分管投影、事件呈现、输入和直播。终端/静态 HTML 回放实现位于 `src/game_agent/runners/replay/`，原示例命令不变。
+
 **数据来源是引擎产出的结构化 `visual_events`**（`src/game_agent/world/events.py::VisualEvent`），
 前端不再解析中文事件串。中文串只是 `VisualEvent.describe()` 的派生产物，仅作兜底。
 
@@ -11,7 +13,7 @@
 ```
 visualization/
 ├── index.html              # #game 容器
-├── package.json            # dev / build / preview / validate / e2e
+├── package.json            # dev / build / preview / validate / test / e2e
 ├── tsconfig.json           # strict, noUnusedLocals, bundler resolution
 ├── vite.config.ts          # base "./", 端口 5173
 ├── public/
@@ -28,7 +30,8 @@ visualization/
     ├── main.ts / config.ts    # Phaser 入口与全局显示约束 (960x540, pixelArt)
     ├── data/                  # schema.ts, timelineLoader.ts (+ 旧格式归一化), legacyEvents.ts (回退解析), liveSource.ts (直播轮询), locationAnchors.ts
     ├── PlaybackController.ts  # 播放/暂停/上一步/下一步/调速 (纯逻辑, 可单测)
-    ├── scenes/InazumaScene.ts # 单场景: 地图+实体+HUD+播放+M2交互, 消费 visual_events
+    ├── scenes/                # InazumaScene 组装/生命周期，assets 素材加载与地图绘制
+    ├── replay/                # SnapshotProjection / EventPresentation / input / LivePlayback
     ├── entities/              # AgentSprite (像素角色动画/血条/名牌/移动/活动), AgentRegistry
     ├── dialogue/              # SpeechBubble (气泡), DamagePopup (伤害数字弹出)
     ├── art/                   # 像素素材: ninjaAssets(日式村庄布局) / townTiles+groundMap+buildings(回退) / characters(原创) / ArtFactory
@@ -47,6 +50,7 @@ cd visualization
 # 2. 校验时间线 (schema_version / 地点合法 / damage 非负 / target_dead 一致 / 失败无成功态字段)
 npm install            # 首次; 缓存用 --cache ./.npm-cache 绕开 root 属主问题
 npm run validate
+npm test               # 读取、直播完整行、播放通知及投影顺序的离线契约
 
 # 3. 本地开发 (热重载) 或构建 + 预览
 npm run dev            # http://localhost:5173
@@ -61,11 +65,11 @@ npm run e2e
 无头 chromium 加载构建产物，直接驱动 `window.__REPLAY__.controller`，断言：
 
 **M1 回放**
-- 页面加载无 console/page 错误；`schema_version=1`、14 步、6 实体
+- 页面加载无 console/page 错误；`schema_version=1`、步数与输入样本相同、6 实体
 - 初始站位：旅行者@稻妻主城、将军@神樱庭（sprite 像素位置 = 地点锚点）
 - 手动逐步后旅行者 **移动落到治疗堂锚点**（位移 > 0，移动 Tween 生效）
 - day2：桃音 `dead=true` + 致死 `attack`（`target_dead=true`，`damage` 非负）
-- 最后一步：`decree_ended=true`、`persuade=3`、非阵亡、note 含"废止"眼狩令
+- 最后一步与输入样本的废止状态、存活、劝说进度和结局文本一致。仓库 14 步样本为成功结局；当前生成器的 16 步样本未达成结局，不由前端补写成功。
 
 **M2 交互**
 - 对话气泡：seek 到对话步，行动者气泡文本=台词、目标回复气泡文本=NPC回复，锚定 sprite；
@@ -105,7 +109,7 @@ npm run e2e
   （`vite preview` 从 `dist/` serve，运行时写入的 `public/live.jsonl` 不在 dist 里，
   故直播需 dev 模式；E2E 用 `tools/mock_live_source.mjs` 逐步写 `dist/live.jsonl` 模拟。）
 - E2E 断言：LIVE 标记可见；步数随轮询增长（逐步接入）；自动跟随最新步
-  （index = total-1）；done 后时间线完整（14 步）且 LIVE 标记隐藏（切回放）。
+  （index = total-1）；done 后时间线完整（步数与输入样本相同）且 LIVE 标记隐藏（切回放）。
 
 截图落在 `e2e_shots/`。
 

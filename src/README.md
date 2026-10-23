@@ -25,3 +25,5 @@
 `game_agent/cognition/npc/` 内按编排与组装（`engine.py`）、运行状态（`state.py`）、观察（`observation.py`）、固化（`consolidation.py`）、完整反应缓存（`reactions.py`）、只读记忆视图（`context.py`）、元数据保存恢复（`persistence.py`）及窄接口（`contracts.py`）组织。公共入口保持 `from game_agent import NPC`；公开时钟、运行状态副本与缓存数量供调用方诊断。
 
 `game_agent/models/llm_http/` 分开客户端组装、按任务组织的提示词、输出解析、传输重试与用量统计；连接默认值与实例参数在 `models/config.py`，单次 JSON POST 在 `models/transport.py`。向量适配器保留独立响应与回退规则。正式 RealLLM / RealEmbedder 导入不变。
+
+`game_agent/runners/replay/` 分开终端文本与节奏、静态 HTML 模板和 JSON/CLI 分发。`visualization/src/replay/` 管浏览器投影、事件、输入及直播；两种回放只读取时间线，不启动模型。

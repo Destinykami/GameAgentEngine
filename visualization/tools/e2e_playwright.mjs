@@ -11,11 +11,16 @@
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const fixturePath = process.env.STUB_FIXTURE_PATH ?? resolve(here, "..", "public", "stub_timeline.json");
+const fixture = JSON.parse(readFileSync(fixturePath, "utf-8"));
+const expectedSteps = fixture.steps.length;
+const expectedEnding = fixture.steps[fixture.steps.length - 1];
 const SHOTS = resolve(here, "..", "e2e_shots");
 mkdirSync(SHOTS, { recursive: true });
 
@@ -41,6 +46,8 @@ async function gameToPage(page, gx, gy) {
 // 只影响测试页, 不改应用默认行为。
 async function disableTweenLagSmooth(page) {
   await page.evaluate(() => {
+    // 场景 Clock 也使用游戏循环的 delta；无头低帧率时不让平滑把墙钟等待截短。
+    window.__PHASER_GAME__.loop.smoothStep = false;
     const t = window.__PHASER_GAME__.scene.getScene("Inazuma").tweens;
     if (!t) return;
     // 关闭 lag smoothing: 之后 >500ms 的停顿不再把 manager.startTime 推到未来。
@@ -93,7 +100,7 @@ console.log("\n== 1. 页面加载 (M1) ==");
 check(errors.length === 0, "加载无 console/page 错误" + (errors.length ? " (" + errors.join("; ") + ")" : ""));
 const tl = await page.evaluate(() => window.__REPLAY__.timeline);
 check(tl.schema_version === 1, "schema_version=1");
-check(Array.isArray(tl.steps) && tl.steps.length >= 10, "steps 数量 " + tl.steps.length);
+check(Array.isArray(tl.steps) && tl.steps.length === expectedSteps, "steps 数量 " + tl.steps.length + " = 样本步数 " + expectedSteps);
 const day0 = tl.steps[0].states;
 check(Object.keys(day0).length === 6, "day-0 有 6 个实体");
 check(Object.keys(day0).every((n) => day0[n].loc), "day-0 每实体都有 loc");
@@ -104,7 +111,7 @@ await page.screenshot({ path: resolve(SHOTS, "01_initial.png") });
 const portraitInfo = await page.evaluate(() => {
   const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
   const count = Object.keys(s.textures.list).filter((k) => k.startsWith("portrait_")).length;
-  const row = s.panel.rows.find((r) => r.name.text === "旅行者");
+  const row = window.__REPLAY__.panel.rows.find((r) => r.name.text === "旅行者");
   return { count, visible: !!row && row.avatar.visible, key: row && row.avatar.texture.key };
 });
 if (portraitInfo.count > 0) {
@@ -210,9 +217,9 @@ check(await page.evaluate(() => window.__REPLAY__.detailCard.isOpen() === false)
 // 点卡右上角 × → 收起 (场景级几何命中, per-object setInteractive 此环境点不动)
 const tv2 = await page.evaluate(() => {
   const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
-  const tv = s.reg.get("旅行者");
-  s.detailCard.show("旅行者", window.__REPLAY__.controller.current.states["旅行者"], null, tv.x, tv.y);
-  return { cx: s.detailCard.root.x, top: s.detailCard.root.y - s.detailCard.bg.height / 2 };
+  const tv = window.__REPLAY__.sprites.get("旅行者");
+  window.__REPLAY__.detailCard.show("旅行者", window.__REPLAY__.controller.current.states["旅行者"], null, tv.x, tv.y);
+  return { cx: window.__REPLAY__.detailCard.root.x, top: window.__REPLAY__.detailCard.root.y - window.__REPLAY__.detailCard.bg.height / 2 };
 });
 const xPage = await gameToPage(page, tv2.cx + 126 - 14, tv2.top + 12);   // × 区 (卡右上角), 转页面坐标
 await page.mouse.click(xPage.px, xPage.py);
@@ -223,15 +230,15 @@ check(await page.evaluate(() => window.__REPLAY__.detailCard.isOpen() === false)
 const cardFit = await page.evaluate(() => {
   const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
   const LONG_REASON = "目击执行官在稻妻主城当众收缴持眼者的神之眼, 持眼者被拖走时苦苦哀求却无人敢拦, 眼狩令的暴行昭然若揭。";
-  s.detailCard.show("旅行者", { name: "旅行者", health: 300, attack: 20, loc: "稻妻主城", dead: false,
+  window.__REPLAY__.detailCard.show("旅行者", { name: "旅行者", health: 300, attack: 20, loc: "稻妻主城", dead: false,
     role: "traveler", kind: "player", reasons: [LONG_REASON, "帮助桃音藏好雷神之眼"] }, "游历", 300, 300);
   // 行现在在 content 容器里; textBounds 会加上 content.y, 比只遍历 root.list 完整。
-  const b = s.detailCard.textBounds();
-  const bg = s.detailCard.bg;
+  const b = window.__REPLAY__.detailCard.textBounds();
+  const bg = window.__REPLAY__.detailCard.bg;
   return {
     maxRight: Math.round(b.maxRight), maxBottom: Math.round(b.maxBottom),
-    bgRight: Math.round(s.detailCard.root.x + bg.width / 2),
-    bgBottom: Math.round(s.detailCard.root.y + bg.height / 2),
+    bgRight: Math.round(window.__REPLAY__.detailCard.root.x + bg.width / 2),
+    bgBottom: Math.round(window.__REPLAY__.detailCard.root.y + bg.height / 2),
   };
 });
 check(cardFit.maxRight <= cardFit.bgRight, "详情卡长理由不横向溢出 (最右 " + cardFit.maxRight + " ≤ " + cardFit.bgRight + ")");
@@ -241,12 +248,12 @@ console.log("\n== 3b. 详情卡内滚动 ==");
 const scrollSetup = await page.evaluate(() => {
   const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
   const LONG = "目击执行官在稻妻主城当众收缴持眼者的神之眼, 持眼者被拖走时苦苦哀求却无人敢拦, 眼狩令的暴行昭然若揭。";
-  s.detailCard.show("旅行者", { name: "旅行者", health: 300, attack: 20, loc: "稻妻主城", dead: false,
+  window.__REPLAY__.detailCard.show("旅行者", { name: "旅行者", health: 300, attack: 20, loc: "稻妻主城", dead: false,
     role: "traveler", kind: "player", reasons: [LONG, LONG, LONG, LONG, LONG] }, "游历", 625, 330);
   return {
-    scrollable: s.detailCard.isScrollable(), info: s.detailCard.scrollInfo(),
-    cx: s.detailCard.root.x, cy: s.detailCard.root.y, bgH: s.detailCard.bg.height,
-    track: s.detailCard.scrollTrack.visible, thumb: s.detailCard.scrollThumb.visible,
+    scrollable: window.__REPLAY__.detailCard.isScrollable(), info: window.__REPLAY__.detailCard.scrollInfo(),
+    cx: window.__REPLAY__.detailCard.root.x, cy: window.__REPLAY__.detailCard.root.y, bgH: window.__REPLAY__.detailCard.bg.height,
+    track: window.__REPLAY__.detailCard.scrollTrack.visible, thumb: window.__REPLAY__.detailCard.scrollThumb.visible,
   };
 });
 check(scrollSetup.scrollable === true, "长理由卡进入滚动模式 (scrollable=true)");
@@ -274,7 +281,7 @@ check(dragged.offset > 0, "拖动卡内正文滚动 (offset " + Math.round(dragg
 // 滚动后点 × 仍关闭
 const closeAt = await page.evaluate(() => {
   const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
-  return { x: s.detailCard.root.x + s.detailCard.closeBtn.x, y: s.detailCard.root.y + s.detailCard.closeBtn.y };
+  return { x: window.__REPLAY__.detailCard.root.x + window.__REPLAY__.detailCard.closeBtn.x, y: window.__REPLAY__.detailCard.root.y + window.__REPLAY__.detailCard.closeBtn.y };
 });
 const closePage = await gameToPage(page, closeAt.x, closeAt.y);
 await page.mouse.click(closePage.px, closePage.py);
@@ -339,7 +346,7 @@ check(longFit.textW <= longFit.bgW && longFit.textH <= longFit.bgH,
 // 气泡深度须高于世界情况面板 (1001), 近右侧对话气泡 (如神樱庭) 落在面板上不被盖住。
 const bubbleDepth = await page.evaluate(() => {
   const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
-  return { actor: s.actorBubble.root.depth, reply: s.replyBubble.root.depth };
+  return { actor: window.__REPLAY__.bubbles.actor.root.depth, reply: window.__REPLAY__.bubbles.reply.root.depth };
 });
 check(bubbleDepth.actor > 1001 && bubbleDepth.reply > 1001,
   "气泡深度盖过面板 (" + bubbleDepth.actor + "/" + bubbleDepth.reply + " > 1001, 不被世界情况遮挡)");
@@ -377,9 +384,9 @@ const persist = await page.evaluate(async () => {
     if (rep.timeline.steps[i].visual_events.some((v) => v.type === "conversation" && v.utterance)) { convIdx = i; break; }
   }
   rep.controller.seek(convIdx); await sleep2(300);
-  const afterConv = s.actorBubble.isVisible();
+  const afterConv = window.__REPLAY__.bubbles.actor.isVisible();
   rep.controller.seek(convIdx + 1); await sleep2(300);   // 连续下一步 (非对话)
-  const afterNext = s.actorBubble.isVisible();
+  const afterNext = window.__REPLAY__.bubbles.actor.isVisible();
   return { convIdx, afterConv, afterNext };
 });
 check(persist.afterConv === true && persist.afterNext === true,
@@ -402,7 +409,7 @@ await page.mouse.move(endPage.px, endPage.py, { steps: 8 });
 await page.mouse.up();
 await sleep(200);
 const idxDrag = await page.evaluate(() => window.__REPLAY__.controller.currentIndex);
-check(idxDrag >= 12, "拖拽到右端 → 跳到末尾附近 (index " + idxDrag + ")");
+check(idxDrag >= expectedSteps - 2, "拖拽到右端 → 跳到末尾附近 (index " + idxDrag + ")");
 await page.screenshot({ path: resolve(SHOTS, "07_scrubber.png") });
 
 console.log("\n== 7. 桃音阵亡 (M1) ==");
@@ -423,9 +430,10 @@ const last = await page.evaluate(() => {
   c.seek(c.totalSteps - 1);
   return c.current;
 });
-check(last.decree_ended === true, "最后一步 decree_ended=true");
-check(last.shogun_dead === false && last.persuade >= 1, "将军被说服 (persuade=" + last.persuade + ")");
-check(last.note && last.note.includes("废止"), "note 含'废止'眼狩令");
+check(last.decree_ended === expectedEnding.decree_ended, "最后一步废止状态与样本一致 (" + last.decree_ended + ")");
+check(last.shogun_dead === expectedEnding.shogun_dead && last.persuade === expectedEnding.persuade,
+  "将军存活与劝说进度和样本一致 (persuade=" + last.persuade + ")");
+check((last.note ?? "") === (expectedEnding.note ?? ""), "末帧结局文本与样本一致");
 await sleep(400);
 await page.screenshot({ path: resolve(SHOTS, "04_ending.png") });
 
@@ -542,12 +550,12 @@ check(panelFit.maxRight <= panelFit.rightInner,
 const panelToggle = await page2.evaluate(async () => {
   const s = window.__PHASER_GAME__.scene.getScene("Inazuma");
   const sleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
-  const h0 = s.panel.bg.height;
-  s.panel.toggle(); await sleep2(50);
-  const collapsed = s.panel.isCollapsed();
-  const hCollapsed = s.panel.bg.height;
-  s.panel.toggle(); await sleep2(50);
-  return { h0, collapsed, hCollapsed, h1: s.panel.bg.height };
+  const h0 = window.__REPLAY__.panel.bg.height;
+  window.__REPLAY__.panel.toggle(); await sleep2(50);
+  const collapsed = window.__REPLAY__.panel.isCollapsed();
+  const hCollapsed = window.__REPLAY__.panel.bg.height;
+  window.__REPLAY__.panel.toggle(); await sleep2(50);
+  return { h0, collapsed, hCollapsed, h1: window.__REPLAY__.panel.bg.height };
 });
 check(panelToggle.collapsed === true && panelToggle.hCollapsed < panelToggle.h0,
   "面板点标题栏可折叠 (收起后高度 " + Math.round(panelToggle.hCollapsed) + " < " + Math.round(panelToggle.h0) + ", 让位地图)");
@@ -558,7 +566,7 @@ const auditFix = await page2.evaluate(async () => {
   const rep = window.__REPLAY__;
   const sleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
   const readSprite = (name) => {
-    const spr = s.reg.get(name); if (!spr) return null;
+    const spr = window.__REPLAY__.sprites.get(name); if (!spr) return null;
     const list = spr.gameObject.list;
     const char = list.find((c) => c.type === "Sprite");
     const marker = list.find((c) => c.type === "Text" && c.text === "✝");
@@ -570,7 +578,7 @@ const auditFix = await page2.evaluate(async () => {
   rep.controller.seek(5); await sleep2(60);
   rep.controller.seek(25); await sleep2(60);
   const p25 = readSprite("桃音");
-  const p25char = s.reg.get("桃音").char;
+  const p25char = window.__REPLAY__.sprites.get("桃音").char;
   out.f1 = { dead: rep.controller.current.states["桃音"].dead, ...p25,
              idle: p25char.anims.isPlaying,
              ok: rep.controller.current.states["桃音"].dead === true && p25.alpha === 0.45 && p25.marker === true
@@ -583,21 +591,21 @@ const auditFix = await page2.evaluate(async () => {
     if (rep.timeline.steps[i].visual_events.find((v) => v.type === "conversation" && v.utterance)) convIdx.push(i);
   const A = convIdx[0], B = convIdx[convIdx.length - 1];
   rep.controller.seek(A); await sleep2(160);
-  const txtA = s.actorBubble.bubbleText();
+  const txtA = window.__REPLAY__.bubbles.actor.bubbleText();
   rep.controller.seek(B);
-  const root = s.actorBubble.root;
+  const root = window.__REPLAY__.bubbles.actor.root;
   // 等 alpha 就绪 (轮询, 入场直接置 1), 再等 200ms 确认新气泡没有被旧淡出回调关掉。
   for (let i = 0; i < 40; i++) {
     if (root.visible && root.alpha > 0.9) break;
     await sleep2(50);
   }
   await sleep2(200);
-  out.f2 = { txtB: s.actorBubble.bubbleText(), rootVisible: root.visible, rootAlpha: root.alpha,
-             ok: txtA !== s.actorBubble.bubbleText() && root.visible === true && root.alpha > 0.9 };
+  out.f2 = { txtB: window.__REPLAY__.bubbles.actor.bubbleText(), rootVisible: root.visible, rootAlpha: root.alpha,
+             ok: txtA !== window.__REPLAY__.bubbles.actor.bubbleText() && root.visible === true && root.alpha > 0.9 };
   // #5 重播立即显示第 0 步: 末步 → play(), 面板须立即显示第 0 天。
   rep.controller.seek(rep.controller.totalSteps - 1); await sleep2(60);
   rep.controller.play(); await sleep2(50);
-  out.f5 = { ok: s.panel.header.text.includes("第 0 天") };
+  out.f5 = { ok: window.__REPLAY__.panel.header.text.includes("第 0 天") };
   rep.controller.pause();
   // #1 同一步多段对话按序播放 (不再互相覆盖): seek 到多对话步, 先显第一段,
   // 停留 (台词长度*250ms) 后切到第二段 —— 前面几段不再被最后一段在绘制前覆盖。
@@ -608,10 +616,10 @@ const auditFix = await page2.evaluate(async () => {
     if (c.length >= 2) { multiIdx = i; break; }
   }
   rep.controller.seek(multiIdx); await sleep2(150);
-  const firstLine = s.actorBubble.bubbleText();
-  const dwell = Math.min(6000, Math.max(2000, s.convQueue[0].utterance.length * 250)) + 150;
+  const firstLine = window.__REPLAY__.bubbles.actor.bubbleText();
+  const dwell = Math.min(6000, Math.max(2000, steps[multiIdx].visual_events.find(v => v.type === "conversation" && v.success !== false && v.utterance).utterance.length * 250)) + 150;
   await sleep2(dwell);
-  const secondLine = s.actorBubble.bubbleText();
+  const secondLine = window.__REPLAY__.bubbles.actor.bubbleText();
   out.f3 = { first: firstLine.slice(0, 8), second: secondLine.slice(0, 8),
              ok: firstLine !== secondLine };
   return out;
@@ -628,8 +636,10 @@ console.log("\n== 11. M5 直播跟随 (?live 运行中实时可视化) ==");
 // 模拟"运行中的模拟": mock 源逐步 (700ms/步) append 到 public/live.jsonl, 前端 ?live
 // 每秒轮询逐步接入并自动跟随最新步, LIVE 标记脉冲; 收到 done 行停止轮询、隐藏标记、
 // 时间线完整可往回拖 (切回普通回放)。验证"运行中可视化" (不只是跑完回放)。
+const liveGateDir = mkdtempSync(resolve(tmpdir(), "gameagent-live-"));
+const liveReady = resolve(liveGateDir, "ready");
 const mock = spawn("node", ["tools/mock_live_source.mjs"], {
-  cwd: resolve(here, ".."), env: { ...process.env, LIVE_DELAY_MS: "700" }, stdio: "ignore",
+  cwd: resolve(here, ".."), env: { ...process.env, LIVE_DELAY_MS: "700", LIVE_READY_PATH: liveReady }, stdio: "ignore",
 });
 await sleep(300);   // 等 mock 写好 meta + 首步
 const page3 = await browser.newPage({ viewport: { width: 980, height: 560 } });
@@ -646,9 +656,10 @@ await sleep(300);
 // LIVE 标记可见 (场景里 liveBadge 文本含 "LIVE")
 const liveBadgeVisible = await page3.evaluate(() => {
   const g = window.__PHASER_GAME__;
-  return g.scene.getScene("Inazuma").liveBadge ? g.scene.getScene("Inazuma").liveBadge.visible : false;
+  return window.__REPLAY__.live?.status().badgeVisible ?? false;
 });
 check(liveBadgeVisible === true, "LIVE 直播标记可见");
+writeFileSync(liveReady, "ready");   // 页面接到首步并完成素材组装后，才开始追加其余步。
 // 步数随轮询增长 (mock 每 700ms 写一步, 前端 1s 轮询逐步接入)
 const stepsA = await page3.evaluate(() => window.__REPLAY__.controller.totalSteps);
 await sleep(2500);
@@ -661,17 +672,18 @@ const follow = await page3.evaluate(() => {
 });
 check(follow.cur === follow.total - 1, "自动跟随最新步 (index " + follow.cur + " = total-1)");
 await page3.screenshot({ path: resolve(SHOTS, "13_live_follow.png") });
-// 等 mock 写完 done (14 步 × 700ms ≈ 10s, 加上启动; 已过去 ~3s, 再等 ~9s)
-await sleep(9000);
+// 等实际 done 状态，允许仓库 14 步样本或重新生成的确定性样本有不同长度。
+await page3.waitForFunction(() => window.__REPLAY__.live?.status().done, { timeout: 30000 });
 const liveEnd = await page3.evaluate(() => ({
   total: window.__REPLAY__.controller.totalSteps,
-  badge: (() => { const s = window.__PHASER_GAME__.scene.getScene("Inazuma"); return s.liveBadge ? s.liveBadge.visible : false; })(),
+  badge: (() => { const s = window.__PHASER_GAME__.scene.getScene("Inazuma"); return window.__REPLAY__.live?.status().badgeVisible ?? false; })(),
 }));
-check(liveEnd.total === 14, "直播结束时间线完整 (14 步, 实际 " + liveEnd.total + ")");
+check(liveEnd.total === expectedSteps, "直播结束时间线完整 (" + expectedSteps + " 步, 实际 " + liveEnd.total + ")");
 check(liveEnd.badge === false, "收到 done → LIVE 标记隐藏 (切回普通回放)");
 await page3.screenshot({ path: resolve(SHOTS, "14_live_done.png") });
 await page3.close();
 mock.kill();
+rmSync(liveGateDir, { recursive: true, force: true });
 
 console.log("\n== 12. 无残留错误 (stub + 真实样本 + 直播三页) ==");
 check(errors.length === 0, "stub 页全程无 console/page 错误" + (errors.length ? " (" + errors.join("; ") + ")" : ""));
