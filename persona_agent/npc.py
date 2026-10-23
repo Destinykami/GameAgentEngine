@@ -192,6 +192,18 @@ class NPC:
         self.reflection.check_conflicts(self.store, player_id, now)
         return ids
 
+    def maybe_reflect_relationship(self, player_id: str, now: float) -> list[int]:
+        """只对 full 档的新关系观察反思；成功后再推进反思水位。"""
+        if self._tier != "full":
+            return []
+        obs_count = len(self.store.all_valid(player_id=player_id,
+                                             types=["observation"]))
+        if obs_count <= self._reflected_obs.get(player_id, 0):
+            return []
+        ids = self.reflect_relationship(player_id, now)
+        self._reflected_obs[player_id] = obs_count
+        return ids
+
     def reflect_identity(self, now: float) -> list[int]:
         """身份层信念 (M3): 跨玩家泛化, 写共享流 (type=identity)。显式触发。"""
         self._advance(now)
@@ -278,12 +290,7 @@ class NPC:
         # 近处: 仅当该玩家出现新观察时才重跑关系反思 (否则反思无限增殖、
         # 信任度随反复反思漂移)。已有反思足以指导本次对话。
         self._advance(now)
-        if self._tier == "full":
-            obs_count = len(self.store.all_valid(player_id=player_id,
-                                                 types=["observation"]))
-            if obs_count > self._reflected_obs.get(player_id, 0):
-                self.reflect_relationship(player_id, now)
-                self._reflected_obs[player_id] = obs_count
+        self.maybe_reflect_relationship(player_id, now)
         # 先拿到回复, 再写记忆: 本轮反思不该把"刚听到的这句话"当作旧证据。
         reply = self.dialogue.reply(player_id, utterance, now)
         if remember and record_utterance and utterance:
@@ -400,6 +407,11 @@ class NPC:
         assert tier in ("full", "compressed", "idle")
         self._tier = tier
 
+    @property
+    def tier(self) -> str:
+        """当前认知档位；通过 set_tier 修改。"""
+        return self._tier
+
     def clear_cache(self) -> None:
         """清空决策缓存与 Decider 的事件价值/信任缓存 (F6-9)。"""
         self._cache.clear()
@@ -411,6 +423,20 @@ class NPC:
 
     def trust_toward(self, player_id: str) -> float:
         return self.decider.relationship_trust(player_id)
+
+    def has_relationship(self, player_id: str) -> bool:
+        return bool(self.store.all_valid(player_id=player_id))
+
+    def decision_context(self, visible_entities: set[str]) -> str:
+        """自治决策只暴露共享记忆与可见对象的关系面，保留原末 5 条窗口。"""
+        memories = [m.content for m in self.store.all_valid()
+                    if m.player_id is None or m.player_id in visible_entities][-5:]
+        return " | ".join(memories)
+
+    def identity_belief(self) -> str:
+        """最新有效共享身份信念；是否使用由调用方策略决定。"""
+        beliefs = self.store.all_valid(shared=True, types=["identity"])
+        return beliefs[-1].content if beliefs else ""
 
     # ---------------------------------------------------------------- 持久化
     @classmethod

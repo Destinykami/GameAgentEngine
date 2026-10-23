@@ -177,7 +177,7 @@ class World:
         重复感知同一在场走既有观察去重 (0.92 合并), 不灌水。返回观察 id 列表。
         """
         npc = self._npcs.get(npc_name)
-        if npc is None or npc._tier == "idle":
+        if npc is None or npc.tier == "idle":
             return []
         me = self.entities[npc_name]
         if me.dead:
@@ -192,11 +192,11 @@ class World:
                 continue   # 非玩家 / 死者 / 视距外
             if transition:
                 current.add(ent.name)
-                key = (ent.location.name, npc._tier)
+                key = (ent.location.name, npc.tier)
                 if seen.get(ent.name) == key:
                     continue   # F6-11: 过渡驱动, 同一在场状态不重复 observe
                 seen[ent.name] = key
-            if npc._tier == "full":
+            if npc.tier == "full":
                 content = f"{ent.name} 出现在 {me.location.name}, 靠近 {npc_name}"
             else:   # compressed
                 content = f"{ent.name} 在 {me.location.name}"
@@ -219,7 +219,7 @@ class World:
                     continue
                 current.add(ent.name)
             for other in sorted(current - seen):
-                if npc._tier == "full":
+                if npc.tier == "full":
                     content = f"{other} 出现在 {me.location.name}, 靠近 {npc_name}"
                 else:   # compressed
                     content = f"{other} 在 {me.location.name}"
@@ -299,9 +299,9 @@ class World:
                     continue
                 if distance(agent, other) > self.perception_radius:
                     continue   # 视距外
-                if not npc.store.all_valid(player_id=other.name):
+                if not npc.has_relationship(other.name):
                     continue   # 无关系记忆, 不列 (陌生人 trust 0 无信息量)
-                trust = npc.decider.relationship_trust(other.name)
+                trust = npc.trust_toward(other.name)
                 trust_bits.append(f"{other.name} {trust:+.2f}")
             if trust_bits:
                 perception += " | 对视距内对象的信任度: " + ", ".join(trust_bits)
@@ -309,9 +309,9 @@ class World:
             # (type=identity, 共享流), 进决策上下文 —— 影响 NPC 对一切来往者的
             # 行为基调。只取最新一条 (身份是稳定的, 旧的被新泛化取代)。
             if self._use_identity_beliefs:
-                ident = npc.store.all_valid(shared=True, types=["identity"])
+                ident = npc.identity_belief()
                 if ident:
-                    perception += " | 身份信念: " + ident[-1].content
+                    perception += " | 身份信念: " + ident
         return llm.decide_action(agent.name, agent.goal,
                                  self._agent_personas.get(agent.name, {}),
                                  perception, agent.history, self.agent_state(agent))
@@ -681,11 +681,9 @@ class World:
                 visible = {e.name for e in self.entities.values()
                            if e is not agent and not e.dead
                            and distance(agent, e) <= self.perception_radius}
-                mems = [m.content for m in npc.store.all_valid()
-                        if m.player_id is None or m.player_id in visible][-5:]
-                memory_context = " | ".join(mems)
+                memory_context = npc.decision_context(visible)
                 # 档位决策门控 (消融开关, 缺省关): idle NPC 规则等待, 零 LLM。
-                if self._decision_tier_gate and npc._tier == "idle":
+                if self._decision_tier_gate and npc.tier == "idle":
                     decisions[name] = {"action": "wait", "target": "",
                                        "utterance": "", "dest": "",
                                        "reason": "idle 档: 视距内无玩家, 规则等待"}
@@ -747,7 +745,7 @@ class World:
             except Exception:
                 pass   # 单个 NPC 感知失败不阻塞其余 (F3-5)
             try:
-                if npc._tier != "idle":
+                if npc.tier != "idle":
                     npc.maybe_reflect_self(now)
             except Exception:
                 pass
@@ -797,13 +795,9 @@ class World:
         try:
             for npc, actor in self._step_social:
                 try:
-                    if self.entities[npc.name].dead or npc._tier != "full":
+                    if self.entities[npc.name].dead:
                         continue
-                    obs_count = len(npc.store.all_valid(player_id=actor,
-                                                        types=["observation"]))
-                    if obs_count > npc._reflected_obs.get(actor, 0):
-                        npc.reflect_relationship(actor, now)
-                        npc._reflected_obs[actor] = obs_count
+                    npc.maybe_reflect_relationship(actor, now)
                 except Exception:
                     continue   # 单次交互反思失败不阻塞其余 (R4)
         finally:
@@ -932,7 +926,7 @@ class World:
             if added > 0:
                 new_obs[name] = added
             try:
-                if npc._tier != "idle":
+                if npc.tier != "idle":
                     npc.maybe_reflect_self(now)   # 重要性超阈值才反思 (内部门控)
             except Exception:
                 pass

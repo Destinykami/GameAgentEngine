@@ -82,7 +82,7 @@ def snapshot(w: World, day_label: str) -> None:
         last_self = self_refl[-1] if self_refl else "· (尚未累积到自我反思阈值)"
         last_rel = rel_refl[-1] if rel_refl else "· (尚未建立对旅行者的关系认知)"
         print(f"\n[{loc}] {name} ({role})")
-        print(f"   档位={npc._tier:<11} 信任→旅行者={trust:+.2f}   "
+        print(f"   档位={npc.tier:<11} 信任→旅行者={trust:+.2f}   "
               f"记忆: 观察{n_obs} / 反思{len(refl)}")
         print(f"   自我反思: {last_self}")
         print(f"   对旅行者的关系反思: {last_rel}")

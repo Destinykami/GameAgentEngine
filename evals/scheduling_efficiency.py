@@ -169,11 +169,11 @@ def run_config(config: str, n: int, emb, tl: list) -> dict:
             "prompt_tokens": post["prompt_tokens"] - pre["prompt_tokens"],
             "completion_tokens": post["completion_tokens"] - pre["completion_tokens"],
             "tiers": {k: v for k, v in
-                      (("full", sum(1 for x in w._npcs.values() if x._tier == "full")),
+                      (("full", sum(1 for x in w._npcs.values() if x.tier == "full")),
                        ("compressed", sum(1 for x in w._npcs.values()
-                                          if x._tier == "compressed")),
+                                          if x.tier == "compressed")),
                        ("idle", sum(1 for x in w._npcs.values()
-                                    if x._tier == "idle")))},
+                                    if x.tier == "idle")))},
         })
         traveler_actions.append(decisions.get("旅行者", {}).get("action", "wait"))
     # ------------------------------------------------------------- 收尾
