@@ -10,13 +10,11 @@ from __future__ import annotations
 
 import os
 import sqlite3
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent.world import World, Location, Entity
+from game_agent.world.runtime import World, Location, Entity
 
 
 def _locs() -> list[Location]:

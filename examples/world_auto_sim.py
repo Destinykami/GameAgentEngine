@@ -23,11 +23,9 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import (RealLLM, World, Location, make_embedder)
+from game_agent import (RealLLM, World, Location, make_embedder)
 
 DATA = os.path.join(os.path.dirname(__file__), "..", "data", "auto_sim")
 # 直播文件: 每跑完一步就 append 一行 (meta/step/done), 供前端 ?live 模式轮询实时跟随。
@@ -107,7 +105,7 @@ def snapshot(w: World) -> dict:
 
 # ===================================================================== 情境层
 # 稻妻·眼狩令 的具体世界行为: 理由(证据)怎么产生、对话铁匠是否锻刀、执行官收缴
-# 持眼者是否算目击。全部经 World 的动作效果钩子注入 —— 引擎(persona_agent)保持
+# 持眼者是否算目击。全部经 World 的动作效果钩子注入 —— 引擎(game_agent)保持
 # 通用 (只出动作空间+物理规则), 不硬编码任何稻妻细节。本层可被别的"世界"替换。
 WEAPON_GAIN = 3    # 与铁匠对话一次, 攻 +N (步频加密后从 4 调到 3, 保前期弧线)
 WEAPON_CAP = 24    # 攻的上限

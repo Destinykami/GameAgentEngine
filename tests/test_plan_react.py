@@ -7,12 +7,9 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import NPC
+from game_agent import NPC
 from tests.test_persistence import _StubLLM, TRAITS
 
 DAY_BLOCKS = [(7, 9, "起床整理"), (9, 12, "备货咖啡豆"), (12, 13, "午餐")]

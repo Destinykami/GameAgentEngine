@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
 
-from persona_agent import Location, MemoryRecord, MemoryStore, NPC, World
-from persona_agent.embeddings import HashEmbedder
+from game_agent import Location, MemoryRecord, MemoryStore, NPC, World
+from game_agent.models.embeddings import HashEmbedder
 from tests.test_persistence import _StubLLM, TRAITS
 
 

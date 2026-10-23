@@ -3,7 +3,7 @@
 基于 Phaser 的像素风只读回放器，可视化 `稻妻城多智能体自治世界模拟` 跑出来的时间线。
 实现 [`../VisualizationPlan.md`](../VisualizationPlan.md) 的 M0–M2 里程碑。
 
-**数据来源是引擎产出的结构化 `visual_events`**（`persona_agent/world.py::VisualEvent`），
+**数据来源是引擎产出的结构化 `visual_events`**（`src/game_agent/world/events.py::VisualEvent`），
 前端不再解析中文事件串。中文串只是 `VisualEvent.describe()` 的派生产物，仅作兜底。
 
 ## 目录

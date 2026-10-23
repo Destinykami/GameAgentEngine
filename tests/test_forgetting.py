@@ -7,15 +7,12 @@ MIN_IMPORTANCE, 但 valid 恒为 1 (不失效)。被反思引用的观察受保�
 
 from __future__ import annotations
 
-import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import NPC, MemoryRecord
-from persona_agent.memory import MIN_IMPORTANCE
+from game_agent import NPC, MemoryRecord
+from game_agent.memory.store import MIN_IMPORTANCE
 from tests.test_persistence import _StubLLM, TRAITS
 
 
@@ -118,7 +115,7 @@ def test_trust_does_not_fade_with_forgetting(tmp_path):
 
 def test_auto_sweep_on_time_advance(tmp_path):
     """游戏时钟跨 SWEEP_INTERVAL 时, observe 自动触发遗忘清扫 (降权)。"""
-    from persona_agent.npc import SWEEP_INTERVAL
+    from game_agent.cognition.npc import SWEEP_INTERVAL
     npc = _make(tmp_path)
     old = npc.observe("Fade 擦桌子", 0.0)                # _last_sweep 设为 0
     # 第二次 observe 把时钟推到 200h 后: 跨越清扫间隔 → 自动清扫;
@@ -155,8 +152,8 @@ def test_merge_reinforcement_caps_at_ten(tmp_path):
 
 
 def _obs_store(importance: float = 8.0):
-    from persona_agent.memory import MemoryStore
-    from persona_agent.embeddings import HashEmbedder
+    from game_agent.memory.store import MemoryStore
+    from game_agent.models.embeddings import HashEmbedder
     s = MemoryStore(HashEmbedder())
     s.add(MemoryRecord(content="测试观察", timestamp=0.0,
                        type="observation", importance=importance))

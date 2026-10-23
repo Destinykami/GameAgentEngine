@@ -8,12 +8,9 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import NPC
+from game_agent import NPC
 from tests.test_persistence import _StubLLM, TRAITS
 
 DAY_BLOCKS = [(7, 9, "起床整理"), (9, 12, "备货咖啡豆"), (12, 13, "午餐")]
@@ -98,7 +95,7 @@ class CaptureContextLLM(_StubLLM):
 def test_replan_context_includes_world_background(tmp_path):
     """E14: 重规划也带世界背景 (近期观察) —— 被打断后仍要在眼狩令等背景下重排
     剩余日程, 而非'岁月静好'。context 应同时含世界背景 + 中断锚定指令。"""
-    from persona_agent import MemoryRecord
+    from game_agent import MemoryRecord
     llm = CaptureContextLLM()
     npc = NPC.create("Klaus", dict(TRAITS), llm=llm, data_dir=str(tmp_path))
     npc.store.add(MemoryRecord(content="眼狩令全城生效, 持神之眼者被搜捕",

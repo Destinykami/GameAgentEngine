@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import NPC, MemoryStore
-from persona_agent.llm import LLMClient, LLMContext
+from game_agent import NPC, MemoryStore
+from game_agent.models.llm import LLMClient, LLMContext
 
 
 class _StubLLM(LLMClient):
@@ -48,7 +46,7 @@ class _StubLLM(LLMClient):
         # 供离线架构测试断言信任值。真实 LLM 的信任质量由集成探针覆盖。
         # memories 是 (类型, 内容, 置信度); stub 只看内容, 置信度不参与词表计数
         # (真实 LLM 会按置信度少加权被削弱的反思)。
-        from persona_agent.reflection import TRUST_WORDS, DISTRUST_WORDS
+        from game_agent.cognition.reflection import TRUST_WORDS, DISTRUST_WORDS
         pos = sum(1 for _t, c, _conf in memories
                   if any(w in c for w in TRUST_WORDS + ("帮助", "帮", "感谢")))
         neg = sum(1 for _t, c, _conf in memories
@@ -113,7 +111,7 @@ def test_memory_not_persistent_raises():
 
 def test_load_missing_meta_raises(tmp_path):
     # 裸 MemoryStore 文件没有 NPC 元数据
-    from persona_agent import HashEmbedder
+    from game_agent import HashEmbedder
     MemoryStore(HashEmbedder(), path=str(tmp_path / "bare.db")).close()
     with pytest.raises(ValueError):
         NPC.load(str(tmp_path / "bare.db"), llm=_StubLLM())

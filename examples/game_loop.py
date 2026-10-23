@@ -1,4 +1,4 @@
-"""game_loop: 一个完整的游戏分钟 —— 从引擎视角演示 persona_agent 的用法。
+"""game_loop: 一个完整的游戏分钟 —— 从引擎视角演示 game_agent 的用法。
 
 场景: 咖啡馆店员 Isabella (外向 social 0.8 / 低目标导向 0.3)。
 时间线 (游戏内小时):
@@ -16,12 +16,9 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import NPC, RealLLM, make_embedder
+from game_agent import NPC, RealLLM, make_embedder
 
 
 def banner(title: str) -> None:

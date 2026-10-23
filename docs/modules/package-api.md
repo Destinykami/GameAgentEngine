@@ -10,6 +10,7 @@
 
 ## 边界
 
+- 正式入口为 `src/game_agent/__init__.py`，子包入口共用 `_lazy.py` 的按需导出逻辑；旧 `src/persona_agent` 仅保留委托。布局详见 [源码设计](../source-layout.md)。
 - `__init__.py` 只维护公共导出表，不创建运行对象或发起网络请求。
 - 实体直接映射到 `world_model`，记忆记录直接映射到 `memory_model`，NPC / World 映射到各自运行模块，模型与存储按需加载。
 - 保留类型检查时的显式导入和 `dir()` 的公开名称发现。

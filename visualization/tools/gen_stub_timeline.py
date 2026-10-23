@@ -18,9 +18,10 @@ import random
 import sys
 import tempfile
 
+# 离线生成器复用仓库内 tests 的桩；引擎本身通过已安装包加载。
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from persona_agent import World, Location, NPC  # noqa: E402
+from game_agent import World, Location, NPC  # noqa: E402
 from tests.test_persistence import _StubLLM   # noqa: E402
 
 HERE = os.path.dirname(__file__)

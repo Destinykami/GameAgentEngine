@@ -7,12 +7,9 @@ S1/S3 的机制 (per-entity 关系观察 / 关系反思 / 信任) 已由 E16/flu
 
 from __future__ import annotations
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent.world import World, Location, Entity, Player
+from game_agent.world.runtime import World, Location, Entity, Player
 from tests.test_persistence import _StubLLM
 
 TRAITS = {"social": 0.7, "goal_oriented": 0.5}

@@ -8,13 +8,10 @@ to_dict() 可 JSON 序列化且失败动作不带成功态字段、step_autonomo
 from __future__ import annotations
 
 import json
-import os
-import sys
 import tempfile
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent.world import World, Location
+from game_agent.world.runtime import World, Location
 from tests.test_persistence import _StubLLM
 
 LOCATIONS = [Location("主城街道", 0, 0), Location("治疗堂", 1, 0),

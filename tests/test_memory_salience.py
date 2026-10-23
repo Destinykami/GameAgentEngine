@@ -7,17 +7,14 @@
 
 from __future__ import annotations
 
-import os
 import sqlite3
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import Location, MemoryStore, NPC, World
-from persona_agent.embeddings import HashEmbedder
+from game_agent import Location, MemoryStore, NPC, World
+from game_agent.models.embeddings import HashEmbedder
 from tests.test_persistence import _StubLLM, TRAITS
 
-from persona_agent.memory import MERGE_REINFORCE_INTERVAL
+from game_agent.memory.store import MERGE_REINFORCE_INTERVAL
 
 
 class _CountingLLM(_StubLLM):

@@ -8,16 +8,13 @@ _save 去重改走 store 缓存向量: 已有反思的向量在 add 时已缓存
 
 from __future__ import annotations
 
-import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import MemoryRecord, MemoryStore
-from persona_agent.embeddings import Embedder, HashEmbedder
-from persona_agent.reflection import ReflectionEngine
+from game_agent import MemoryRecord, MemoryStore
+from game_agent.models.embeddings import Embedder, HashEmbedder
+from game_agent.cognition.reflection import ReflectionEngine
 from tests.test_persistence import _StubLLM
 
 

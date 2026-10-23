@@ -6,14 +6,11 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import MemoryRecord, MemoryStore
-from persona_agent.embeddings import HashEmbedder
-from persona_agent.reflection import ReflectionEngine
+from game_agent import MemoryRecord, MemoryStore
+from game_agent.models.embeddings import HashEmbedder
+from game_agent.cognition.reflection import ReflectionEngine
 from tests.test_persistence import _StubLLM
 
 
@@ -92,7 +89,7 @@ def test_normal_question_not_fallback():
 def test_reflect_self_blank_question_filtered(tmp_path):
     """L9: 自我反思拿到 [''] 假问题时过滤掉, 空查询不流入证据检索, 静默跳过
     (无兜底 —— 与关系反思的保面兜底不对称是有意设计)。"""
-    from persona_agent import MemoryRecord
+    from game_agent import MemoryRecord
     store = QueryCapturingStore(HashEmbedder())
     store.add(MemoryRecord(content="Klaus 把咖啡豆撒了一地", timestamp=0.0,
                            type="observation", importance=5.0))

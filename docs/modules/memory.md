@@ -12,7 +12,7 @@
 
 修正前同一源文件内存在不一致，且已核对在重构前提交 `edc82ca` 中同样存在：
 
-- 原 `memory.py` 顶部第 21–24 行明确说明：importance 用绝对 `importance / 10`，不进行候选集合内的归一化。
+- 原 `persona_agent/memory.py` 顶部第 21–24 行明确说明：importance 用绝对 `importance / 10`，不进行候选集合内的归一化。
 - 原 `MemoryStore.retrieve` 第 409–413 行实际计算：对 importance 也执行候选集合内 Min-Max，再与 recency、relevance 相加。
 
 两者会产生不同排序。比如 importance 为 5 和 6 的两条候选，在该维度上分别得到 0.5 / 0.6（当前采用的绝对权重）或 0 / 1（修正前归一化）。候选重要性相同时，原归一化分支会将该维度全部设为 1。
@@ -27,11 +27,11 @@
 
 | 实现 | 职责与依赖 |
 |---|---|
-| `memory_model.py` | 定义 MemoryRecord，只依赖标准库；旧 memory 与包顶层继续导出同一个类 |
-| `memory_ranking.py` | 接收候选记录、已算好的相似度、时钟与评分参数，返回稳定排序结果；无模型、SQL、缓存或访问水位写入 |
-| `memory_policy.py` | 维护阈值、根据记录快照计算合并结果与遗忘更新；不读取数据库、不调用向量或模型 |
-| `memory_repository.py` | 独占 SQLite 连接、锁、迁移、候选查询、编码、元数据和提交；只依赖记录模型 |
-| `memory.py` | 保留 MemoryStore 门面，协调候选查询、向量缓存、策略与持久化，公开签名保持兼容 |
+| `src/game_agent/memory/models.py` | 定义 MemoryRecord，只依赖标准库；旧 memory 与包顶层继续导出同一个类 |
+| `src/game_agent/memory/ranking.py` | 接收候选记录、已算好的相似度、时钟与评分参数，返回稳定排序结果；无模型、SQL、缓存或访问水位写入 |
+| `src/game_agent/memory/policies.py` | 维护阈值、根据记录快照计算合并结果与遗忘更新；不读取数据库、不调用向量或模型 |
+| `src/game_agent/memory/repository.py` | 独占 SQLite 连接、锁、迁移、候选查询、编码、元数据和提交；只依赖记录模型 |
+| `src/game_agent/memory/store.py` | 保留 MemoryStore 门面，协调候选查询、向量缓存、策略与持久化，公开签名保持兼容 |
 
 向量缓存仍归每个 MemoryStore，保留现有批量补 miss 与内容变更失效行为。仓储不依赖排序、维护或向量实现。
 

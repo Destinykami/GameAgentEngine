@@ -5,12 +5,9 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import Location, World
+from game_agent import Location, World
 from tests.test_persistence import _StubLLM, TRAITS
 
 

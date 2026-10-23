@@ -1,11 +1,11 @@
 # evals/ — 三实验评测方法学
 
-评测 persona_agent 的三个核心机制：**记忆卫生链**（证据约束反思 + LLM 矛盾判别 +
+评测 game_agent 的三个核心机制：**记忆卫生链**（证据约束反思 + LLM 矛盾判别 +
 置信度衰减）、**判断型决策栈**（人格 × 关系的效用决策）、**分级认知调度**
 （距离档位 + 决策门控 + 候选证据限制）。设计总原则与包内改动映射（P1–P8）见
 [EvalPlan.md](../EvalPlan.md)。
 
-依赖方向：`evals → persona_agent` 单向；harness 只通过公开 API 观察，无
+依赖方向：`evals → game_agent` 单向；harness 只通过公开 API 观察，无
 monkeypatch。运行产物落 `data/eval/<实验>/<时间戳>/`（被 .gitignore 挡住），
 只有本文档的结果表入库。
 

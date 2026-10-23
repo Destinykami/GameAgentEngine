@@ -27,7 +27,7 @@
 
 ## 模块边界与接口
 
-- 新增 `persona_agent/autonomous.py`，仅依赖标准库和实体模型，不导入 World、NPC、记忆库或真实模型适配。
+- 新增 `src/game_agent/cognition/autonomous.py`，仅依赖标准库和实体模型，不导入 World、NPC、记忆库或真实模型适配。
 - `DecisionContext` 传递行动者、目标、人格、可见对象、基础感知、历史及物理状态；不包含 World 或注册表。
 - `DecisionCognition` 端口仅允许查询对象关系是否存在、信任和最新身份信念；记忆筛选继续由 `NPC.decision_context` 负责。
 - `AutonomousDecider.decide` 组装记忆 / 信任 / 身份输入并通过窄模型端口选择行动，不移动实体、不写记忆、不执行动作。

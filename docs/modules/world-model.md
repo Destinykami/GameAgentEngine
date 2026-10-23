@@ -6,7 +6,7 @@
 
 本模块拥有 `Location`、`Entity`、`Player` 及欧氏距离函数。它只表达实体自身的物理状态、近期历史和已有证据容量规则，不负责 NPC 认知、模型调用、世界注册、行动编排或存储。
 
-这些定义已从 `world.py` 提取到 `persona_agent/world_model.py`，仅依赖 Python 标准库。依赖方向为世界运行、持久化、感知等模块依赖实体模型，实体模型不反向依赖它们。
+这些定义已从 `src/game_agent/world/runtime.py` 提取到 `src/game_agent/world/entities.py`，仅依赖 Python 标准库。依赖方向为世界运行、持久化、感知等模块依赖实体模型，实体模型不反向依赖它们。
 
 ## 接口与状态
 
@@ -17,7 +17,7 @@
 
 ## 兼容与迁移
 
-原 `persona_agent.world` 及包顶层继续重新导出相同的类与函数。现有调用方不必同时迁移，避免出现两套不同类定义。SQLite / JSON 字段保持不变；本项目未提供 Python pickle 兼容契约。
+原 `game_agent.world.runtime` 及包顶层继续重新导出相同的类与函数。现有调用方不必同时迁移，避免出现两套不同类定义。SQLite / JSON 字段保持不变；本项目未提供 Python pickle 兼容契约。
 
 本次保持已有物理规则，不增加伤害校验、角色枚举或证据语义变化。
 

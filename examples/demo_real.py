@@ -9,12 +9,9 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import NPC, RealLLM, make_embedder
+from game_agent import NPC, RealLLM, make_embedder
 
 TRAITS = {"social": 0.4, "goal_oriented": 0.8}   # 目标导向为主, 社交为辅
 

@@ -4,13 +4,13 @@
 
 ## 职责与依赖
 
-`persona_agent/events.py` 定义 `VisualEvent`，拥有事件字段、兼容显示字符串和 JSON 序列化规则。它仅依赖标准库，不读取世界、实体、NPC 记忆或场景运行状态。
+`src/game_agent/world/events.py` 定义 `VisualEvent`，拥有事件字段、兼容显示字符串和 JSON 序列化规则。它仅依赖标准库，不读取世界、实体、NPC 记忆或场景运行状态。
 
 世界执行层创建事件，场景效果钩子可以补充已有系统效果字段，运行器输出序列化结果，回放器消费结果。事件对象不执行动作、不调用模型、不写文件。
 
 ## 当前实现与迁移
 
-`VisualEvent` 已从 `world.py` 迁移到 `events.py`。本次原样迁移字段、`describe` 与 `to_dict`；原 `persona_agent.world.VisualEvent` 继续指向同一个类。新模块不依赖 World，消费事件契约无需导入世界运行文件。
+`VisualEvent` 已从 `src/game_agent/world/runtime.py` 迁移到 `src/game_agent/world/events.py`。本次原样迁移字段、`describe` 与 `to_dict`；原 `game_agent.world.runtime.VisualEvent` 继续指向同一个类。新模块不依赖 World，消费事件契约无需导入世界运行文件。
 
 事件类型、时钟单位、失败字段、默认值省略及中文日志逐字保持兼容。当前带有稻妻措辞与理由 / 武器字段，这是已有跨端契约；本次不决定它们的通用化形式，也不升级 schema。
 

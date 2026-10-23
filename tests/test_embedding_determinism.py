@@ -12,21 +12,20 @@ import os
 import subprocess
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent.embeddings import HashEmbedder, cosine_similarity
+from game_agent.models.embeddings import HashEmbedder, cosine_similarity
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 _EMIT_VEC = (
     "import json;"
-    "from persona_agent.embeddings import HashEmbedder;"
+    "from game_agent.models.embeddings import HashEmbedder;"
     "print(json.dumps(HashEmbedder().embed(['Aria 帮 Klaus 修了咖啡机'])[0]))"
 )
 
 
 def _embed_in_subprocess(seed: int) -> list[float]:
-    env = dict(os.environ, PYTHONHASHSEED=str(seed), PYTHONPATH=ROOT)
+    env = dict(os.environ, PYTHONHASHSEED=str(seed), PYTHONPATH=os.path.join(ROOT, "src"))
     out = subprocess.check_output(
         [sys.executable, "-c", _EMIT_VEC],
         cwd=ROOT, env=env, text=True, timeout=60)

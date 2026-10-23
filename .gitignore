@@ -2,6 +2,9 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+*.egg-info/
+/build/
+/dist/
 # 顶层模拟数据目录 (auto_sim 的 .db/.json); 锚定仓库根, 不误伤 visualization/src/data/
 /data/
 *.sqlite

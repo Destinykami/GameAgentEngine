@@ -2,8 +2,8 @@
 
 import pytest
 
-from persona_agent.world_model import Entity, Location
-from persona_agent.world_store import WorldStore
+from game_agent.world.entities import Entity, Location
+from game_agent.world.persistence import WorldStore
 
 
 def test_failed_snapshot_write_rolls_back_entities_and_metadata(tmp_path):

@@ -8,14 +8,11 @@ S5: 同一 actor 对同一 target 连续同型动作达阈值触发世界事件,
 
 from __future__ import annotations
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent.memory import MemoryStore, MemoryRecord, HEARSAY_DECAY
-from persona_agent import HashEmbedder
-from persona_agent.world import World, Location, Player
+from game_agent.memory.store import MemoryStore, MemoryRecord, HEARSAY_DECAY
+from game_agent import HashEmbedder
+from game_agent.world.runtime import World, Location, Player
 from tests.test_persistence import _StubLLM
 
 TRAITS = {"social": 0.7, "goal_oriented": 0.5}

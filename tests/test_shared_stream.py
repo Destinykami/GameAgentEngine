@@ -9,18 +9,15 @@ E2: `player_id=None` 是"不过滤" (全玩家+共享流), `shared=True` 是"只
 
 from __future__ import annotations
 
-import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import MemoryRecord
-from persona_agent.embeddings import HashEmbedder
-from persona_agent.memory import MemoryStore
-from persona_agent.reacting import ReactionDecider
-from persona_agent.reflection import ReflectionEngine
+from game_agent import MemoryRecord
+from game_agent.models.embeddings import HashEmbedder
+from game_agent.memory.store import MemoryStore
+from game_agent.cognition.reacting import ReactionDecider
+from game_agent.cognition.reflection import ReflectionEngine
 from tests.test_persistence import _StubLLM
 
 

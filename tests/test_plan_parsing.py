@@ -9,13 +9,10 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import NPC
-from persona_agent.llm_real import RealLLM
+from game_agent import NPC
+from game_agent.models.llm_http import RealLLM
 from tests.test_persistence import _StubLLM, TRAITS
 
 

@@ -4,7 +4,7 @@
 
 ## 职责与依赖
 
-新增 `persona_agent/world_store.py`，由 `WorldStore` 独占 world.db 的连接、锁、表结构迁移、实体编码与元数据读写。它依赖实体模型及标准库，不导入 World、NPC、记忆或模型客户端。
+新增 `src/game_agent/world/persistence.py`，由 `WorldStore` 独占 world.db 的连接、锁、表结构迁移、实体编码与元数据读写。它依赖实体模型及标准库，不导入 World、NPC、记忆或模型客户端。
 
 World 仍负责把运行状态组织成快照、恢复注册表与自治模型绑定；每个 NPC 的数据库仍由 NPC / MemoryStore 管理。本阶段不提取 NPC 记忆库，也不改变现有数据库格式。
 

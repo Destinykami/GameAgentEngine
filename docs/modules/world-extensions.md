@@ -4,7 +4,7 @@
 
 ## 边界与状态
 
-`persona_agent/world_extensions.py` 管理动作效果注册、调用顺序、行为链规则和计数。仅依赖实体与事件契约，不导入 World、NPC、记忆库或模型适配。
+`src/game_agent/world/extensions.py` 管理动作效果注册、调用顺序、行为链规则和计数。仅依赖实体与事件契约，不导入 World、NPC、记忆库或模型适配。
 
 每个 World 持有独立 `WorldExtensions`。扩展模块拥有效果映射和行为链水位；World 决定哪些成功行动需要记录，并负责把触发结果广播为世界事件。
 

@@ -1,6 +1,7 @@
 """在新进程检查独立模块的运行时依赖边界与兼容导出。"""
 
 from pathlib import Path
+import os
 import subprocess
 import sys
 
@@ -8,46 +9,53 @@ import pytest
 
 
 @pytest.mark.parametrize("module", [
-    "world_model", "events", "perception", "autonomous", "world_extensions",
-    "social", "actions", "memory_model", "memory_policy", "memory_ranking",
+    "world.entities", "world.events", "world.perception", "cognition.autonomous",
+    "world.extensions", "world.social", "world.actions", "memory.models",
+    "memory.policies", "memory.ranking", "world", "memory", "models",
+    "cognition", "evaluation",
 ])
 def test_foundation_import_does_not_load_runtime_or_model_adapters(module):
     code = f'''
 import importlib
 import sys
-importlib.import_module("persona_agent.{module}")
-for name in ("persona_agent.world", "persona_agent.npc", "persona_agent.memory",
-             "persona_agent.llm_real", "persona_agent.embeddings_real", "sqlite3"):
+importlib.import_module("game_agent.{module}")
+for name in ("game_agent.world.runtime", "game_agent.cognition.npc", "game_agent.memory.store",
+             "game_agent.models.llm_http", "game_agent.models.embeddings_http", "sqlite3"):
     assert name not in sys.modules, name
 '''
     result = subprocess.run([sys.executable, "-c", code],
                             cwd=Path(__file__).resolve().parents[1],
+                            env=dict(os.environ, PYTHONPATH=str(
+                                Path(__file__).resolve().parents[1] / "src")),
                             capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
 
 
 def test_lazy_public_exports_preserve_legacy_identity_and_discovery():
-    import persona_agent
-    from persona_agent import memory, memory_model, world, world_model
+    import game_agent
+    from game_agent.memory import models as memory_model, store as memory
+    from game_agent.world import entities as world_model, runtime as world
 
     scope = {}
-    exec("from persona_agent import *", scope)
-    assert set(persona_agent.__all__) <= scope.keys()
-    assert set(persona_agent.__all__) <= set(dir(persona_agent))
+    exec("from game_agent import *", scope)
+    assert set(game_agent.__all__) <= scope.keys()
+    assert set(game_agent.__all__) <= set(dir(game_agent))
     assert scope["World"] is world.World
     assert scope["MemoryRecord"] is memory.MemoryRecord is memory_model.MemoryRecord
     for name in ("Location", "Entity", "Player", "distance", "location_distance"):
         assert scope[name] is getattr(world, name) is getattr(world_model, name)
     with pytest.raises(AttributeError):
-        getattr(persona_agent, "missing_public_api")
+        getattr(game_agent, "missing_public_api")
 
 
 def test_public_memory_record_does_not_load_sqlite():
     result = subprocess.run([sys.executable, "-c", '''
 import sys
-from persona_agent import MemoryRecord
+from game_agent import MemoryRecord
 assert MemoryRecord("记忆", 0.0).content == "记忆"
 assert "sqlite3" not in sys.modules
-assert "persona_agent.memory" not in sys.modules
-'''], cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True)
+assert "game_agent.memory.store" not in sys.modules
+'''], cwd=Path(__file__).resolve().parents[1], env=dict(
+        os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src")),
+        capture_output=True, text=True)
     assert result.returncode == 0, result.stderr

@@ -16,11 +16,9 @@ from __future__ import annotations
 
 import os
 import shutil
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import World, Location, RealLLM, make_embedder
+from game_agent import World, Location, RealLLM, make_embedder
 
 DATA = os.path.join(os.path.dirname(__file__), "..", "data", "sim")
 REFLECT_THRESHOLD = 25.0   # 调低 (默认 150), 让一周的事件量触发自我反思

@@ -6,17 +6,14 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import MemoryRecord, NPC
-from persona_agent.embeddings import HashEmbedder
-from persona_agent.memory import MemoryStore
-from persona_agent.reflection import ReflectionEngine
-from persona_agent.npc import NPC_CACHE_LIMIT
-from persona_agent.reacting import EVENT_VALUE_CACHE_LIMIT
+from game_agent import MemoryRecord, NPC
+from game_agent.models.embeddings import HashEmbedder
+from game_agent.memory.store import MemoryStore
+from game_agent.cognition.reflection import ReflectionEngine
+from game_agent.cognition.npc import NPC_CACHE_LIMIT
+from game_agent.cognition.reacting import EVENT_VALUE_CACHE_LIMIT
 from tests.test_persistence import _StubLLM, TRAITS
 
 
@@ -65,7 +62,7 @@ def test_identity_evidence_keeps_cross_stream_reflection():
 def test_all_invalid_reads_new_columns_and_world_closes_npc_stores(tmp_path):
     import sqlite3
     import pytest
-    from persona_agent import Location, World
+    from game_agent import Location, World
 
     store = MemoryStore(HashEmbedder())
     mid = store.add(MemoryRecord(content="失效反思", timestamp=0.0,

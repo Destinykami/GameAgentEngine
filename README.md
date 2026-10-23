@@ -1,9 +1,8 @@
-# persona_agent — 千人千面游戏 NPC 框架
+# game_agent — 千人千面游戏 NPC 框架
 
 > 重构设计入口：**[docs/README.md](docs/README.md)**，包含按当前代码核对的系统总览、模块蓝图划分、重构路线与设计模板。
 >
-> 先看 **[OVERVIEW.md](OVERVIEW.md)** 的系统总览 (自我/面解耦、LLM 推理栈、
-> 记忆卫生链、判断型决策、成本管理、验证体系)。本 README 是逐模块的实现细节。
+> 当前源码采用 **[src/game_agent](src/game_agent/)**，按认知、记忆、世界、模型和评测探针分组；[源码布局](docs/source-layout.md) 说明安装与旧导入兼容。原 [OVERVIEW.md](OVERVIEW.md) 保留重构前的机制说明与历史状态。
 
 基于 [Generative Agents: Interactive Simulacra of Human Behavior](https://arxiv.org/abs/2304.03442)
 的思路, 构建能随玩家互动历史**动态变化面孔**的游戏 NPC。
@@ -26,37 +25,48 @@ NPC 对玩家 p 的面 (每玩家独立成流, 动态)
 
 | 论文模块 | 文件 | 为千人千面扩展了什么 |
 |---|---|---|
-| Memory Stream + Retrieval | `memory.py` | 每条记忆带 `player_id`; 检索三维评分 (recency/importance/relevance) 之外, 对当前玩家记忆加权 |
-| Reflection | `reflection.py` | 分**自我反思**与**关系反思**两条轨; 带证据引用 + LLM 矛盾强度冲突失效/衰减 |
-| Planning | `planning.py` | 层次化 (日→小时→分钟); plan 作为记忆参与检索; 反应后从当前时刻重规划 |
-| Reacting | `reacting.py` | 效用函数 `U=w_s·V_s+w_g·V_g−C_int`, 事件价值与关系信任度均由 LLM 判断 (签名缓存), 人格权重 + 信任调制 |
-| Dialogue | `dialogue.py` | 非全知: 只用"当前对话者的面 + 共享流", 检索时把"对话者是谁"并入查询 |
-| 成本闸门 (blog 问题一) | `npc.py` | 分级认知 (full/compressed/idle) + 决策缓存 |
-| 记忆卫生链 | `memory.py` / `reflection.py` | 观察去重、级联切断、语义去重、LLM 冲突失效、降权遗忘、夜间情节固化 (episode) |
-| NPC↔NPC 社交层 | `world.py` / `npc.py` | 记忆流从 per-player 泛化到 per-entity; NPC 互相感知、关系反思、信任; 谣言按传播跳数折扣 |
-| **游戏世界层** | `world.py` | 多 NPC + 多玩家空间共存、空间感知、**距离自动调度档位**、世界事件、自治模拟、动作效果钩子、行为链事件、结构化视觉事件、独立持久化 |
+| Memory Stream + Retrieval | `src/game_agent/memory/store.py` | 每条记忆带 `player_id`; 检索三维评分 (recency/importance/relevance) 之外, 对当前玩家记忆加权 |
+| Reflection | `src/game_agent/cognition/reflection.py` | 分**自我反思**与**关系反思**两条轨; 带证据引用 + LLM 矛盾强度冲突失效/衰减 |
+| Planning | `src/game_agent/cognition/planning.py` | 层次化 (日→小时→分钟); plan 作为记忆参与检索; 反应后从当前时刻重规划 |
+| Reacting | `src/game_agent/cognition/reacting.py` | 效用函数 `U=w_s·V_s+w_g·V_g−C_int`, 事件价值与关系信任度均由 LLM 判断 (签名缓存), 人格权重 + 信任调制 |
+| Dialogue | `src/game_agent/cognition/dialogue.py` | 非全知: 只用"当前对话者的面 + 共享流", 检索时把"对话者是谁"并入查询 |
+| 成本闸门 (blog 问题一) | `src/game_agent/cognition/npc.py` | 分级认知 (full/compressed/idle) + 决策缓存 |
+| 记忆卫生链 | `src/game_agent/memory/store.py` / `src/game_agent/cognition/reflection.py` | 观察去重、级联切断、语义去重、LLM 冲突失效、降权遗忘、夜间情节固化 (episode) |
+| NPC↔NPC 社交层 | `src/game_agent/world/runtime.py` / `src/game_agent/cognition/npc.py` | 记忆流从 per-player 泛化到 per-entity; NPC 互相感知、关系反思、信任; 谣言按传播跳数折扣 |
+| **游戏世界层** | `src/game_agent/world/runtime.py` | 多 NPC + 多玩家空间共存、空间感知、**距离自动调度档位**、世界事件、自治模拟、动作效果钩子、行为链事件、结构化视觉事件、独立持久化 |
 | 评测与可视化 | `evals/` / `visualization/` | 三组消融实验; Phaser 像素风时间线回放器 (含直播跟随) |
 
 ## LLM / 向量层
 
-- `llm.LLMClient`: 抽象接口, **十二个方法** `complete / score_importance /
+- `game_agent.models.llm.LLMClient`: 抽象接口, **十二个方法** `complete / score_importance /
   reflection_questions / reflection_insights / generate_plan / decompose_activity /
   score_event / judge_trust / judge_conflict / perceive_action / decide_action /
   consolidate_observations`。实现者只应使用传入的记忆内容 (非全知原则)。
-- `llm_real.RealLLM`: 唯一实现, 通过 OpenAI 兼容接口 (`/v1/chat/completions`)
+- `game_agent.models.llm_http.RealLLM`: 唯一实现, 通过 OpenAI 兼容接口 (`/v1/chat/completions`)
   接入 SGLang 部署的 `Qwen3.8-27B-Coder/BF16`。要换别的 OpenAI 兼容端点,
   改 `base_url` / `model` 即可。
-- `embeddings.Embedder`: 可插拔向量接口, 两个实现:
+- `game_agent.models.embeddings.Embedder`: 可插拔向量接口, 两个实现:
   - `HashEmbedder` (默认回退): 词袋哈希, 余弦相似度反映**词面重叠**, 确定性、
     零依赖。中文按单字、英文按词分词。
-  - `embeddings_real.RealEmbedder`: 接 OpenAI 兼容 `/v1/embeddings`, 默认指向
+  - `game_agent.models.embeddings_http.RealEmbedder`: 接 OpenAI 兼容 `/v1/embeddings`, 默认指向
     SGLang 部署的 `Alibaba-NLP/gte-Qwen2-1.5B-instruct` @ `10.121.39.10:30006`
     (1536 维, 语义相似度 —— 换说法的同义句也能高相似)。
   - `make_embedder()`: 优先真实端点, 不可达自动回退 HashEmbedder。示例默认用它。
 
 ## 运行
 
-无第三方运行时依赖 (纯标准库)。需要 LLM 端点可达 (默认 10.121.39.10:30005)。
+Python >= 3.10，运行时仅使用标准库。先从项目根目录安装开发包：
+
+```bash
+python -m pip install -e '.[dev]'
+# 已有 .venv 时也可使用：
+uv pip install --python .venv/bin/python -e '.[dev]'
+
+# 当前真实模型 API 不可达，以离线测试验收：
+python -m pytest tests/ --ignore=tests/test_probes.py -q
+```
+
+下方真实模拟和在线评测需要 LLM 端点可达（默认 10.121.39.10:30005），当前暂不运行。
 
 ```bash
 # 端到端 demo: 真实语言模型驱动同一个 Klaus 对 Aria 与 Bram 的千人千面
@@ -71,7 +81,7 @@ python examples/forgetting.py           # ~8 天时间跳跃后的分层降权
 python examples/world_demo.py           # 稻妻城·眼狩令, 5 NPC + 旅行者
 python examples/world_auto_sim.py       # 10 天 × 8 步, 所有实体都由 LLM 决策
 
-# 测试 (246 离线 + 6 真实 LLM 探针; 端点不可达时探针自动 skip)
+# 完整测试入口（含 6 个真实 LLM 探针；当前仅运行上面的离线测试命令）
 pytest tests/ -q
 
 # 评测 (需真实 LLM; 方法与结果见 evals/README.md)
@@ -99,11 +109,11 @@ cd visualization && npm install && npm run dev
 
 ## 接入 LLM (RealLLM)
 
-`persona_agent/llm_real.py` 的 `RealLLM` 通过 OpenAI 兼容接口接入
+`src/game_agent/models/llm_http.py` 的 `RealLLM` 通过 OpenAI 兼容接口接入
 SGLang 部署的 `Qwen3.8-27B-Coder/BF16`:
 
 ```python
-from persona_agent import NPC, RealLLM, HashEmbedder
+from game_agent import NPC, RealLLM, HashEmbedder
 npc = NPC("Klaus", {"social": 0.4, "goal_oriented": 0.8},
           llm=RealLLM(),                # 默认 http://10.121.39.10:30005
           embedder=HashEmbedder())
@@ -125,7 +135,7 @@ npc = NPC("Klaus", {"social": 0.4, "goal_oriented": 0.8},
 `NPC.load`, 记忆流与元数据存于 `data/<name>.db` (一个 NPC 一个 SQLite 库):
 
 ```python
-from persona_agent import NPC, RealLLM, make_embedder
+from game_agent import NPC, RealLLM, make_embedder
 
 # 创建或加载 (不存在则新建并落库, 已存在则等价于 load)
 isabella = NPC.create("Isabella", {"social": 0.8, "goal_oriented": 0.3},
@@ -148,7 +158,7 @@ isabella2.trust_toward("Aria")   # +1.00, 与上次一致
 
 ## 游戏世界层 (多 NPC 真实世界)
 
-在单个 NPC 之上加了一层**世界层** (`world.py`)，把"脚本手喂单个 NPC"升级为
+在单个 NPC 之上加了一层**世界层** (`src/game_agent/world/runtime.py`)，把"脚本手喂单个 NPC"升级为
 **多 NPC + 多玩家在空间世界里自动感知、距离调度认知**：
 
 - **空间与实体**：`Location`(有坐标区域) / `Entity` / `Player` / `World`。距离用
@@ -181,7 +191,7 @@ isabella2.trust_toward("Aria")   # +1.00, 与上次一致
   跨进程恢复整个世界（含各 NPC 记忆流与面）。
 
 ```python
-from persona_agent import World, Location, RealLLM, make_embedder
+from game_agent import World, Location, RealLLM, make_embedder
 w = World("稻妻城", [Location("主城", 0, 0), Location("治疗堂", 1, 0)],
           path="data/inazuma/world.db")
 w.add_npc("桃音", {"social": 0.8, "goal_oriented": 0.3},
@@ -270,10 +280,10 @@ w.npc("桃音").trust_toward("旅行者")  # 千人千面
 
 ## 六个探针 (集成测试)
 
-`probes.py` 把"它真的千人千面了吗"变成对真实 LLM 的集成回归。每个探针混合
+`src/game_agent/evaluation/probes.py` 把"它真的千人千面了吗"变成对真实 LLM 的集成回归。每个探针混合
 **确定性架构断言** (信任度差异、特质稳定, 不依赖 LLM 措辞) 与 **宽松真实 LLM
 断言** (对话不同、非全知不编造、计划目标导向, 对措辞鲁棒)。需 LLM 可达,
-不可达时 `pytest` 自动 skip。连同离线用例共 **252 个测试** (246 离线 + 6 探针)：
+不可达时 `pytest` 自动 skip。当前 **286 个离线测试已通过**；以下 6 个探针保留，因真实 API 不可达，本轮未执行：
 
 1. **一致性探针** — 对两个玩家信任度不同, 且同一问话回答不同。
 2. **非全知探针** — 没观察过的玩家, 不应自信编造其背叛。判定用 **LLM 裁判**
@@ -292,7 +302,7 @@ w.npc("桃音").trust_toward("旅行者")  # 千人千面
 
 ## 遗忘 / 衰减 (部分衰减降权, 不删除)
 
-记忆不是只增不减的, 但也不会被抹掉。`memory.py` 的 `decay_and_forget` 按时间
+记忆不是只增不减的, 但也不会被抹掉。`src/game_agent/memory/store.py` 的 `decay_and_forget` 按时间
 **下调 importance** (降权), 渐近到 `MIN_IMPORTANCE`(1.5) 为止 —— 记忆**保留**
 (valid 恒 1), 只是检索权重降低, 老记忆自然跌出前排, 被回忆又能升回:
 

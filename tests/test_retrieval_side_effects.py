@@ -9,16 +9,13 @@ Part B: min_relevance 下限 —— 归一化前剔除零重叠无关候选, 小
 
 from __future__ import annotations
 
-import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import MemoryRecord, MemoryStore
-from persona_agent.embeddings import HashEmbedder
-from persona_agent.reflection import ReflectionEngine
+from game_agent import MemoryRecord, MemoryStore
+from game_agent.models.embeddings import HashEmbedder
+from game_agent.cognition.reflection import ReflectionEngine
 from tests.test_persistence import _StubLLM
 
 

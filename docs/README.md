@@ -9,7 +9,7 @@
 | [系统总览](architecture.md) | 当前实现、运行链路、模块边界与主要问题 | 已按 2026-10-23 代码核对 |
 | [重构路线](refactoring.md) | 拆分顺序、兼容要求与验收方法 | 分模块实施中 |
 | [模块设计模板](templates/module-design.md) | 后续每个模块蓝图的统一格式 | 可直接使用 |
-| [源码布局与包命名](source-layout.md) | src 布局、模块目录、安装与旧导入兼容 | 设计已确定，迁移中 |
+| [源码布局与包命名](source-layout.md) | src 布局、模块目录、安装与旧导入兼容 | 已实现，286 个离线测试通过 |
 
 各模块拟建立的设计稿见总览中的“模块蓝图目录”；已展开的蓝图和实施状态见下表。详细接口、状态机与迁移方案在对应设计稿中逐步记录。
 
@@ -17,19 +17,20 @@
 
 | 模块蓝图 | 状态 | 实现入口 |
 |---|---|---|
-| [世界实体与空间模型](modules/world-model.md) | 已实现，246 个离线测试通过 | `persona_agent/world_model.py` |
-| [结构化事件契约](modules/events.md) | 已实现，246 个离线测试通过 | `persona_agent/events.py` |
-| [世界持久化](modules/persistence.md) | 已实现，247 个离线测试通过 | `persona_agent/world_store.py` |
-| [NPC 认知编排边界](modules/npc-runtime.md) | 已封装，247 个离线测试通过 | `persona_agent/npc.py` |
-| [空间感知与距离调度](modules/perception.md) | 已实现，247 个离线测试通过 | `persona_agent/perception.py` |
-| [包入口与依赖加载](modules/package-api.md) | 已实现，251 个离线测试通过 | `persona_agent/__init__.py` |
-| [决策与关系记忆边界](modules/decision.md) | 已实现，255 个离线测试通过 | `autonomous.py` / `reacting.py` |
-| [场景效果与行为链](modules/world-extensions.md) | 已实现，256 个离线测试通过 | `world_extensions.py` |
-| [社交观察与传闻路由](modules/social.md) | 已实现，257 个离线测试通过 | `social.py` / `social_contracts.py` |
-| [动作执行](modules/actions.md) | 已实现，258 个离线测试通过 | `actions.py` |
-| [记忆模块](modules/memory.md) | 已拆分，275 个离线测试通过 | `memory.py`、`memory_model.py`、`memory_ranking.py`、`memory_policy.py`、`memory_repository.py` |
+| [世界实体与空间模型](modules/world-model.md) | 已实现，246 个离线测试通过 | `src/game_agent/world/entities.py` |
+| [结构化事件契约](modules/events.md) | 已实现，246 个离线测试通过 | `src/game_agent/world/events.py` |
+| [世界持久化](modules/persistence.md) | 已实现，247 个离线测试通过 | `src/game_agent/world/persistence.py` |
+| [NPC 认知编排边界](modules/npc-runtime.md) | 已封装，247 个离线测试通过 | `src/game_agent/cognition/npc.py` |
+| [空间感知与距离调度](modules/perception.md) | 已实现，247 个离线测试通过 | `src/game_agent/world/perception.py` |
+| [包入口与依赖加载](modules/package-api.md) | 已实现，251 个离线测试通过 | `src/game_agent/__init__.py` |
+| [决策与关系记忆边界](modules/decision.md) | 已实现，255 个离线测试通过 | `src/game_agent/cognition/autonomous.py` / `src/game_agent/cognition/reacting.py` |
+| [场景效果与行为链](modules/world-extensions.md) | 已实现，256 个离线测试通过 | `src/game_agent/world/extensions.py` |
+| [社交观察与传闻路由](modules/social.md) | 已实现，257 个离线测试通过 | `src/game_agent/world/social.py` / `src/game_agent/world/social_contracts.py` |
+| [动作执行](modules/actions.md) | 已实现，258 个离线测试通过 | `src/game_agent/world/actions.py` |
+| [记忆模块](modules/memory.md) | 已拆分，275 个离线测试通过 | `src/game_agent/memory/store.py`、`src/game_agent/memory/models.py`、`src/game_agent/memory/ranking.py`、`src/game_agent/memory/policies.py`、`src/game_agent/memory/repository.py` |
+| [源码布局](source-layout.md) | 已迁移，286 个离线测试通过 | `src/game_agent/`、`src/persona_agent/`、`pyproject.toml` |
 
-当前累计验证：275 个离线测试通过。记忆层与绝对重要性修正提交的 43 个状态 / 缓存检查点及 16 步时间线一致。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
+当前累计验证：286 个离线测试通过。源码迁移的 25 个实现模块通过逻辑 AST 对比，16 步时间线与迁移前一致；编辑安装及独立环境 wheel 安装验证通过。此前记忆层与绝对重要性修正提交的 43 个状态 / 缓存检查点及 16 步时间线一致。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
 
 ## 当前范围与验证约束
 

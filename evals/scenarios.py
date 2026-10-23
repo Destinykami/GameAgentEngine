@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from persona_agent.reacting import ReactionDecision
+from game_agent.cognition.reacting import ReactionDecision
 
 # ---------------------------------------------------------------- 人格 (3)
 PERSONAS = {

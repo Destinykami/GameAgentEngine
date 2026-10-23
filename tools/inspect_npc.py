@@ -22,10 +22,9 @@ import os
 import sqlite3
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent.reacting import ReactionDecider  # noqa: E402
-from persona_agent.reflection import TRUST_WORDS, DISTRUST_WORDS  # noqa: E402
+from game_agent.cognition.reacting import ReactionDecider  # noqa: E402
+from game_agent.cognition.reflection import TRUST_WORDS, DISTRUST_WORDS  # noqa: E402
 
 
 def _open_ro(path: str) -> sqlite3.Connection:

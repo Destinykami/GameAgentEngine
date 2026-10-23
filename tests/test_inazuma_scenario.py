@@ -1,6 +1,6 @@
 """稻妻·眼狩令 情境测试 (B+ 涌现)。
 
-引擎 (persona_agent/world.py) 保持通用, 只出动作空间+物理规则; "对话谁得什么证据 /
+引擎 (game_agent/world.py) 保持通用, 只出动作空间+物理规则; "对话谁得什么证据 /
 找铁匠是否锻刀 / 执行官收缴持眼者是否算目击" 这些具体世界行为, 由情境层
 (examples/world_auto_sim.py) 经 World 的动作效果钩子注入。本测试验证:
 1. talk → LLM 从对话生成证据 (新颖性对照 + 文本去重双保险);
@@ -14,12 +14,10 @@ from __future__ import annotations
 
 import importlib.util
 import os
-import sys
 import tempfile
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent.world import World, Location
+from game_agent.world.runtime import World, Location
 from tests.test_persistence import _StubLLM
 
 

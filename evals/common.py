@@ -1,6 +1,6 @@
 """evals/common.py — 三实验共用件: NPC 工厂、LLM 裁判、指标计算、结果落盘。
 
-依赖方向: evals → persona_agent (单向)。本模块只通过公开 API 观察系统,
+依赖方向: evals → game_agent (单向)。本模块只通过公开 API 观察系统,
 不 monkeypatch、不改游戏路径行为。裁判用 LLM 时 temperature=0 (同探针)。
 """
 
@@ -8,14 +8,12 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import time
 import urllib.request
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import NPC, make_embedder
-from persona_agent.llm_real import RealLLM, DEFAULT_BASE_URL
+from game_agent import NPC, make_embedder
+from game_agent.models.llm_http import RealLLM, DEFAULT_BASE_URL
 
 DATA_ROOT = os.path.join(os.path.dirname(__file__), "..", "data", "eval")
 

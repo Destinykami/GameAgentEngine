@@ -2,8 +2,8 @@
 
 import pytest
 
-from persona_agent import MemoryRecord, MemoryStore
-from persona_agent.embeddings import Embedder
+from game_agent import MemoryRecord, MemoryStore
+from game_agent.models.embeddings import Embedder
 
 
 class _ConstantEmbedder(Embedder):

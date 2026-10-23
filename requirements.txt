@@ -2,10 +2,10 @@
 # 离线测试用各测试文件内的 stub LLM + HashEmbedder, 无需 API key / 模型权重。
 #
 # 可选依赖 (接入真实模型时):
-#   - 真实 LLM: persona_agent.llm_real.RealLLM (OpenAI 兼容端点),
-#     或自行实现 persona_agent.llm.LLMClient
-#   - 真实向量: persona_agent.embeddings_real.RealEmbedder (gte-Qwen2),
-#     或自行实现 persona_agent.embeddings.Embedder
+#   - 真实 LLM: game_agent.models.llm_http.RealLLM (OpenAI 兼容端点),
+#     或自行实现 game_agent.models.llm.LLMClient
+#   - 真实向量: game_agent.models.embeddings_http.RealEmbedder (gte-Qwen2),
+#     或自行实现 game_agent.models.embeddings.Embedder
 #
 # 开发依赖:
 #   pytest>=7.0        # 运行 tests/

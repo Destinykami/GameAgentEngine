@@ -4,8 +4,8 @@
 
 ## 边界与依赖
 
-- `social_contracts.py` 定义窄认知端口和 `Hearsay` 传输数据，不依赖世界、NPC 实现或存储。
-- `social.py` 管理社交待反思队列、第三方听见及传闻转述路由，只依赖该端口和实体模型。
+- `src/game_agent/world/social_contracts.py` 定义窄认知端口和 `Hearsay` 传输数据，不依赖世界、NPC 实现或存储。
+- `src/game_agent/world/social.py` 管理社交待反思队列、第三方听见及传闻转述路由，只依赖该端口和实体模型。
 - NPC 负责记忆检索、相关性与传闻跳数上限；通过 `rumor_to_share(query, now)` 返回可转述数据。社交层不读取 MemoryStore 或它的记录字典。
 - World 负责提供当前实体 / 认知映射、时钟、半径及开关，保留原社交门面。
 

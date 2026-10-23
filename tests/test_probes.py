@@ -5,14 +5,11 @@
 
 from __future__ import annotations
 
-import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent.probes import (
+from game_agent.evaluation.probes import (
     _llm_available, build_scenario, probe_consistency,
     probe_non_omniscience, probe_persistence, probe_drift,
     probe_first_person, probe_world_isolation,
@@ -35,7 +32,7 @@ def test_consistency(scenario):
 def test_non_omniscience():
     if not _llm_available():
         pytest.skip("LLM 端点不可达, 跳过集成探针")
-    from persona_agent.probes import _make_npc  # noqa: F401  (仅确保导入)
+    from game_agent.evaluation.probes import _make_npc  # noqa: F401  (仅确保导入)
     r = probe_non_omniscience(40.0)
     assert r.passed, r.detail
 

@@ -14,11 +14,9 @@ from __future__ import annotations
 
 import os
 import shutil
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import World, Location, RealLLM, make_embedder
+from game_agent import World, Location, RealLLM, make_embedder
 
 DATA = os.path.join(os.path.dirname(__file__), "..", "data", "inazuma")
 

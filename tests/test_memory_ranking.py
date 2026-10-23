@@ -4,8 +4,8 @@ from dataclasses import asdict
 
 import pytest
 
-from persona_agent.memory_model import MemoryRecord
-from persona_agent.memory_ranking import rank_memories
+from game_agent.memory.models import MemoryRecord
+from game_agent.memory.ranking import rank_memories
 
 
 def test_confidence_and_hearsay_discount_precede_relationship_bonus():

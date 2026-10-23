@@ -8,12 +8,9 @@ M1: 夜间固化把当天原始观察按流压成 episode, 源观察标 consolid
 
 from __future__ import annotations
 
-import os
-import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import NPC, MemoryRecord
+from game_agent import NPC, MemoryRecord
 from tests.test_persistence import _StubLLM
 
 TRAITS = {"social": 0.7, "goal_oriented": 0.5}
@@ -121,7 +118,7 @@ def test_consolidate_confidence_and_importance(tmp_path):
 
 def test_world_consolidation_flag(tmp_path):
     """世界层固化: 缺省关时 23 点不固化; 开时在 consolidate_hour 触发, 一天一次。"""
-    from persona_agent.world import World, Location
+    from game_agent.world.runtime import World, Location
     w = World("城", [Location("甲", 0, 0)], path=None)
     w.add_player("玩家", "甲")
     w.add_npc("A", dict(TRAITS), llm=_StubLLM(), data_dir=str(tmp_path / "A"),
@@ -214,7 +211,7 @@ def test_identity_isolated_from_reflection_pool(tmp_path):
 
 def test_identity_injection_into_decision(tmp_path):
     """身份信念注入决策上下文: 开关开 → perception 含身份信念; 缺省关 → 不含。"""
-    from persona_agent.world import World, Location
+    from game_agent.world.runtime import World, Location
     w = World("城", [Location("甲", 0, 0)], path=None,
               use_identity_beliefs=True)
     w.add_player("玩家", "甲")

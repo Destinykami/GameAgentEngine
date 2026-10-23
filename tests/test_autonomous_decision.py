@@ -2,8 +2,8 @@
 
 import pytest
 
-from persona_agent.autonomous import AutonomousDecider, DecisionContext
-from persona_agent.world_model import Entity, Location
+from game_agent.cognition.autonomous import AutonomousDecider, DecisionContext
+from game_agent.world.entities import Entity, Location
 
 
 class _CaptureModel:

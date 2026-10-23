@@ -25,10 +25,9 @@ import os
 import sys
 import time
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
 
-from persona_agent import World, Location, HashEmbedder
+from game_agent import World, Location, HashEmbedder
 from common import (llm_available, fresh_llm, run_dir, save_json,
                     print_table, pct)
 

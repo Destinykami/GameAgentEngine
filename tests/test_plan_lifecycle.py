@@ -10,16 +10,14 @@ M5: 自治模拟里重大状态变化 (战斗/逃跑/帮匿) 打断当日计划 
 from __future__ import annotations
 
 import os
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from persona_agent import MemoryStore
-from persona_agent.embeddings import HashEmbedder
-from persona_agent.planning import PlanningEngine
-from persona_agent.world import World, Location
+from game_agent import MemoryStore
+from game_agent.models.embeddings import HashEmbedder
+from game_agent.cognition.planning import PlanningEngine
+from game_agent.world.runtime import World, Location
 from tests.test_persistence import _StubLLM, TRAITS
 
 
