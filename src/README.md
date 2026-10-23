@@ -8,7 +8,7 @@
 | `game_agent/memory/` | 记录模型、检索排序、维护策略、SQLite 仓储与门面 |
 | `game_agent/world/` | 实体、感知、动作、事件、社交、扩展规则和世界运行 |
 | `game_agent/models/` | LLM / 向量接口、哈希向量和兼容 HTTP 适配 |
-| `game_agent/evaluation/` | 集成探针；导入不会执行真实 API 检查 |
+| `game_agent/evaluation/` | 纯指标、结果格式、显式运行依赖与真实探针；导入不检查端点 |
 | `game_agent/scenarios/` | 具体场景的人物、地图、规则、裁决和故事顺序 |
 | `game_agent/runners/` | 显式运行入口、时间推进、终端输出及 JSON/JSONL 产物 |
 

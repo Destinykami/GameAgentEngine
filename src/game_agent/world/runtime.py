@@ -174,6 +174,10 @@ class World:
         """查询已注册的自治模型；不暴露可变注册表。"""
         return self._agent_llms.get(name)
 
+    def npc_names(self) -> tuple[str, ...]:
+        """NPC 名称快照，保持注册顺序；对象经 npc(name) 查询。"""
+        return tuple(self._npcs)
+
     # ------------------------------------------------------------- 空间感知
     def perceive(self, npc_name: str, now: float,
                  radius: float | None = None) -> list[int]:

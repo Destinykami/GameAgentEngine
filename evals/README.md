@@ -1,5 +1,7 @@
 # evals/ — 三实验评测方法学
 
+当前代码按职责组织：`fixtures/` 保存预定义数据，`experiments/` 编排试验，`baselines.py` 保存固定规则；可复用指标、格式及显式模型依赖位于 `src/game_agent/evaluation/`。顶层命令行用法保持不变，模块边界和离线验证见 [评测设计](../docs/modules/evaluation.md)。当前 API 不可达，仅做结构重构及替身对照，以下历史结果不表示本轮真实重跑。
+
 评测 game_agent 的三个核心机制：**记忆卫生链**（证据约束反思 + LLM 矛盾判别 +
 置信度衰减）、**判断型决策栈**（人格 × 关系的效用决策）、**分级认知调度**
 （距离档位 + 决策门控 + 候选证据限制）。设计总原则与包内改动映射（P1–P8）见
@@ -39,7 +41,7 @@ monkeypatch。运行产物落 `data/eval/<实验>/<时间戳>/`（被 .gitignore
 嵌入用真实 gte-Qwen2（`make_embedder`）——HashEmbedder 是词面哈希，"过期召回"
 的语义相似度会失真。
 
-## 实验 2 — 决策消融三方法 (`decision_ablation.py` + `scenarios.py`)
+## 实验 2 — 决策消融三方法 (`decision_ablation.py` + `fixtures/decision.py`)
 
 | 方法 | 决策机制 |
 |---|---|
@@ -49,7 +51,7 @@ monkeypatch。运行产物落 `data/eval/<实验>/<时间戳>/`（被 .gitignore
 
 场景矩阵：3 人格（社交/平衡/目标）× 3 信任档（高信任=3 次相助 / 中立=一面之缘 /
 低信任=失信背叛）× 6 事件（藏匿求助/派对邀请/低价值闲聊/敌对威胁/委托打铁/
-再求助）。**期望响应表按人格×关系逻辑预定义**（`scenarios.py` 逐条注释）——
+再求助）。**期望响应表按人格×关系逻辑预定义**（`fixtures/decision.py` 逐条注释）——
 事件响应率不是越高越好：忽略低价值闲聊恰是正确行为。每场景重建 NPC（真实 LLM
 重放信任历史 + 日计划），错误响应中断类事件触发重规划（镜像世界层
 INTERRUPT_ACTIONS 语义）。

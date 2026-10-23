@@ -1,0 +1,77 @@
+"""四臂开关、固定轨迹与观察时刻。"""
+
+ARMS = {
+    "baseline":   dict(evidence_types=("observation", "reflection"),
+                       conflict_policy="off"),
+    "ablation_a": dict(evidence_types=("observation",),
+                       conflict_policy="off"),
+    "ablation_b": dict(evidence_types=("observation", "reflection"),
+                       conflict_policy="heuristic_decay"),
+    "ours":       dict(evidence_types=("observation",),
+                       conflict_policy="full"),
+}
+
+# 10 条轨迹: 帮助阶段措辞语义多样化 (防 0.92 观察去重误并), 背叛与查询各异。
+TRAJECTORIES = [
+    dict(player="Aria",
+         helps=["Aria 帮 Klaus 修好了咖啡机", "Aria 送了一盒急救药给 Klaus",
+                "Aria 在 Klaus 店里忙到打烊还在搭手"],
+         betrayals=["Aria 把 Klaus 的账本拿走后换了锁"],
+         query="Aria 这个人靠得住吗, 以后还能信她吗",
+         utterance="Aria, 上次的账本是怎么回事? 你还能信吗?"),
+    dict(player="Bram",
+         helps=["Bram 帮 Klaus 搬了整箱豆子", "Bram 替 Klaus 看了半天铺面"],
+         betrayals=["Bram 拿 Klaus 的定金跑路了", "Bram 对外说 Klaus 的铺子要倒"],
+         query="Bram 现在还算朋友吗, 他这个人怎样",
+         utterance="Bram, 你拿走的定金到底怎么回事? 我们还是朋友吗?"),
+    dict(player="Cora",
+         helps=["Cora 教 Klaus 改良了研磨手法", "Cora 免费给 Klaus 做了招牌"],
+         betrayals=["Cora 把 Klaus 的配方泄露给了隔壁店的老板"],
+         query="Cora 的动机到底是什么, 她可信吗",
+         utterance="Cora, 隔壁店怎么会有我的配方? 你安的什么心?"),
+    dict(player="Dex",
+         helps=["Dex 在雨天给 Klaus 送来了急用的咖啡豆",
+                "Dex 帮 Klaus 挡掉了不付账的醉汉",
+                "Dex 主动帮忙盘点了仓库"],
+         betrayals=["Dex 趁 Klaus 不在偷喝了珍藏的咖啡"],
+         query="Dex 到底是个什么样的人, 值得深交吗",
+         utterance="Dex, 我的珍藏咖啡怎么少了一罐? 我们之间算什么?"),
+    dict(player="Elle",
+         helps=["Elle 帮 Klaus 谈成了一笔大宗订单"],
+         betrayals=["Elle 收了买家两头的钱, 把 Klaus 那单的利润吞了"],
+         query="Elle 这种合作还值得继续吗, 她是什么样的人",
+         utterance="Elle, 那笔订单的账对不上, 你是不是两头收钱?"),
+    dict(player="Finn",
+         helps=["Finn 替 Klaus 守了一夜店", "Finn 把打碎的杯子赔了双倍",
+                "Finn 帮 Klaus 拦下了不靠谱的供应商"],
+         betrayals=["Finn 把 Klaus 的库存转手卖给了竞对的探子"],
+         query="Finn 现在还能信吗, 他图什么",
+         utterance="Finn, 竞对怎么知道我有多少库存? 你卖了我多少次?"),
+    dict(player="Gwen",
+         helps=["Gwen 教 Klaus 辨认了上等咖啡豆", "Gwen 逢人就夸 Klaus 的手艺"],
+         betrayals=["Gwen 当着客人的面造谣说 Klaus 的豆子掺假"],
+         query="Gwen 之前夸我真心吗, 她现在是什么心思",
+         utterance="Gwen, 你当着客人面说我掺假, 以前那些夸奖算什么?"),
+    dict(player="Holt",
+         helps=["Holt 帮 Klaus 加固了仓库的门", "Holt 修好了漏水的屋顶"],
+         betrayals=["Holt 把钥匙复制了一把, 夜里搬走了半仓库的豆子"],
+         query="Holt 这个人靠得住吗, 以后还敢把东西放他那吗",
+         utterance="Holt, 仓库的锁怎么多了把钥匙? 你搬走的豆子打算怎么办?"),
+    dict(player="Iris",
+         helps=["Iris 帮 Klaus 招待了难缠的批发商", "Iris 把自己的围裙借给 Klaus 挡油"],
+         betrayals=["Iris 把 Klaus 的客源名单卖给了隔壁的连锁商"],
+         query="Iris 还值得来往吗, 她以前帮我是假装的吗",
+         utterance="Iris, 连锁商怎么会有我的客源名单? 你以前帮我是真的吗?"),
+    dict(player="Juno",
+         helps=["Juno 在 Klaus 生病时端来汤", "Juno 帮 Klaus 给远房亲戚回了信",
+                "Juno 替 Klaus 照顾了一下午的猫"],
+         betrayals=["Juno 把 Klaus 托付的猫转手卖了"],
+         query="Juno 对我到底是好是坏, 我该怎么看她",
+         utterance="Juno, 你照顾的猫怎么被卖掉了? 我对你的好都喂了狗吗?"),
+]
+
+T_HELP = (0.0, 2.0, 4.0)       # 帮助阶段观察时刻
+T_REFLECT1 = 6.0               # 背叛前关系反思 (stale 集在此生成)
+T_BETRAY = (8.0, 10.0)         # 背叛阶段观察时刻
+T_REFLECT2 = 12.0              # 背叛后关系反思 (矛盾处理生效)
+T_FINAL = 20.0                 # 再交互时刻

@@ -9,25 +9,20 @@
 
 from __future__ import annotations
 
-import json
 import os
 import sys
+
+from game_agent.evaluation.metrics import percentile
+from game_agent.evaluation.artifacts import load_json
 
 
 def load(dirpath: str) -> list:
     p = os.path.join(dirpath, "runs_partial.json")
     if not os.path.exists(p):
         return []
-    return json.load(open(p, encoding="utf-8"))
+    return load_json(p)
 
 
-def pct(vals, p):
-    if not vals:
-        return 0.0
-    vs = sorted(vals)
-    k = (len(vs) - 1) * p
-    f, c = int(k), min(int(k) + 1, len(vs) - 1)
-    return vs[f] + (vs[c] - vs[f]) * (k - f)
 
 
 def main() -> int:
@@ -50,7 +45,7 @@ def main() -> int:
         u = r["total_usage"]
         print(f"{r['config']:<15}{r['n']:>4}{u['calls']:>8}"
               f"{sum(calls) / len(calls):>12.1f}{sum(toks) / len(toks):>12.0f}"
-              f"{pct(lat, .5):>8.1f}{pct(lat, .95):>8.1f}"
+              f"{percentile(lat, .5):>8.1f}{percentile(lat, .95):>8.1f}"
               f"{r['outcome']['self_reflections_total']:>8}")
     print("\n── by_method 成本拆解 (总调用占比) ──")
     for r in final:

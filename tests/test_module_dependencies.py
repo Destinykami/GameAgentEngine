@@ -35,6 +35,7 @@ import pytest
     "scenarios.inazuma.effects", "scenarios.inazuma.judgment", "scenarios.inazuma.outcome",
     "scenarios.inazuma.setup", "scenarios.inazuma.scripted", "scenarios.inazuma.reporting",
     "runners", "runners.artifacts", "runners.presentation",
+    "evaluation.metrics", "evaluation.artifacts",
 ])
 def test_foundation_import_does_not_load_runtime_or_model_adapters(module):
     code = f'''

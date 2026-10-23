@@ -36,8 +36,9 @@
 | [模型接入与输出解析](modules/model-adapters.md) | 已拆分，372 个离线测试通过 | `src/game_agent/models/llm_http/`、`config.py`、`transport.py`、`embeddings_http.py` |
 | [世界循环与公开编排](modules/world-runtime.md) | 组件已提取，场景查询边界已收尾 | `src/game_agent/world/runtime.py` |
 | [稻妻场景与运行产物](modules/scenarios.md) | 已拆分，395 个离线测试通过 | `src/game_agent/scenarios/inazuma/`、`src/game_agent/runners/` |
+| [评测场景与指标](modules/evaluation.md) | 已拆分，410 个离线测试通过 | `src/game_agent/evaluation/`、`evals/fixtures/`、`evals/experiments/` |
 
-当前累计验证：395 个离线测试通过。4 组自治离线配置及完整脚本周剧情的输出、模型调用和数据库与旧入口一致，自治 JSON/JSONL 字节及 16 步时间线一致。此前模块的验证记录保留在相应蓝图中。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
+当前累计验证：410 个离线测试通过。评测的 40 组记忆轨迹、27 个决策情境、6 组调度配置及三个控制器离线输出与旧实现一致；13 个试验/控制器核心 AST 一致。此前模块的验证记录保留在相应蓝图中。各行测试数为该模块提交时的记录；未运行真实模型及前端构建。
 
 ## 当前范围与验证约束
 
