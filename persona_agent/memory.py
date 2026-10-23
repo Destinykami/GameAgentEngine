@@ -406,9 +406,10 @@ class MemoryStore:
                 return [1.0 for _ in vals]
             return [(v - lo) / (hi - lo) for v in vals]
 
-        r_norm, i_norm, s_norm = norm(recency), norm(importance), norm(relevance)
+        # importance 是绝对显著度，不随候选集合变化而重新拉伸。
+        r_norm, s_norm = norm(recency), norm(relevance)
         raw = []
-        for c, r, i, s in zip(cands, r_norm, i_norm, s_norm):
+        for c, r, i, s in zip(cands, r_norm, importance, s_norm):
             score = (ALPHA_RECENCY * r + ALPHA_IMPORTANCE * i +
                      ALPHA_RELEVANCE * s)
             # 置信度折减 (H2): 被冲突衰减的反思按信念强度打折 —— check_conflicts
