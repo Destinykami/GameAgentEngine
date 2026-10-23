@@ -16,7 +16,7 @@ from .perception import PresenceTracker, cognitive_tier, visible_entities
 from .world_store import WorldStore
 from .world_extensions import WorldExtensions
 from .world_model import Location, Entity, Player, distance, location_distance
-from .memory import HEARSAY_MAX_HOP   # 传闻链上限 (S4); memory 不依赖 world, 无循环
+from .social import SocialRuntime
 
 
 # --------------------------------------------------------------------- 世界
@@ -97,7 +97,7 @@ class World:
         # E16: 本步发生的社交交互 (目标 NPC, 行动者名)。execute_action 的
         # talk/attack/help 对目标 NPC observe 后登记进来, step_autonomous 统一
         # 消费 (跑关系反思), 步末清空。让自治世界的社交动作进 NPC 记忆/信任/反思层。
-        self._step_social: list[tuple["NPC", str]] = []
+        self._social = SocialRuntime()
         # 结构化视觉事件缓冲 (单一事实源): execute_action / world_event 追加,
         # step_autonomous 每步执行前重置。前端回放读它 (序列化为 visual_events),
         # 不再解析中文事件串。旧调用方忽略本字段不受影响。
@@ -186,7 +186,7 @@ class World:
             self.perception_radius if radius is None else radius,
             social_perception=self._social_perception,
             player_transition=self._player_perception_transition,
-            on_social=lambda other: self._step_social.append((npc, other)))
+            on_social=lambda other: self._social.enqueue(npc, other))
 
     def player_action(self, player_name: str, action: str, target_npc: str,
                       now: float) -> int:
@@ -246,64 +246,18 @@ class World:
         observe 这件事 (关系观察, player_id = 行动者名), 并把 (目标 NPC, 行动者)
         登记进 _step_social 供 step_autonomous 统一跑关系反思。返回目标 NPC
         (目标不是 NPC 则 None)。信任度随之惰性更新 (新观察改变关系记忆签名)。"""
-        npc = self._npcs.get(target.name)
-        if npc is None:
-            return None
-        npc.perceive_action(agent.name, action_desc, self.clock)
-        self._step_social.append((npc, agent.name))
-        return npc
+        return self._social.observe_action(
+            self._npcs.get(target.name), agent.name, action_desc, self.clock)
 
     def _spread_rumor(self, speaker: Entity, listener: Entity, line: str) -> None:
-        """S4 谣言传播 (缺省关): 两条路径, 都只产生传闻观察 (hearsay=True)。
+        self._social.spread_rumor(
+            speaker, listener, line, now=self.clock, radius=self.perception_radius,
+            entities=self.entities, cognitions=self._npcs)
 
-        (1) 听见: 对话发生区域内、除说话者与对话者外的存活 NPC 听到这句话 ——
-            观察进"说话者"的关系流 (player_id=说话者: 这是"他说了什么"的认知),
-            hop=1。第三方不关心对话者是谁, 只关心谁说了话。
-        (2) 转述: 说话者若是 NPC 且持有未封顶 (hop < HEARSAY_MAX_HOP) 的传闻记忆,
-            把它转述给对话者 —— 对话者收到同内容、同说话者流、hop+1 的传闻。
-            这就是"听说听说听说"的链: 每经一个 NPC 之口 +1 跳, 3 跳封顶不再传。
-            内容/说话者流相同 → 与已有传闻去重合并 (不升级 hop), 所以三角传回
-            自己不会无限加跳。
-
-        两条路径的观察都登记 _step_social, 听者/转述接收者会对说话者跑关系反思
-        (复用 E16 flush 路径, full 档且新观察才反思)。
-        """
-        # (1) 听见
-        for name, npc in self._npcs.items():
-            ent = self.entities.get(name)
-            if ent is None or ent.dead or ent is speaker or ent is listener:
-                continue
-            if location_distance(speaker.location, ent) > self.perception_radius:
-                continue
-            npc.observe(f"{speaker.name} 说: {line}", self.clock,
-                        player_id=speaker.name, hearsay=True, hop=1)
-            self._step_social.append((npc, speaker.name))
-        # (2) 转述
-        speaker_npc = self._npcs.get(speaker.name)
-        listener_npc = self._npcs.get(listener.name)
-        if speaker_npc is None or listener_npc is None:
-            return
-        # F4-1: 只转述与当前话题相关的传闻。旧实现取"最新一条"无条件转述,
-        # A 和 B 聊天气也会把 C 的谣言塞给 B。用检索的相关性下限筛候选。
-        hits = speaker_npc.store.retrieve(
-            query=line, now=self.clock, top_k=1, types=["observation"],
-            hearsay_only=True, min_relevance=0.15, mark_accessed=False)
-        if not hits:
-            return
-        latest = hits[0]
-        if latest["hop"] >= HEARSAY_MAX_HOP:
-            return   # 已封顶
-        # 不把"听者自己转述出去的传闻"再传回给听者 (三角回环), 也不把关于
-        # 听者本人的传闻说给听者。
-        if latest["player_id"] == listener.name:
-            return
-        if latest["content"].startswith(f"{listener.name} 告诉我:"):
-            return
-        content = f"{speaker.name} 告诉我: {latest['content']}"
-        listener_npc.observe(content, self.clock,
-                             player_id=latest["player_id"], hearsay=True,
-                             hop=latest["hop"] + 1)
-        self._step_social.append((listener_npc, latest["player_id"] or speaker.name))
+    @property
+    def _step_social(self):
+        """兼容旧诊断视图；队列仅由 SocialRuntime 持有。"""
+        return self._social.pending
 
     @staticmethod
     def _norm_action(action) -> dict:
@@ -711,16 +665,7 @@ class World:
         talk 已在 execute_action 里经 speak 反思过, 此处再跑被 _reflected_obs 门控
         拦下 (幂等); attack/help 没走 speak, 靠这里补上关系反思。
         """
-        try:
-            for npc, actor in self._step_social:
-                try:
-                    if self.entities[npc.name].dead:
-                        continue
-                    npc.maybe_reflect_relationship(actor, now)
-                except Exception:
-                    continue   # 单次交互反思失败不阻塞其余 (R4)
-        finally:
-            self._step_social.clear()   # R4: 异常也清空, 不留下步重复处理
+        self._social.flush(now, lambda name: not self.entities[name].dead)
 
     # ------------------------------------------------------------- 距离调度
     def tier_of(self, npc_name: str) -> str:

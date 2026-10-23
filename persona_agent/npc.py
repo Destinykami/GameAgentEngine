@@ -21,7 +21,8 @@ from collections import OrderedDict
 from .dialogue import DialogueManager
 from .embeddings import Embedder, HashEmbedder
 from .llm import LLMClient
-from .memory import MemoryRecord, MemoryStore
+from .memory import HEARSAY_MAX_HOP, MemoryRecord, MemoryStore
+from .social_contracts import Hearsay
 from .planning import PlanningEngine
 from .reacting import ReactionDecider, ReactionDecision
 from .reflection import ReflectionEngine
@@ -426,6 +427,16 @@ class NPC:
 
     def has_relationship(self, player_id: str) -> bool:
         return bool(self.store.all_valid(player_id=player_id))
+
+    def rumor_to_share(self, query: str, now: float) -> Hearsay | None:
+        """返回一条相关且尚可传播的传闻，不把记忆存储接口暴露给路由层。"""
+        hits = self.store.retrieve(
+            query=query, now=now, top_k=1, types=["observation"],
+            hearsay_only=True, min_relevance=0.15, mark_accessed=False)
+        if not hits or hits[0]["hop"] >= HEARSAY_MAX_HOP:
+            return None
+        hit = hits[0]
+        return Hearsay(hit["content"], hit["player_id"], hit["hop"])
 
     def decision_context(self, visible_entities: set[str]) -> str:
         """自治决策只暴露共享记忆与可见对象的关系面，保留原末 5 条窗口。"""
