@@ -21,6 +21,7 @@
 | [世界持久化](modules/persistence.md) | 已实现，247 个离线测试通过 | `persona_agent/world_store.py` |
 | [NPC 认知编排边界](modules/npc-runtime.md) | 已封装，247 个离线测试通过 | `persona_agent/npc.py` |
 | [空间感知与距离调度](modules/perception.md) | 已实现，247 个离线测试通过 | `persona_agent/perception.py` |
+| [包入口与依赖加载](modules/package-api.md) | 已实现，251 个离线测试通过 | `persona_agent/__init__.py` |
 
 ## 当前范围与验证约束
 
