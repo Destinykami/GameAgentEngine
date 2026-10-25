@@ -15,6 +15,11 @@
 
 from __future__ import annotations
 
+import json
+
+from ...integration.contracts import ActionIntent, DecisionRequest, GameEvent
+from ..game import build_game_context
+
 from ..dialogue import DialogueManager
 from ...models.embeddings import Embedder, HashEmbedder
 from ...models.llm import LLMClient
@@ -36,6 +41,34 @@ from .state import REFLECTION_THRESHOLD, RuntimeState
 
 
 class NPC:
+    def receive_game_event(self, event: GameEvent) -> str:
+        """只接收明确授权事件；稳定 ID 使部分投递失败后可以安全重投。"""
+        if self.name not in event.recipients:
+            raise PermissionError('该 NPC 不在事件接收范围内')
+        source_id = self.store.archive_input(event.content, event.now,
+            kind=event.event_type, speaker=event.actor_id,
+            event_key='game:' + json.dumps([event.instance_id, event.event_id], ensure_ascii=False),
+            event=EventContext(event_type=event.event_type, occurred_at=event.now,
+                actor=event.actor_id, participants=event.participants,
+                evidence_kind=event.evidence_kind, instance_id=event.instance_id),
+            metadata={'projection': 'none', 'channel': event.channel,
+                      'recipients': event.recipients, 'game_event_id': event.event_id})
+        self.store.archive_done(source_id)
+        return source_id
+
+    def decide_game(self, request: DecisionRequest, model=None) -> ActionIntent:
+        """通用路径不推进旧空间时钟、不隐式调用日程或关系反思。"""
+        if request.actor_id != self.name:
+            raise PermissionError('决策请求不属于此 NPC')
+        decider = model if model is not None else self.llm
+        if not callable(getattr(decider, 'decide_game', None)):
+            raise TypeError('模型未实现 decide_game；请注入通用决策模型')
+        intent = decider.decide_game(build_game_context(self.store, request, self.persona_traits))
+        if not isinstance(intent, ActionIntent):
+            raise ValueError('通用模型必须返回 ActionIntent')
+        request.validate(intent)
+        return intent
+
     def __init__(self, name: str, persona_traits: dict[str, float],
                  llm: LLMClient,
                  embedder: Embedder | None = None,
