@@ -15,6 +15,7 @@ from ..cognition.autonomous import (AutonomousDecider, DecisionContext,
 from .events import VisualEvent
 from .perception import PresenceTracker, cognitive_tier, visible_entities
 from .persistence import WorldStore
+from .errors import SaveError
 from .extensions import WorldExtensions
 from .entities import Location, Entity, Player, distance, location_distance
 from .social import SocialRuntime
@@ -625,7 +626,7 @@ class World:
         self._storage = WorldStore(path)
 
     def save(self) -> None:
-        """保存世界快照，并在世界库提交前尽力保存各 NPC 独立库。"""
+        """保存实时库；部分失败明确上报，不承诺跨库原子性。"""
         if self._storage is None:
             raise RuntimeError("该世界是内存世界, 无法持久化 (构造时请传 path)")
         metadata = {
@@ -635,12 +636,17 @@ class World:
             "last_plan_day": self._last_plan_day,
             "last_consolidate_day": self._last_consolidate_day,
         }
-        with self._storage.write_snapshot(self.entities.values(), metadata):
-            for npc in self._npcs.values():
-                try:
-                    npc.save()
-                except Exception:
-                    continue
+        try:
+            with self._storage.write_snapshot(self.entities.values(), metadata):
+                for npc in self._npcs.values():
+                    try:
+                        npc.save()
+                    except Exception as exc:
+                        raise SaveError("npc", npc.name, exc) from exc
+        except SaveError:
+            raise
+        except Exception as exc:
+            raise SaveError("world", None, exc) from exc
 
     def load(self, llm=None, embedder=None, agent_llms: dict | None = None) -> None:
         """恢复世界状态；提供 llm 时恢复 NPC 认知与自治注册。

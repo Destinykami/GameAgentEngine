@@ -3,6 +3,7 @@
 from .._lazy import resolve_export as _resolve_export
 
 _EXPORTS = {
+    'SaveError': ('.errors', 'SaveError'),
     'World': ('.runtime', 'World'),
     'Location': ('.entities', 'Location'),
     'Entity': ('.entities', 'Entity'),

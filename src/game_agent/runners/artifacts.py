@@ -40,6 +40,10 @@ class TimelineWriter:
         self._write({"__done__": True, **flags})
         self._live.close()
 
+    def close(self) -> None:
+        """异常退出时释放文件；不写入成功结束标记。"""
+        self._live.close()
+
     def write_final(self, path: str, metadata: dict) -> None:
         with open(path, "w", encoding="utf-8") as stream:
             json.dump({**metadata, "steps": self.steps}, stream,
