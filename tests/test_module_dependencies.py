@@ -13,6 +13,7 @@ import pytest
     "world.extensions", "world.social", "world.actions", "memory.models",
     "memory.policies", "memory.ranking", "memory.events", "world", "memory", "models",
     "cognition", "cognition.game", "evaluation", "integration", "integration.contracts", "integration.state",
+    "adapters", "adapters.spatial", "scenarios.werewolf", "scenarios.werewolf.world",
     "cognition.reflection", "cognition.reflection.engine",
     "cognition.reflection.contracts", "cognition.reflection.policies",
     "cognition.reflection.writing", "cognition.reflection.conflicts",
