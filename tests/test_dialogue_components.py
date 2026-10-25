@@ -10,8 +10,8 @@ def test_reply_uses_narrow_ports_and_preserves_context_and_trait_reference():
     events = []
 
     class Memory:
-        def retrieve(self, **options):
-            events.append(("retrieve", options))
+        def working_memories(self, player_id, now, **options):
+            events.append(("working", player_id, now, options))
             return memories
 
     class Model:
@@ -23,23 +23,17 @@ def test_reply_uses_narrow_ports_and_preserves_context_and_trait_reference():
     manager = DialogueManager(Model(), Memory(), traits, "桃音")
     traits["social"] = 0.9
     assert manager.reply("Aria", "  你好  ", 3.0, top_k=3) == "回答"
-    assert events[0] == ("retrieve", {
-        "query": "  你好   (对话者: Aria)", "now": 3.0, "top_k": 3,
-        "player_id": "Aria", "include_player": "Aria",
-        "include_shared": True, "min_relevance": 0.1,
-    })
+    assert events[0] == ('working', 'Aria', 3.0, {'limit': 3})
     ctx = events[1][1]
-    assert ctx.system == (
-        "你是 桃音。记忆流里出现的 桃音 就是你本人, "
-        "开口时一律用'我', 不要在自己的话里用名字称呼自己。"
-        "只基于你记得的事情回答。人格特质: {'social': 0.9}")
+    assert '你是 桃音' in ctx.system and "{'social': 0.9}" in ctx.system
+    assert '不要主动复述无关旧事' in ctx.system
     assert ctx.player_id == "Aria"
     assert ctx.question == "  你好  "
-    assert ctx.memories is memories
-    assert ctx.extra == {}
+    assert ctx.memories == memories and ctx.memories is not memories
+    assert ctx.extra == {'memory_mode': 'working', 'memory_budget_chars': 3000}
 
 
-def test_model_failure_keeps_retrieval_access_time_without_observation_writes():
+def test_model_failure_does_not_refresh_candidate_access_or_write_observations():
     from game_agent import HashEmbedder, MemoryRecord, MemoryStore
 
     class Model:
@@ -55,14 +49,14 @@ def test_model_failure_keeps_retrieval_access_time_without_observation_writes():
             manager.reply("Aria", "咖啡机", 2.0)
         records = store.all_valid()
         assert len(records) == 1
-        assert records[0].last_accessed == 2.0
+        assert records[0].last_accessed is None
     finally:
         store.close()
 
 
 def test_retrieval_failure_does_not_call_model():
     class Memory:
-        def retrieve(self, **options):
+        def working_memories(self, *args, **options):
             raise RuntimeError("retrieval failed")
 
     class Model:

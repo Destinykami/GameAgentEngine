@@ -8,11 +8,16 @@ from ...models.llm import LLMContext
 
 
 class DialogueMemory(Protocol):
-    def retrieve(self, query: str, now: float, *, top_k: int = 8,
-                 player_id: str | None = None,
-                 include_player: str | None = None,
-                 include_shared: bool = False,
-                 min_relevance: float = 0.0) -> list[dict]: ...
+    def working_memories(self, player_id: str, now: float, *, limit: int = 8) -> list[dict]: ...
+
+    def retrieve_important(self, query: str, now: float, player_id: str, *,
+                           top_k: int = 4) -> list[dict]: ...
+
+    def search_archive(self, query: str, *, player_id: str,
+                       include_shared: bool, before: float, limit: int) -> list[dict]: ...
+
+    def archive_neighbors(self, source_id: str, *, player_id: str,
+                          include_shared: bool, before: float, radius: int) -> list: ...
 
 
 class DialogueModel(Protocol):

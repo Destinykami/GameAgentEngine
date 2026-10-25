@@ -166,6 +166,8 @@ class MemoryStore:
 
     def working_memories(self, player_id: str, now: float, *, limit: int = 8,
                          recent_hours: float = 24.0) -> list[dict]:
+        if limit <= 0:
+            return []
         recent = self._repository.context_candidates(player_id, now, limit=limit,
                                                       since=now - recent_hours)
         summaries = self._repository.context_candidates(player_id, now, limit=2,
