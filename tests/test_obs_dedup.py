@@ -14,6 +14,40 @@ def _make(tmp_path) -> NPC:
     return NPC.create("Fade", dict(TRAITS), llm=_StubLLM(), data_dir=str(tmp_path))
 
 
+@pytest.mark.parametrize("first,second", [("Aria", None), (None, "Aria"),
+                                          ("Aria", "Bram")])
+def test_identical_content_isolated_between_streams(first, second):
+    npc = NPC("Fade", dict(TRAITS), llm=_StubLLM())
+    try:
+        a = npc.observe("Aria 帮 Fade 修好了咖啡机", 0, player_id=first,
+                        hearsay=True, hop=2)
+        before = npc.store.all_valid()[0]
+        b = npc.observe("Aria 帮 Fade 修好了咖啡机", 1, player_id=second)
+        assert a != b
+        records = npc.store.all_valid()
+        assert len(records) == 2 and records[0] == before
+        assert [m.player_id for m in records] == [first, second]
+        assert npc.runtime_state().importance_accum == (5 if None in (first, second) else 0)
+    finally:
+        npc.store.close()
+
+
+@pytest.mark.parametrize("player", [None, "Aria"])
+def test_same_stream_merge_preserves_id_and_upgrades_source(player):
+    npc = NPC("Fade", dict(TRAITS), llm=_StubLLM())
+    try:
+        a = npc.observe("Aria 帮 Fade 修好了咖啡机", 0, player_id=player,
+                        hearsay=True, hop=2)
+        b = npc.observe("Aria 帮 Fade 修好了咖啡机", 1, player_id=player)
+        assert a == b
+        rec, = npc.store.all_valid()
+        assert not rec.hearsay and rec.hop == 0
+        assert rec.last_accessed == 1 and rec.importance == 5
+        assert npc.runtime_state().importance_accum == (5 if player is None else 0)
+    finally:
+        npc.store.close()
+
+
 def test_identical_observation_merged(tmp_path):
     """同文观察重放 → 合并不新增, importance 提升, last_accessed 刷新。"""
     npc = _make(tmp_path)

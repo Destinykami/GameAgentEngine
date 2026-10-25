@@ -232,7 +232,7 @@ class MemoryStore:
         窗口: 每次 observe 的去重是 O(窗口) 余弦, 窗口越大每次观察越贵, 而窗口
         外重放是低频边缘情况, 不值得用高频路径的成本去兜。
         """
-        cands = self.all_valid(player_id=player_id,
+        cands = self.all_valid(player_id=player_id, shared=player_id is None,
                                types=["observation"])[-recent_n:]
         if not cands:
             return None
