@@ -80,3 +80,17 @@ def test_context_budget_and_legacy_models_can_inject_optional_capability():
         assert all(m['truncated'] for m in model.context.memories)
     finally:
         npc.store.close()
+
+
+def test_game_only_model_needs_no_daily_plan_dialogue_or_importance_capabilities():
+    class GameOnly:
+        def decide_game(self, context):
+            r = context.request
+            return ActionIntent(r.instance_id, r.request_id, r.actor_id, r.state_version,
+                                'vote', {'target': 'B'})
+    npc = NPC('A', {}, GameOnly())
+    try:
+        npc.receive_game_event(event())
+        assert npc.decide_game(request()).action == 'vote'
+    finally:
+        npc.store.close()

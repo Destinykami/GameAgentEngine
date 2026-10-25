@@ -98,6 +98,8 @@ World 仍决定哪些实体可见、何时注入身份信念和何时调用关�
 
 已实现：按 [多游戏接入](game-integration.md) 增加独立 decide_game/receive_game_event，支持个人视角、动态动作与实例历史；不改变 speak、旧关系流和反思行为。通用入口不推进旧空间时钟，原文投递无模型调用，缺少模型能力可显式注入。113 项 NPC 与依赖边界离线测试通过，包含授权、跨实例/未来隔离、原话幂等、上下文预算及旧模型兼容。
 
+追加纯通用模型回归：仅实现 decide_game 的模型也能完成原文接收与决策，无需日计划、重要性打分或旧对话能力。4 项 NPC 通用入口用例通过。
+
 按 [通用记忆事件](memory-events.md) 为 observe 增加可选 EventContext，直接对话/动作归档补充能确定的双方、方向、获知及发生时间。结构化索引与原文同事务；传闻不推断发生时间，动作尝试不认定成功。保持补处理、去重、反思门控和默认对话检索语义，不新增模型调用。验证 NPC 入口、原文失败保留及旧签名兼容。
 
 实现入口：engine.py 的 observe / perceive_action / remember_dialogue / speak 和 observation.py 的 archive_observation。38 项 NPC 事件、档案、组件、世界原文、分层对话及对话回流离线测试通过；包含失败后元数据保留、重启补处理一致性和记录开关。World 社交窄端口和 VisualEvent 保持原契约；不宣称已自动回流世界地点或动作成功结果。
