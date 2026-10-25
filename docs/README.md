@@ -16,6 +16,8 @@
 
 ## 模块实施记录
 
+2026-10-25 新工作：[分层记忆与每 NPC 独立原文档案](modules/tiered-memory.md) 已确认，待实现；将按存储、NPC、对话及持久化验证并提交。下表历史结果不代表分层功能已经实现。
+
 | 模块蓝图 | 状态 | 实现入口 |
 |---|---|---|
 | [世界实体与空间模型](modules/world-model.md) | 已实现，246 个离线测试通过 | `src/game_agent/world/entities.py` |

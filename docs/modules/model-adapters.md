@@ -2,6 +2,8 @@
 
 状态：已实现并通过离线验证。核对日期：2026-10-23。
 
+2026-10-25 用户确认 [分层记忆](tiered-memory.md) 的对话生成调整：无历史命中仍可正常回答，提示词区分近期背景与主动提及历史。这覆盖下文 complete 空记忆零请求及提示词原文不变的历史规则，其余模型接入契约保持。
+
 ## 目标与边界
 
 保留 LLMClient、LLMContext、Embedder、HashEmbedder、RealLLM、RealEmbedder、make_embedder 的正式入口与调用行为。模型适配只负责请求、提示词和输出解释，不访问 NPC、World、记忆库或实验目录。认知组件继续通过已有窄端口调用模型。

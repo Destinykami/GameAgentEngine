@@ -4,6 +4,8 @@
 实现入口：`src/game_agent/cognition/dialogue/`，正式 DialogueManager 导入路径保持可用。
 关联设计：[NPC 编排](npc-runtime.md)、[记忆](memory.md)、[社交](social.md)、[动作](actions.md)。
 
+2026-10-25 用户确认的行为变更见 [分层记忆](tiered-memory.md)：常用层优先、历史按需查询、候选不刷新访问时间、无历史命中仍可对话。以下为历史基线，本轮替换相应检索和提示词条款，双人循环职责不变。
+
 ## 1. 职责与目标
 
 对话模块只负责当前说话者可见记忆的检索、原有 LLMContext 组装、单轮回复生成，以及独立的双人轮流发言工具。通过窄接口依赖记忆检索和模型补全文本能力，不依赖 NPC、World、SQLite 或真实模型适配。
