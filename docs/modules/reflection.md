@@ -4,6 +4,22 @@
 实现入口：`src/game_agent/cognition/reflection/`，正式公共导入路径保持 `game_agent.cognition.reflection`。
 关联设计：[记忆](memory.md)、[NPC 编排](npc-runtime.md)、[源码布局](../source-layout.md)。
 
+## 2026-10-25 关系反思窗口设计（用户已确认，待实现）
+
+问题：关系反思将全部关系观察交给问题生成模型；取证时再编码整个关系流。原料及嵌入工作随历史增长，不符合 [分层记忆](tiered-memory.md) 的长期运行目标。用户已确认本轮限制原料为最近 100 条、证据候选为最多 128 条。
+
+目标与接口：
+
+- MemoryStore 新增 recent_relationship_observations(player_id, now, limit=100)，在 SQL 层选当前关系有效 observation、timestamp<=now，按 (timestamp,id) 取最近窗口，再以时间升序返回。不能先读取全部记录再切片，不能跨入共享流或其他关系。
+- retrieve 新增可选 candidate_limit，关系反思显式传入 128；默认 None 的其他检索路径保持原语义。该选项仅用于单一关系流，不允许混入 include_shared/shared/hearsay_only 的不同候选语义。
+- 候选选择在 SQL 中执行：先取最多 64 条近期证据，再从剩余有效、同流、同类型、非未来记录中按 importance/timestamp/id 降序补到 128；去重后按 ID 排列，保证稳定同分排序。重要历史有机会入选，不只看最近 128 条。
+- 原 evidence_types（包括评测中空类型列表代表不过滤的语义）、min_relevance、top_k=10、mark_accessed=False、当前玩家加权及绝对 importance/10 保持；候选外原文与主库记录不删除。
+- NPC 的关系反思触发水位仍基于有效观察总数，改用 SQL COUNT，不把水位错误地改成至多 100 的窗口长度。只有反思及冲突处理成功后推进水位。
+
+本轮不改变自我/身份反思、全局语义去重或冲突判定策略，不据此声称整个认知流程的所有 I/O 都已恒定成本。主库新增两类有界读取；反思组件继续通过窄端口调用，不依赖 SQLite。
+
+验收：超过 100 条、乱序和同时间戳原料、历史重要事件/近期普通事件混选、候选总量与嵌入量上限、共享/其他玩家/未来/失效/类型过滤、空与小库、访问水位不更新，以及新增第 101 条之后仍触发反思。全部使用离线模型；真实质量与大规模数据库延迟未验证。
+
 ## 1. 目标与职责边界
 
 反思模块将观察提炼为自我认知、关系判断或身份信念，校验证据、抑制同义重复，并处理新证据对旧信念的矛盾。
