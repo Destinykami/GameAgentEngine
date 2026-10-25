@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import json
 import os
 import shutil
+import uuid
 
 
 @dataclass(frozen=True)
@@ -26,7 +27,7 @@ class TimelineWriter:
     def __init__(self, live_path: str, metadata: dict) -> None:
         self.steps: list[dict] = []
         self._live = open(live_path, "w", encoding="utf-8")
-        self._write({"__meta__": True, **metadata})
+        self._write({"__meta__": True, **metadata, "run_id": uuid.uuid4().hex})
 
     def _write(self, record: dict) -> None:
         self._live.write(json.dumps(record, ensure_ascii=False) + "\n")

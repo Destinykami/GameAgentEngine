@@ -9,6 +9,7 @@ import type { TimelineStep } from "./schema";
 // (末尾无换行 → 丢弃末行, 下轮重试)。前端 ?live 模式用它逐步接入并自动跟随。
 
 export interface LiveMeta {
+  run_id?: string;
   schema_version?: number;
   world?: { name: string; coordinate_system: string; render_map: string };
   // B+ 涌现: 无门控, 这三个门槛为 null (旧时间线为数字)。

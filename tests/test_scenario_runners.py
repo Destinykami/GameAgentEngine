@@ -18,7 +18,9 @@ def test_timeline_writer_overwrites_stream_flushes_each_step_and_matches_final(t
     live.write_text("旧数据\n")
     meta = {"schema_version": 1, "world": {"name": "世界"}, "reason_needed": None}
     writer = TimelineWriter(str(live), meta)
-    assert json.loads(live.read_text()) == {"__meta__": True, **meta}
+    opening = json.loads(live.read_text())
+    assert len(opening.pop("run_id")) == 32
+    assert opening == {"__meta__": True, **meta}
     step = {"clock": 1, "states": {}, "visual_events": [], "note": "中文"}
     writer.append(step)
     assert json.loads(live.read_text().splitlines()[1]) == step
@@ -123,3 +125,13 @@ def test_autonomous_runner_with_offline_factories_produces_readable_artifacts(tm
     assert timeline["reason_needed"] is None and timeline["persuade_n"] is None
     assert len(timeline["steps"][0]["states"]) == 6
     assert (data / "world.db").exists() and (data / "桃音.db").exists()
+
+
+def test_live_writer_assigns_distinct_run_ids_without_changing_final_metadata(tmp_path):
+    path = str(tmp_path / "live.jsonl")
+    ids = []
+    for _ in range(2):
+        writer = TimelineWriter(path, {"schema_version": 1})
+        ids.append(json.loads((tmp_path / "live.jsonl").read_text())["run_id"])
+        writer.close()
+    assert ids[0] != ids[1]
