@@ -25,6 +25,7 @@ class EventContext:
     participants: tuple[str, ...] = ()
     location: str | None = None
     evidence_kind: str | None = None
+    instance_id: str | None = None
 
     def __post_init__(self) -> None:
         _finite('occurred_at', self.occurred_at)
@@ -40,6 +41,7 @@ class EventScope:
     as_of: float
     player_id: str | None = None
     include_shared: bool = False
+    instance_id: str | None = None
 
     def __post_init__(self) -> None:
         if self.as_of is None:
@@ -105,6 +107,7 @@ class EventRecord:
     session_id: str
     hearsay: bool
     hop: int
+    instance_id: str | None = None
 
 
 @dataclass(frozen=True)

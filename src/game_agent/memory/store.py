@@ -151,7 +151,8 @@ class MemoryStore:
     def read_archive(self, source_id: str, *, player_id: str | None = None,
                      include_shared: bool = False, before: float | None = None) -> ArchiveRecord | None:
         rec = self._archive.get(source_id)
-        if rec is None or (before is not None and rec.timestamp > before):
+        if (rec is None or not self._archive.is_unscoped(source_id)
+                or (before is not None and rec.timestamp > before)):
             return None
         if rec.player_id == player_id or (include_shared and rec.player_id is None):
             return rec

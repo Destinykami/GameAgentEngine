@@ -150,6 +150,42 @@ def test_other_npc_cannot_read_ids_or_use_cursors(store):
         other.close()
 
 
+def test_instance_scope_covers_query_count_original_anchor_and_cursor(store):
+    old = store.archive_input('旧世界的矿石', 1)
+    a = store.archive_input('A 局私密身份', 2, event=EventContext(instance_id='A'))
+    store.archive_input('A 局公开发言', 3, event=EventContext(instance_id='A'))
+    b = store.archive_input('B 局私密身份', 2, event=EventContext(instance_id='B'))
+    scope = EventScope(as_of=10, instance_id='A')
+    assert store.count_events(scope) == 2
+    assert store.query_events(scope).events[0].instance_id == 'A'
+    assert store.read_event_source(b, scope) is None
+    with pytest.raises(ValueError, match='锚点不可见'):
+        store.query_events(scope, EventQuery(before_event=b))
+    cursor = store.query_events(scope, limit=1).next_cursor
+    with pytest.raises(ValueError, match='游标不属于'):
+        store.query_events(replace(scope, instance_id='B'), cursor=cursor)
+    assert store.read_event_source(a, scope).content == 'A 局私密身份'
+    assert store.read_archive(a) is None
+    assert store.archive_neighbors(a) == []
+    assert [r['id'] for r in store.search_archive('')] == [old]
+    assert store.count_events(EventScope(as_of=10)) == 4  # 显式管理查询仍可跨实例
+
+
+def test_instance_metadata_survives_restart_and_event_key_conflict(tmp_path):
+    path = str(tmp_path / 'N.db')
+    store = MemoryStore(HashEmbedder(), path)
+    ctx = EventContext(instance_id='A')
+    sid = store.archive_input('私密结果', 1, event=ctx, event_key='event-1')
+    store.close()
+    store = MemoryStore(HashEmbedder(), path)
+    try:
+        assert store.query_events(EventScope(as_of=2, instance_id='A')).events[0].source_id == sid
+        with pytest.raises(ArchiveWriteError, match='上下文不一致'):
+            store.archive_input('私密结果', 1, event=replace(ctx, instance_id='B'), event_key='event-1')
+    finally:
+        store.close()
+
+
 def test_atomic_source_event_pending_and_text_index(store, monkeypatch):
     original = store._archive._index
     def fail(*args):

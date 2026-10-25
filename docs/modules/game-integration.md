@@ -27,7 +27,7 @@
 
 新增 NPC.decide_game(request, model=None) 和 receive_game_event(event)。前者只使用该请求的个人视角、NPC 自己的人格及本实例的有界历史，不依赖 Entity；后者先验证接收者，再追加原文与事件索引，标记无须模型派生，不混入旧共享主库背景。核心保留游戏原话，角色的声明和私人推断不自动升级为事实。
 
-记忆 EventContext/EventScope/EventRecord 添加可选 instance_id，与对话 session_id 分离；新决策强制按 instance_id 和 as_of 读取。旧数据保持 NULL，旧 API 省略实例条件时语义不变。新增实例索引、幂等来源绑定，原文/事件迁移不猜旧实例。查询游标、计数、锚点和精确读取均遵守实例范围。NPC 绑定角色 ID 使用现有 name；本轮不迁移全库角色命名。
+记忆 EventContext/EventScope/EventRecord 添加可选 instance_id，与对话 session_id 分离；新决策强制按 instance_id 和 as_of 读取。旧数据保持 NULL；旧 search_archive/read_archive/neighbors 仅访问 NULL 实例，防新游戏秘密进入旧对话，已有旧记录可见性不变。通用 EventScope 未指定实例仍是显式跨实例管理查询。新增实例索引、幂等来源绑定，原文/事件迁移不猜旧实例。查询游标、计数、锚点和精确读取均遵守实例范围。NPC 绑定角色 ID 使用现有 name；本轮不迁移全库角色命名。
 
 上下文默认最近 16 条、6000 字符，本实例历史不足时正常决策；不自动加载其他局、旧关系主库或私人分析。适配器可以将明确授权的长期关系背景放入个人视角。人格长期保留；本局身份/阵营/目标在游戏视角中提供，不覆盖人格。日程、关系反思及身份推理由游戏选择启用；本轮不改变旧 NPC.speak。
 

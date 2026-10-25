@@ -113,7 +113,8 @@ class ArchiveRepository:
                     original = self._conn.execute(
                         'SELECT session_id,metadata FROM source WHERE id=?', (existing[0],)).fetchone()
                     if (tuple(old)[1:] != (context.event_type, context.occurred_at, observed_at,
-                            context.actor, context.target, context.location, context.evidence_kind)
+                            context.actor, context.target, context.location, context.evidence_kind,
+                            context.instance_id)
                             or participants != tuple(sorted(context.participants))
                             or (session_id and original['session_id'] != session_id)
                             or json.loads(original['metadata']) != (metadata or {})):
@@ -172,6 +173,11 @@ class ArchiveRepository:
                 return None
             return self.get(source_id)
 
+    def is_unscoped(self, source_id: str) -> bool:
+        with self._lock:
+            return self._conn.execute('SELECT 1 FROM event WHERE source_id=? '
+                'AND instance_id IS NULL', (source_id,)).fetchone() is not None
+
     def set_state(self, source_id: str, state: str, error: str = "") -> None:
         if state not in ('pending', 'done'):
             raise ValueError("不支持的原文处理状态")
@@ -189,11 +195,13 @@ class ArchiveRepository:
 
     @staticmethod
     def _scope(player_id: str | None, include_shared: bool) -> tuple[str, list]:
+        legacy = (' AND NOT EXISTS (SELECT 1 FROM event e WHERE e.source_id=s.id '
+                  'AND e.instance_id IS NOT NULL)')
         if player_id is None:
-            return "s.player_id IS NULL", []
+            return "s.player_id IS NULL" + legacy, []
         if include_shared:
-            return "(s.player_id=? OR s.player_id IS NULL)", [player_id]
-        return "s.player_id=?", [player_id]
+            return "(s.player_id=? OR s.player_id IS NULL)" + legacy, [player_id]
+        return "s.player_id=?" + legacy, [player_id]
 
     def search(self, query: str, *, player_id: str | None = None,
                include_shared: bool = False, after: float | None = None,
