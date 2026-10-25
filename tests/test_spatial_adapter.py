@@ -100,3 +100,26 @@ def test_pending_requests_and_outbox_snapshot_are_bound_to_world(tmp_path):
             SpatialAdapter.restore(w, state)
     finally:
         w.close()
+
+
+def test_adapter_continues_after_real_world_checkpoint_restore(tmp_path):
+    w = World('W', [Location('L', 0, 0)], path=str(tmp_path / 'live/world.db'))
+    try:
+        for name in ('A', 'B'):
+            w.add_npc(name, {}, Model('wait', {}), data_dir=str(tmp_path / 'live'))
+        adapter = SpatialAdapter(w, 'g')
+        adapter.begin_turn(1)
+        first = adapter.requests()[0]
+        adapter.submit(ActionIntent('g', first.request_id, 'A', first.state_version, 'wait'))
+        state = adapter.snapshot()
+        w.save_checkpoint(str(tmp_path / 'checkpoints'))
+    finally:
+        w.close()
+    restored = World.from_checkpoint(str(tmp_path / 'checkpoints'), str(tmp_path / 'resumed'), Model('wait', {}))
+    try:
+        adapter = SpatialAdapter.restore(restored, state)
+        assert len(adapter.requests()) == 1
+        GameSession(adapter, {n: restored.npc(n) for n in restored.npc_names()}).step()
+        assert adapter.finished
+    finally:
+        restored.close()

@@ -29,10 +29,10 @@ class SpatialAdapter:
         return not self._active
 
     def _world_version(self):
-        state = [(e.name, e.location.name, e.location.x, e.location.y, e.health,
-                  e.attack, e.defense, e.dead) for e in self.world.entities.values()]
-        return hashlib.sha256(json.dumps([self.world.name, self.world.clock,
-            self.world.perception_radius, [(p.name, p.x, p.y) for p in self.world.locations.values()],
+        state = [(e.name, e.location.name, float(e.location.x), float(e.location.y), float(e.health),
+                  float(e.attack), float(e.defense), e.dead) for e in self.world.entities.values()]
+        return hashlib.sha256(json.dumps([self.world.name, float(self.world.clock),
+            float(self.world.perception_radius), [(p.name, float(p.x), float(p.y)) for p in self.world.locations.values()],
             state], ensure_ascii=False).encode()).hexdigest()
 
     def _actions(self, actor):
