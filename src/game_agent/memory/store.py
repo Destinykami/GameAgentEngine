@@ -27,6 +27,9 @@ importance/10 (不归一化)。这是有意取舍: importance 是 1-10 的绝对
 from __future__ import annotations
 
 from typing import Any, Iterable, Sequence
+from collections import OrderedDict
+from dataclasses import asdict
+from pathlib import Path
 
 from ..models.embeddings import Embedder, cosine_similarity
 from .models import MemoryRecord
@@ -38,31 +41,197 @@ from .policies import (
 )
 from .ranking import rank_memories
 from .repository import MemoryRepository
+from .archive import ArchiveRecord, ArchiveRepository
 
 
 class MemoryStore:
     """单个 NPC 的记忆存储 (自我 + 世界 + 各玩家关系流, 同库不同 player_id)。"""
 
-    def __init__(self, embedder: Embedder, path: str = ":memory:") -> None:
+    def __init__(self, embedder: Embedder, path: str = ":memory:", *,
+                 vector_cache_limit: int = 1024) -> None:
         self._embedder = embedder
         self._repository = MemoryRepository(path)
-        # 每 Store 独立的非持久化向量缓存；冷启动仍批量补 miss。
-        self._vec_cache: dict[int, list[float]] = {}
+        self._cache_limit = max(1, vector_cache_limit)
+        self._vec_cache: OrderedDict[int, list[float]] = OrderedDict()
+        self.archive_path = (str(Path(path).with_suffix('.archive.db'))
+                             if path != ':memory:' else ':memory:')
+        try:
+            expected = self.get_meta('archive_identity')
+            if expected and self.archive_path != ':memory:' and not Path(self.archive_path).is_file():
+                raise FileNotFoundError(f'NPC 原文档案丢失: {self.archive_path}')
+            self._archive = ArchiveRepository(self.archive_path)
+            if expected and expected != self._archive.identity:
+                self._archive.close()
+                raise ValueError('NPC 主库与原文档案身份不匹配')
+            self.set_meta('archive_identity', self._archive.identity)
+            self._import_legacy()
+        except Exception:
+            self._repository.close()
+            raise
+
+    def _import_legacy(self) -> None:
+        while True:
+            rows = self._repository.unlinked()
+            if not rows:
+                break
+            for rec in rows:
+                sid = self._archive.append(
+                    rec.content, rec.timestamp, rec.player_id, kind='legacy_snapshot',
+                    hearsay=rec.hearsay, hop=rec.hop,
+                    metadata={'projection': 'none', 'legacy_memory_id': rec.id},
+                    event_key=f'legacy:{rec.id}')
+                self._repository.link_source(sid, rec.id)
+                self._archive.set_state(sid, 'done')
+
+    @property
+    def archive_identity(self) -> str:
+        return self._archive.identity
+
+    def archive_input(self, content: str, now: float, player_id: str | None = None,
+                      *, kind: str = 'observation', speaker: str | None = None,
+                      session_id: str = '', hearsay: bool = False, hop: int = 0,
+                      metadata: dict | None = None, event_key: str | None = None) -> str:
+        return self._archive.append(content, now, player_id, kind=kind, speaker=speaker,
+            session_id=session_id, hearsay=hearsay, hop=hop, metadata=metadata,
+            event_key=event_key)
+
+    def archived(self, source_id: str) -> ArchiveRecord | None:
+        """仅供本 NPC 编排处理队列；面向对话读取使用 read_archive 的范围校验。"""
+        return self._archive.get(source_id)
+
+    def pending_archive(self, limit: int = 20) -> list[ArchiveRecord]:
+        return self._archive.pending(limit)
+
+    def archive_done(self, source_id: str) -> None:
+        self._archive.set_state(source_id, 'done')
+
+    def archive_failed(self, source_id: str, exc: Exception) -> None:
+        self._archive.set_state(source_id, 'pending', str(exc))
+
+    def projected_id(self, source_id: str) -> int | None:
+        return self._repository.projected_id(source_id)
+
+    def archive_count(self) -> int:
+        return self._archive.count()
+
+    def search_archive(self, query: str, *, player_id: str | None = None,
+                       include_shared: bool = False, after: float | None = None,
+                       before: float | None = None, limit: int = 8) -> list[dict]:
+        return self._archive.search(query, player_id=player_id, include_shared=include_shared,
+                                    after=after, before=before, limit=limit)
+
+    def read_archive(self, source_id: str, *, player_id: str | None = None,
+                     include_shared: bool = False, before: float | None = None) -> ArchiveRecord | None:
+        rec = self._archive.get(source_id)
+        if rec is None or (before is not None and rec.timestamp > before):
+            return None
+        if rec.player_id == player_id or (include_shared and rec.player_id is None):
+            return rec
+        return None
+
+    def archive_neighbors(self, source_id: str, *, player_id: str | None = None,
+                          include_shared: bool = False, before: float | None = None,
+                          radius: int = 1) -> list[ArchiveRecord]:
+        if self.read_archive(source_id, player_id=player_id,
+                             include_shared=include_shared, before=before) is None:
+            return []
+        return self._archive.neighbors(source_id, player_id=player_id,
+            include_shared=include_shared, before=before, radius=radius)
+
+    def source_refs(self, memory_id: int) -> list[dict]:
+        return [{'archive_id': self.archive_identity, 'source_id': sid}
+                for sid in self._repository.sources(memory_id)]
+
+    def rebuild_archive_index(self) -> None:
+        self._archive.rebuild_index()
+
+    def retry_pending_records(self, limit: int = 20) -> list[int]:
+        """补处理已具备完整派生字段的原文；需要模型感知/评分的输入由 NPC 处理。"""
+        completed = []
+        for source in self.pending_archive(limit):
+            existing = self.projected_id(source.id)
+            if existing is not None:
+                self.archive_done(source.id)
+                completed.append(existing)
+            elif source.metadata.get('projection') == 'record':
+                completed.append(self.add(MemoryRecord(**source.metadata['record']),
+                                          source_id=source.id))
+        return completed
+
+    @staticmethod
+    def _view(rec: MemoryRecord, layer: str, usage: str) -> dict:
+        result = asdict(rec)
+        result.update(layer=layer, usage=usage)
+        return result
+
+    def working_memories(self, player_id: str, now: float, *, limit: int = 8,
+                         recent_hours: float = 24.0) -> list[dict]:
+        recent = self._repository.context_candidates(player_id, now, limit=limit,
+                                                      since=now - recent_hours)
+        summaries = self._repository.context_candidates(player_id, now, limit=2,
+                                                         summaries=True)
+        seen, out = set(), []
+        for rec in [*summaries, *recent]:
+            if rec.id not in seen:
+                seen.add(rec.id)
+                out.append(self._view(rec, 'working', 'background'))
+        return out
+
+    def retrieve_important(self, query: str, now: float, player_id: str, *,
+                           top_k: int = 4) -> list[dict]:
+        cands = self._repository.context_candidates(player_id, now, limit=128, important=True)
+        if not cands or top_k <= 0:
+            return []
+        q_vec = self._embedder.embed([query])[0]
+        similarities = [cosine_similarity(vec, q_vec) for vec in self._ensure_vecs(cands)]
+        ranked = rank_memories(cands, similarities, now, top_k=top_k,
+                               include_player=player_id, min_relevance=0.1)
+        out = []
+        for score, rec in ranked:
+            view = self._view(rec, 'important', 'recall')
+            view['score'] = score
+            out.append(view)
+        return out
+
+    def _cache_put(self, memory_id: int, vector: list[float]) -> None:
+        self._vec_cache[memory_id] = vector
+        self._vec_cache.move_to_end(memory_id)
+        while len(self._vec_cache) > self._cache_limit:
+            self._vec_cache.popitem(last=False)
 
     # ------------------------------------------------------------------ 写入
-    def add(self, rec: MemoryRecord) -> int:
+    def add(self, rec: MemoryRecord, *, source_id: str | None = None) -> int:
         """写入一条记忆, 返回分配的 id。"""
-        with self._repository.insert(rec) as new_id:
-            self._vec_cache[new_id] = self._embedder.embed([rec.content])[0]
+        if source_id is None:
+            payload = asdict(rec)
+            payload.pop('id', None)
+            source_id = self.archive_input(rec.content, rec.timestamp, rec.player_id,
+                kind=rec.type, hearsay=rec.hearsay, hop=rec.hop,
+                metadata={'projection': 'record', 'record': payload})
+        elif self.archived(source_id) is None:
+            raise ValueError('原文来源不属于当前 NPC 档案')
+        existing = self.projected_id(source_id)
+        if existing is not None:
+            self.archive_done(source_id)
+            return existing
+        try:
+            with self._repository.insert(rec, source_id) as new_id:
+                vector = self._embedder.embed([rec.content])[0]
+            self._cache_put(new_id, vector)
+            self.archive_done(source_id)
             return new_id
+        except Exception as exc:
+            self.archive_failed(source_id, exc)
+            raise
 
     # ------------------------------------------------------------------ 读取
     def _vec(self, rec: MemoryRecord) -> list[float]:
         if rec.id is not None and rec.id in self._vec_cache:
+            self._vec_cache.move_to_end(rec.id)
             return self._vec_cache[rec.id]
         vec = self._embedder.embed([rec.content])[0]
         if rec.id is not None:
-            self._vec_cache[rec.id] = vec
+            self._cache_put(rec.id, vec)
         return vec
 
     def vectors(self, recs: Sequence[MemoryRecord]) -> list[list[float]]:
@@ -83,14 +252,21 @@ class MemoryStore:
         recs = list(recs)
         missing = [r for r in recs
                    if r.id is None or r.id not in self._vec_cache]
+        fresh = {r.id: self._vec_cache[r.id] for r in recs
+                 if r.id is not None and r.id in self._vec_cache}
         if missing:
             encoded = self._embedder.embed([r.content for r in missing])
+            if len(encoded) != len(missing):
+                raise ValueError('嵌入数量与记忆数量不一致')
             for rec, vec in zip(missing, encoded):
                 if rec.id is not None:
-                    self._vec_cache[rec.id] = vec
+                    fresh[rec.id] = vec
+                    self._cache_put(rec.id, vec)
         out: list[list[float]] = []
         for rec in recs:
-            if rec.id is not None and rec.id in self._vec_cache:
+            if rec.id in fresh:
+                out.append(fresh[rec.id])
+            elif rec.id is not None and rec.id in self._vec_cache:
                 out.append(self._vec_cache[rec.id])
             else:
                 out.append(self._embedder.embed([rec.content])[0])
@@ -232,8 +408,7 @@ class MemoryStore:
         窗口: 每次 observe 的去重是 O(窗口) 余弦, 窗口越大每次观察越贵, 而窗口
         外重放是低频边缘情况, 不值得用高频路径的成本去兜。
         """
-        cands = self.all_valid(player_id=player_id, shared=player_id is None,
-                               types=["observation"])[-recent_n:]
+        cands = self._repository.recent_observations(player_id, recent_n)
         if not cands:
             return None
         v_new = self._embedder.embed([content])[0]
@@ -249,7 +424,8 @@ class MemoryStore:
     def merge_observation(self, mem_id: int, now: float,
                           new_hearsay: bool | None = None,
                           new_hop: int = 0,
-                          new_content: str | None = None) -> float:
+                          new_content: str | None = None,
+                          source_id: str | None = None) -> float:
         """合并重复观察: 刷新 last_accessed (重复发生 = 被回忆, 抗遗忘),
         并按时间窗 (+1, 上限 10) 强化 importance。
 
@@ -275,7 +451,7 @@ class MemoryStore:
         亲见则不降级; 两者都是传闻时保留更近的 hop。这样"先听传闻、后亲眼
         见到"不会让亲见被永久按传闻打折。
         """
-        with self._repository.edit_observation(mem_id) as rec:
+        with self._repository.edit_observation(mem_id, source_id) as rec:
             old_content = rec.content
             apply_observation_merge(
                 rec, now, new_hearsay=new_hearsay, new_hop=new_hop,
@@ -346,5 +522,11 @@ class MemoryStore:
         """导出数据库；向量缓存由恢复后的实例重建。"""
         self._repository.backup(path)
 
+    def backup_archive(self, path: str) -> None:
+        self._archive.backup(path)
+
     def close(self) -> None:
-        self._repository.close()
+        try:
+            self._repository.close()
+        finally:
+            self._archive.close()

@@ -5,6 +5,7 @@ from .._lazy import resolve_export as _resolve_export
 _EXPORTS = {
     'MemoryStore': ('.store', 'MemoryStore'),
     'MemoryRecord': ('.models', 'MemoryRecord'),
+    'ArchiveRecord': ('.archive', 'ArchiveRecord'),
 }
 
 __all__ = list(_EXPORTS)

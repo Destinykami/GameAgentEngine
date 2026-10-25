@@ -95,10 +95,16 @@ class MemoryRepository:
             self._conn.execute(
                 "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
             )
+            self._conn.execute(
+                "CREATE TABLE IF NOT EXISTS memory_source ("
+                "source_id TEXT PRIMARY KEY, memory_id INTEGER NOT NULL)"
+            )
+            self._conn.execute("CREATE INDEX IF NOT EXISTS source_memory ON memory_source(memory_id)")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS memory_stream_time ON memory(player_id,timestamp,id)")
 
 
     @contextmanager
-    def insert(self, rec: MemoryRecord) -> Iterator[int]:
+    def insert(self, rec: MemoryRecord, source_id: str | None = None) -> Iterator[int]:
         """写入并提供分配的 id；上下文成功退出才提交。"""
         # 衰减基线: 未显式设定时回退到 importance (E1) —— 只设 importance 的
         # 调用方 (observe/_save_plan/_save_obs/测试) 自动把基线设为初始重要性。
@@ -135,7 +141,59 @@ class MemoryRepository:
                 ),
             )
             new_id = int(cur.lastrowid)
+            if source_id is not None:
+                self._conn.execute("INSERT INTO memory_source VALUES (?,?)", (source_id, new_id))
             yield new_id
+
+    def projected_id(self, source_id: str) -> int | None:
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT memory_id FROM memory_source WHERE source_id=?", (source_id,)).fetchone()
+        return row[0] if row else None
+
+    def sources(self, memory_id: int) -> list[str]:
+        with self._lock:
+            return [row[0] for row in self._conn.execute(
+                "SELECT source_id FROM memory_source WHERE memory_id=? ORDER BY rowid", (memory_id,))]
+
+    def link_source(self, source_id: str, memory_id: int) -> None:
+        with self._lock, self._conn:
+            self._conn.execute("INSERT INTO memory_source VALUES (?,?)", (source_id, memory_id))
+
+    def unlinked(self, limit: int = 100) -> list[MemoryRecord]:
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT m.* FROM memory m WHERE NOT EXISTS "
+                "(SELECT 1 FROM memory_source s WHERE s.memory_id=m.id) ORDER BY m.id LIMIT ?",
+                (limit,)).fetchall()
+        return [self._row_to_rec(row) for row in rows]
+
+    def context_candidates(self, player_id: str, now: float, *, limit: int = 8,
+                           since: float | None = None, important: bool = False,
+                           summaries: bool = False) -> list[MemoryRecord]:
+        sql = "SELECT * FROM memory WHERE valid=1 AND (player_id=? OR player_id IS NULL) AND timestamp<=?"
+        args: list = [player_id, now]
+        if since is not None:
+            sql += " AND timestamp>=?"
+            args.append(since)
+        if important:
+            sql += " AND (importance>=6 OR type IN ('reflection','episode','identity'))"
+        if summaries:
+            sql += " AND type IN ('reflection','episode','identity')"
+        sql += " ORDER BY timestamp DESC,id DESC LIMIT ?"
+        args.append(max(0, min(limit, 512)))
+        with self._lock:
+            rows = self._conn.execute(sql, args).fetchall()
+        return [self._row_to_rec(row) for row in rows]
+
+    def recent_observations(self, player_id: str | None, limit: int) -> list[MemoryRecord]:
+        scope = 'player_id IS NULL' if player_id is None else 'player_id=?'
+        args = [] if player_id is None else [player_id]
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM memory WHERE valid=1 AND type='observation' AND " + scope +
+                " ORDER BY id DESC LIMIT ?", [*args, max(0, limit)]).fetchall()
+        return [self._row_to_rec(row) for row in reversed(rows)]
 
     def all_valid(self, player_id: str | None = None,
                   types: Sequence[str] | None = None,
@@ -312,7 +370,7 @@ class MemoryRepository:
 
 
     @contextmanager
-    def edit_observation(self, mem_id: int) -> Iterator[MemoryRecord]:
+    def edit_observation(self, mem_id: int, source_id: str | None = None) -> Iterator[MemoryRecord]:
         """锁内读取可编辑快照；调用方成功退出后才提交其维护字段。"""
         with self._lock:
             row = self._conn.execute(
@@ -328,3 +386,5 @@ class MemoryRepository:
                     "hearsay = ?, hop = ?, content = ? WHERE id = ?",
                     (rec.last_accessed, rec.importance, rec.base_importance,
                      rec.last_reinforced, int(rec.hearsay), rec.hop, rec.content, mem_id))
+                if source_id is not None:
+                    self._conn.execute("INSERT INTO memory_source VALUES (?,?)", (source_id, mem_id))
