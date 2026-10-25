@@ -20,6 +20,7 @@
 
 | 模块蓝图 | 状态 | 实现入口 |
 |---|---|---|
+| [通用记忆事件与组合查询](modules/memory-events.md) | 设计已确认方向，待实现 | 计划新增 `src/game_agent/memory/events.py` 及档案查询组件 |
 | [世界实体与空间模型](modules/world-model.md) | 已实现，246 个离线测试通过 | `src/game_agent/world/entities.py` |
 | [结构化事件契约](modules/events.md) | 已实现，246 个离线测试通过 | `src/game_agent/world/events.py` |
 | [世界持久化](modules/persistence.md) | 已实现，247 个离线测试通过 | `src/game_agent/world/persistence.py` |
