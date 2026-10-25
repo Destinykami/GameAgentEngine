@@ -12,6 +12,16 @@ def json_copy(value):
     return json.loads(json.dumps(value, ensure_ascii=False, allow_nan=False))
 
 
+def _identifiers(*values):
+    if any(not isinstance(value, str) or not value for value in values):
+        raise ValueError('标识须为非空字符串')
+
+
+def _time(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError('时间须为有限数值')
+
+
 @dataclass(frozen=True)
 class ParameterSpec:
     name: str
@@ -24,7 +34,10 @@ class ParameterSpec:
     max_length: int = 2000
 
     def __post_init__(self):
-        if not self.name or self.value_type not in ('string', 'integer', 'number', 'boolean', 'object', 'array'):
+        _identifiers(self.name)
+        if not isinstance(self.description, str):
+            raise ValueError('参数说明必须是字符串')
+        if self.value_type not in ('string', 'integer', 'number', 'boolean', 'object', 'array'):
             raise ValueError('非法动作参数定义')
         object.__setattr__(self, 'choices', tuple(json_copy(self.choices)))
         if self.max_length < 0:
@@ -59,6 +72,9 @@ class ActionSpec:
     parameters: tuple[ParameterSpec, ...] = ()
 
     def __post_init__(self):
+        _identifiers(self.name)
+        if not isinstance(self.description, str):
+            raise ValueError('动作说明必须是字符串')
         object.__setattr__(self, 'parameters', tuple(self.parameters))
         if not self.name or len({p.name for p in self.parameters}) != len(self.parameters):
             raise ValueError('动作名称为空或参数重复')
@@ -92,9 +108,11 @@ class DecisionRequest:
 
     def __post_init__(self):
         object.__setattr__(self, 'actions', tuple(self.actions))
-        if not all((self.instance_id, self.request_id, self.actor_id, self.state_version, self.phase)):
-            raise ValueError('请求缺少实例、角色、阶段或版本')
-        if not math.isfinite(self.now) or not self.actions:
+        _identifiers(self.instance_id, self.request_id, self.actor_id, self.state_version, self.phase)
+        _time(self.now)
+        if any(not isinstance(s, str) for s in (self.goal, self.view, self.instructions)):
+            raise ValueError('个人视角、目标和说明必须是字符串，不能传入 World 对象')
+        if not self.actions:
             raise ValueError('请求时间或动作集合无效')
         if len({a.name for a in self.actions}) != len(self.actions):
             raise ValueError('动作名称重复')
@@ -120,9 +138,12 @@ class ActionIntent:
     private_note: str = ''
 
     def __post_init__(self):
+        _identifiers(self.instance_id, self.request_id, self.actor_id, self.state_version, self.action)
         if not isinstance(self.arguments, dict):
             raise ValueError('动作参数必须是对象')
         object.__setattr__(self, 'arguments', json_copy(self.arguments))
+        if not isinstance(self.private_note, str):
+            raise ValueError('私人备注必须是字符串')
 
 
 @dataclass(frozen=True)
@@ -141,9 +162,14 @@ class GameEvent:
     def __post_init__(self):
         object.__setattr__(self, 'recipients', tuple(dict.fromkeys(self.recipients)))
         object.__setattr__(self, 'participants', tuple(dict.fromkeys(self.participants)))
-        if not all((self.instance_id, self.event_id, self.event_type, self.channel)) or not self.recipients:
+        _identifiers(self.instance_id, self.event_id, self.event_type, self.channel,
+                     *self.recipients, *self.participants)
+        if self.actor_id is not None:
+            _identifiers(self.actor_id)
+        _time(self.now)
+        if not self.recipients:
             raise ValueError('事件缺少实例、标识、类型、频道或接收者')
-        if not math.isfinite(self.now) or len(self.content) > 32000:
+        if not isinstance(self.content, str) or len(self.content) > 32000:
             raise ValueError('事件时间或内容长度无效')
         if self.evidence_kind not in ('utterance', 'observation', 'report', 'action_attempt',
                                       'derived', 'legacy_snapshot', 'unclassified'):

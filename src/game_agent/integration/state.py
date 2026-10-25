@@ -17,9 +17,10 @@ class RequestBatch:
     def open(self, requests):
         if self.all:
             raise ValueError('上一批请求尚未结算')
-        self.all = tuple(requests)
-        if len({r.request_id for r in self.all}) != len(self.all):
+        proposed = tuple(requests)
+        if len({r.request_id for r in proposed}) != len(proposed):
             raise ValueError('请求 ID 重复')
+        self.all = proposed
 
     def pending(self):
         return tuple(r for r in self.all if r.request_id not in self.submitted)
@@ -60,10 +61,12 @@ class EventOutbox:
         self._events: dict[str, GameEvent] = {}
 
     def add(self, *events):
+        proposed = dict(self._events)
         for event in events:
-            if event.event_id in self._events and self._events[event.event_id] != event:
+            if event.event_id in proposed and proposed[event.event_id] != event:
                 raise ValueError('相同事件 ID 内容冲突')
-            self._events[event.event_id] = event
+            proposed[event.event_id] = event
+        self._events = proposed
 
     def pending(self):
         return tuple(self._events.values())

@@ -130,3 +130,19 @@ def test_missing_binding_never_acknowledges_or_partially_delivers():
     with pytest.raises(ValueError, match='未绑定'):
         GameSession(game, {'A': a}).deliver()
     assert not a.received and len(game.pending_events()) == 1
+
+
+def test_world_objects_boolean_times_and_half_batches_are_rejected():
+    with pytest.raises(ValueError, match='World'):
+        replace(request(), view=object())
+    with pytest.raises(ValueError, match='有限数值'):
+        replace(request(), now=True)
+    batch = RequestBatch()
+    with pytest.raises(ValueError):
+        batch.open((request(), request()))
+    assert not batch.all
+    outbox = EventOutbox()
+    e = GameEvent('g', 'e', 1, 'notice', '原公告', ('A',))
+    with pytest.raises(ValueError):
+        outbox.add(e, replace(e, content='冲突公告'))
+    assert not outbox.pending()
