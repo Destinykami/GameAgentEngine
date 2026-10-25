@@ -7,7 +7,7 @@ from typing import Any, Sequence
 from ..llm import LLMClient, LLMContext
 from ..config import (DEFAULT_LLM_BASE_URL as DEFAULT_BASE_URL,
                       DEFAULT_LLM_MODEL as DEFAULT_MODEL, EndpointConfig)
-from . import actions, dialogue, memory, planning
+from . import actions, dialogue, game, memory, planning
 from .parsing import request_json
 from .transport import request_chat
 from .usage import new_stats, record_stats
@@ -93,6 +93,10 @@ class RealLLM(LLMClient):
                       history: list[str], state: str) -> dict:
         return actions.decide_action(self._chat_json, agent_name, goal, persona_traits,
                                      perception, history, state)
+
+    def decide_game(self, context):
+        """可选的新能力，旧 LLMClient 实现无需增加抽象方法。"""
+        return game.decide_game(self._chat_json, context)
 
     def score_event(self, event: str, persona_traits: dict[str, float],
                     current_plan: str = "") -> tuple[float, float, float]:
