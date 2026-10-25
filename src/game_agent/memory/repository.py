@@ -101,6 +101,10 @@ class MemoryRepository:
             )
             self._conn.execute("CREATE INDEX IF NOT EXISTS source_memory ON memory_source(memory_id)")
             self._conn.execute("CREATE INDEX IF NOT EXISTS memory_stream_time ON memory(player_id,timestamp,id)")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS memory_relation_recent "
+                               "ON memory(player_id,type,valid,timestamp,id)")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS memory_relation_importance "
+                               "ON memory(player_id,type,valid,importance,timestamp,id)")
 
 
     @contextmanager
@@ -195,6 +199,49 @@ class MemoryRepository:
                 " ORDER BY id DESC LIMIT ?", [*args, max(0, limit)]).fetchall()
         return [self._row_to_rec(row) for row in reversed(rows)]
 
+    @staticmethod
+    def _relation_scope(player_id: str, now: float,
+                        types: Sequence[str] | None) -> tuple[str, list]:
+        if player_id is None:
+            raise ValueError('关系窗口必须指定单一关系对象')
+        where = 'valid=1 AND player_id=? AND timestamp<=?'
+        args: list = [player_id, now]
+        if types:
+            where += ' AND type IN (' + ','.join('?' for _ in types) + ')'
+            args.extend(types)
+        return where, args
+
+    def recent_relationship_observations(self, player_id: str, now: float,
+                                         limit: int = 100) -> list[MemoryRecord]:
+        where, args = self._relation_scope(player_id, now, ['observation'])
+        with self._lock:
+            rows = self._conn.execute(
+                'SELECT * FROM memory WHERE ' + where +
+                ' ORDER BY timestamp DESC,id DESC LIMIT ?',
+                [*args, max(0, min(limit, 100))]).fetchall()
+        return [self._row_to_rec(row) for row in reversed(rows)]
+
+    def relationship_candidates(self, player_id: str, now: float, *,
+                                 types: Sequence[str] | None = None,
+                                 limit: int = 128) -> list[MemoryRecord]:
+        where, args = self._relation_scope(player_id, now, types)
+        limit = max(0, min(limit, 128))
+        if not limit:
+            return []
+        with self._lock:
+            recent = self._conn.execute(
+                'SELECT * FROM memory WHERE ' + where +
+                ' ORDER BY timestamp DESC,id DESC LIMIT ?',
+                [*args, (limit + 1) // 2]).fetchall()
+            ids = [row[0] for row in recent]
+            exclusion = (' AND id NOT IN (' + ','.join('?' for _ in ids) + ')') if ids else ''
+            important = self._conn.execute(
+                'SELECT * FROM memory WHERE ' + where + exclusion +
+                ' ORDER BY importance DESC,timestamp DESC,id DESC LIMIT ?',
+                [*args, *ids, limit - len(recent)]).fetchall()
+        # 原 retrieve 的同分顺序基于插入 ID；只改变候选范围，不改变重排规则。
+        return [self._row_to_rec(row) for row in sorted([*recent, *important], key=lambda row: row[0])]
+
     def all_valid(self, player_id: str | None = None,
                   types: Sequence[str] | None = None,
                   shared: bool = False,
@@ -287,12 +334,16 @@ class MemoryRepository:
             )
 
 
-    def count(self, player_id: str | None = None) -> int:
+    def count(self, player_id: str | None = None,
+              types: Sequence[str] | None = None) -> int:
         sql = "SELECT COUNT(*) FROM memory WHERE valid = 1"
         args: list = []
         if player_id is not None:
             sql += " AND player_id = ?"
             args.append(player_id)
+        if types:
+            sql += ' AND type IN (' + ','.join('?' for _ in types) + ')'
+            args.extend(types)
         with self._lock:
             return int(self._conn.execute(sql, args).fetchone()[0])
 

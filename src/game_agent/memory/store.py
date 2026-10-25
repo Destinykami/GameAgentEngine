@@ -322,6 +322,11 @@ class MemoryStore:
 
 
     # ------------------------------------------------------------------ 检索
+    def recent_relationship_observations(self, player_id: str, now: float, *,
+                                         limit: int = 100) -> list[MemoryRecord]:
+        """SQL 有界读取原料，按事件时间返回；不读取或修改原文档案。"""
+        return self._repository.recent_relationship_observations(player_id, now, limit)
+
     def retrieve(self, query: str, now: float,
                  player_id: str | None = None,
                  top_k: int = 8,
@@ -332,7 +337,8 @@ class MemoryStore:
                  min_relevance: float = 0.0,
                  shared: bool = False,
                  include_shared: bool = False,
-                 hearsay_only: bool = False) -> list[dict]:
+                 hearsay_only: bool = False,
+                 candidate_limit: int | None = None) -> list[dict]:
         """三维检索。
 
         - query: 查询文本 (应已含玩家身份, 使 relevance 偏向该玩家)。
@@ -358,10 +364,19 @@ class MemoryStore:
           min-max 归一化会把"小存储里最不差的那条"抬成满分, min_score=0.0 又
           全收, 于是小库必返回满 top_k 含无关记忆; 一个绝对相关性下限挡住这种
           灌水 (M7)。默认 0.0 不过滤, 行为与旧版一致。
+        - candidate_limit: 关系取证的可选 SQL 候选上限，最多 128；
+          近期/重要混选后再编码，不支持共享或传闻专用范围。None 保持原全量路径。
         """
-        q_vec = self._embedder.embed([query])[0]
-        cands = self.all_valid(player_id=player_id, types=types, shared=shared,
-                               include_shared=include_shared, hearsay_only=hearsay_only)
+        if candidate_limit is None:
+            q_vec = self._embedder.embed([query])[0]
+            cands = self.all_valid(player_id=player_id, types=types, shared=shared,
+                                   include_shared=include_shared, hearsay_only=hearsay_only)
+        else:
+            if player_id is None or shared or include_shared or hearsay_only:
+                raise ValueError('候选上限仅支持单一关系流取证')
+            cands = self._repository.relationship_candidates(
+                player_id, now, types=types, limit=candidate_limit)
+            q_vec = self._embedder.embed([query])[0]
         if not cands:
             return []
         relevance = [cosine_similarity(v, q_vec) for v in self._ensure_vecs(cands)]
@@ -411,8 +426,9 @@ class MemoryStore:
         """设某条记忆的 importance (遗忘降权用; 只降不升, 下限 MIN_IMPORTANCE)。"""
         self._repository.set_importance(mem_id, max(MIN_IMPORTANCE, min(10.0, importance)))
 
-    def count(self, player_id: str | None = None) -> int:
-        return self._repository.count(player_id)
+    def count(self, player_id: str | None = None, *,
+              types: Sequence[str] | None = None) -> int:
+        return self._repository.count(player_id, types)
 
     # ------------------------------------------------------------------ 观察去重
     def find_similar_observation(self, content: str,
