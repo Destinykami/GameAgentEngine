@@ -66,7 +66,7 @@ def test_checkpoint_restores_full_progress_without_touching_snapshot(tmp_path):
         w.close()
 
 
-@pytest.mark.parametrize('stage', ['npc', 'world', 'manifest', 'pointer'])
+@pytest.mark.parametrize('stage', ['npc', 'archive', 'world', 'manifest', 'pointer'])
 def test_failed_publication_preserves_previous_generation(tmp_path, monkeypatch, stage):
     from game_agent.world.persistence import WorldStore
     w = make_world(tmp_path / 'live')
@@ -78,6 +78,8 @@ def test_failed_publication_preserves_previous_generation(tmp_path, monkeypatch,
             raise OSError('injected checkpoint failure')
         if stage == 'npc':
             monkeypatch.setattr(MemoryStore, 'backup', fail)
+        elif stage == 'archive':
+            monkeypatch.setattr(MemoryStore, 'backup_archive', fail)
         elif stage == 'world':
             monkeypatch.setattr(WorldStore, 'backup', fail)
         else:
@@ -201,6 +203,7 @@ def test_component_watermarks_chain_counts_and_npc_configuration_roundtrip(tmp_p
         state = json.loads(json.dumps(npc.checkpoint_state()))
         path = str(tmp_path / 'A.db')
         npc.store.backup(path)
+        npc.store.backup_archive(str(tmp_path / 'A.archive.db'))
         restored = NPC.from_checkpoint(path, state, _StubLLM())
         try:
             assert restored.checkpoint_state() == state

@@ -10,7 +10,7 @@ import uuid
 from collections.abc import Callable, Mapping
 
 
-VERSION = 1
+VERSION = 2
 
 
 def _write_json(path: Path, value: dict) -> None:
@@ -73,10 +73,17 @@ def read(root: str) -> tuple[Path, dict]:
         raise ValueError('无效检查点代号')
     directory = _member(base, generation)
     manifest = json.loads((directory / 'manifest.json').read_text())
-    if manifest.get('version') != VERSION or manifest.get('generation') != generation:
+    version = manifest.get('version')
+    if version not in (1, VERSION) or manifest.get('generation') != generation:
         raise ValueError('检查点版本或代号不匹配')
     files = manifest['files']
     expected = {'world.db', *(npc['file'] for npc in manifest['state']['npcs'])}
+    if version >= 2:
+        for npc in manifest['state']['npcs']:
+            archive_file = npc.get('archive_file')
+            if archive_file != str(Path(npc['file']).with_suffix('.archive.db')):
+                raise ValueError('检查点 NPC 档案路径或配对不完整')
+            expected.add(archive_file)
     if set(files) != expected:
         raise ValueError('检查点数据库清单不完整')
     for relative, checksum in files.items():

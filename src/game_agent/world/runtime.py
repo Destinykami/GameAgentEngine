@@ -693,8 +693,11 @@ class World:
             if Path(name).name != name or name in (".", ".."):
                 raise ValueError("检查点 NPC 名称不能包含路径")
             relative = f"npcs/{index}/{name}.db"
-            npcs.append({"name": name, "file": relative, "state": npc.checkpoint_state()})
+            archive_relative = f"npcs/{index}/{name}.archive.db"
+            npcs.append({"name": name, "file": relative, "archive_file": archive_relative,
+                         "state": npc.checkpoint_state()})
             databases[relative] = npc.store.backup
+            databases[archive_relative] = npc.store.backup_archive
         state = {
             "name": self.name,
             "locations": [asdict(loc) for loc in self.locations.values()],

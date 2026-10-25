@@ -51,11 +51,14 @@ class MemoryStore:
     def __init__(self, embedder: Embedder, path: str = ":memory:", *,
                  vector_cache_limit: int = 1024) -> None:
         self._embedder = embedder
+        self.archive_path = (str(Path(path).with_suffix('.archive.db'))
+                             if path != ':memory:' else ':memory:')
+        if (path != ':memory:' and not Path(path).exists()
+                and Path(self.archive_path).exists()):
+            raise ValueError('存在孤立 NPC 档案，不能自动绑定到新主库')
         self._repository = MemoryRepository(path)
         self._cache_limit = max(1, vector_cache_limit)
         self._vec_cache: OrderedDict[int, list[float]] = OrderedDict()
-        self.archive_path = (str(Path(path).with_suffix('.archive.db'))
-                             if path != ':memory:' else ':memory:')
         try:
             expected = self.get_meta('archive_identity')
             if expected and self.archive_path != ':memory:' and not Path(self.archive_path).is_file():
@@ -68,6 +71,8 @@ class MemoryStore:
             self._import_legacy()
         except Exception:
             self._repository.close()
+            if hasattr(self, '_archive'):
+                self._archive.close()
             raise
 
     def _import_legacy(self) -> None:
@@ -525,7 +530,7 @@ class MemoryStore:
         return self._repository.is_persistent()
 
     def backup(self, path: str) -> None:
-        """导出数据库；向量缓存由恢复后的实例重建。"""
+        """仅导出主库；完整备份还需 backup_archive，且调用时暂停写入。"""
         self._repository.backup(path)
 
     def backup_archive(self, path: str) -> None:
