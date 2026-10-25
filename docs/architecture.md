@@ -10,6 +10,8 @@ Git 仓库位于 GameAgentEngine，正式 Python 包为 game_agent，采用 src 
 
 ## 当前结构
 
+2026-10-25 新设计：[多游戏接入](modules/game-integration.md) 将通过轻量契约连接各游戏自己的 World 与 NPC 核心。计划新增 integration/ 和 adapters/；空间 World 保留，狼人杀为独立阶段样例。尚未实现，不改变下述既有入口语义。
+
 | 目录 | 责任 | 设计 |
 |---|---|---|
 | src/game_agent/cognition/npc/ | 组件组装、业务调用顺序与运行状态协调 | [NPC](modules/npc-runtime.md) |

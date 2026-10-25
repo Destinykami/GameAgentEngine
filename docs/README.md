@@ -22,6 +22,7 @@
 
 | 模块蓝图 | 状态 | 实现入口 |
 |---|---|---|
+| [多游戏接入协议](modules/game-integration.md) | 设计先行，待实现 | 计划新增 integration/、adapters/、cognition/game.py 和狼人杀场景 |
 | [通用记忆事件与组合查询](modules/memory-events.md) | 已实现，522 项离线测试通过 | `src/game_agent/memory/events.py`、`event_repository.py`、`store.py` |
 | [世界实体与空间模型](modules/world-model.md) | 已实现，246 个离线测试通过 | `src/game_agent/world/entities.py` |
 | [结构化事件契约](modules/events.md) | 已实现，246 个离线测试通过 | `src/game_agent/world/events.py` |
