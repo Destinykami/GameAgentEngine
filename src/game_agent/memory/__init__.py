@@ -6,6 +6,7 @@ _EXPORTS = {
     'MemoryStore': ('.store', 'MemoryStore'),
     'MemoryRecord': ('.models', 'MemoryRecord'),
     'ArchiveRecord': ('.archive', 'ArchiveRecord'),
+    'ArchiveWriteError': ('.errors', 'ArchiveWriteError'),
 }
 
 __all__ = list(_EXPORTS)

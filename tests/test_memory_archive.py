@@ -5,6 +5,7 @@ import pytest
 
 from game_agent import HashEmbedder, MemoryRecord, MemoryStore
 from game_agent.memory.archive import ArchiveRepository
+from game_agent.memory.errors import ArchiveWriteError
 
 
 def test_raw_history_is_independent_and_survives_derived_merge(tmp_path):
@@ -129,7 +130,7 @@ def test_archive_append_failure_leaves_no_main_record(monkeypatch):
         raise sqlite3.OperationalError('archive unavailable')
     monkeypatch.setattr(store._archive, 'append', fail)
     try:
-        with pytest.raises(sqlite3.OperationalError, match='unavailable'):
+        with pytest.raises(ArchiveWriteError, match='unavailable'):
             store.add(MemoryRecord('原文不可写', 0))
         assert store.count() == 0
     finally:

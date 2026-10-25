@@ -9,9 +9,13 @@ from typing import Protocol
 
 from .events import VisualEvent
 from .entities import Entity, Location, distance
+from ..memory.errors import ArchiveWriteError
 
 
 class ActionCognition(Protocol):
+    def remember_dialogue(self, player_id: str, utterance: str, now: float, *,
+                           speaker: str) -> int: ...
+
     def observe(self, content: str, now: float,
                 player_id: str | None = None) -> int: ...
 
@@ -125,6 +129,8 @@ class ActionExecutor:
                         # 观察入库, speak 只补记自己的回复, 避免双写 incoming。
                         reply = npc.speak(agent.name, line, context.clock,
                                           record_utterance=False) or ""
+                except ArchiveWriteError:
+                    raise
                 except Exception:
                     return emit(VisualEvent(
                         "conversation", agent.name, context.clock,
@@ -140,8 +146,10 @@ class ActionExecutor:
             # 由 0.92 去重 + 夜间固化消化, 不在此处特判。
             if line and services.npc(agent.name) is not None:
                 try:
-                    services.npc(agent.name).observe(f"我对 {target.name} 说: {line}",
-                                                   context.clock, player_id=target.name)
+                    services.npc(agent.name).remember_dialogue(
+                        target.name, line, context.clock, speaker=agent.name)
+                except ArchiveWriteError:
+                    raise
                 except Exception:
                     pass
             # 回复回流: 说话者是 NPC 时, 把对方回复 observe 进自己记忆流 (player_id=目标)。
@@ -153,8 +161,10 @@ class ActionExecutor:
             # 仍在回放事件里), 只丢这条记忆写入。
             if reply and services.npc(agent.name) is not None:
                 try:
-                    services.npc(agent.name).observe(f"{target.name} 说: {reply}",
-                                                   context.clock, player_id=target.name)
+                    services.npc(agent.name).remember_dialogue(
+                        target.name, reply, context.clock, speaker=target.name)
+                except ArchiveWriteError:
+                    raise
                 except Exception:
                     pass
             agent.record(f"对 {target.name} 说: {line}")

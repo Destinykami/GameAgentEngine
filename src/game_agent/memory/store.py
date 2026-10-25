@@ -42,6 +42,7 @@ from .policies import (
 from .ranking import rank_memories
 from .repository import MemoryRepository
 from .archive import ArchiveRecord, ArchiveRepository
+from .errors import ArchiveWriteError
 
 
 class MemoryStore:
@@ -91,9 +92,12 @@ class MemoryStore:
                       *, kind: str = 'observation', speaker: str | None = None,
                       session_id: str = '', hearsay: bool = False, hop: int = 0,
                       metadata: dict | None = None, event_key: str | None = None) -> str:
-        return self._archive.append(content, now, player_id, kind=kind, speaker=speaker,
-            session_id=session_id, hearsay=hearsay, hop=hop, metadata=metadata,
-            event_key=event_key)
+        try:
+            return self._archive.append(content, now, player_id, kind=kind, speaker=speaker,
+                session_id=session_id, hearsay=hearsay, hop=hop, metadata=metadata,
+                event_key=event_key)
+        except Exception as exc:
+            raise ArchiveWriteError(f'NPC 原文归档失败: {exc}') from exc
 
     def archived(self, source_id: str) -> ArchiveRecord | None:
         """仅供本 NPC 编排处理队列；面向对话读取使用 read_archive 的范围校验。"""
