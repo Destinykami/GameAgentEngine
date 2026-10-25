@@ -29,7 +29,7 @@ NPC 对玩家 p 的面 (每玩家独立成流, 动态)
 | Reflection | `src/game_agent/cognition/reflection/` | 自我、关系与身份反思；生成编排、证据写入和冲突处理分开，设计见 [反思蓝图](docs/modules/reflection.md) |
 | Planning | `src/game_agent/cognition/planning/` | 日计划及一次子任务分解、反应后重规划；时间规则、计划记忆与当前状态分开，见 [规划蓝图](docs/modules/planning.md) |
 | Reacting | `src/game_agent/cognition/reacting/` | 评分、关系信任、纯效用策略和缓存职责分开，保留人格权重与信任调制，见 [事件反应蓝图](docs/modules/reaction.md) |
-| Dialogue | `src/game_agent/cognition/dialogue/` | 检索“当前对话者的面 + 共享流”；上下文、生成与轮流发言分开，见 [对话蓝图](docs/modules/dialogue.md) |
+| Dialogue | `src/game_agent/cognition/dialogue/` | 常用记忆优先，明确回忆时检索当前关系及共享流的重要记忆与原文，见 [对话蓝图](docs/modules/dialogue.md) |
 | NPC 编排与成本闸门 | `src/game_agent/cognition/npc/` | 组件组装与调用顺序；运行状态、观察、固化、完整反应缓存和元数据持久化分开，见 [NPC 蓝图](docs/modules/npc-runtime.md) |
 | 记忆卫生链 | `src/game_agent/memory/store.py` / `src/game_agent/cognition/reflection/` | 观察去重、级联切断、语义去重、LLM 冲突失效、降权遗忘、夜间情节固化 (episode) |
 | NPC↔NPC 社交层 | `src/game_agent/world/runtime.py` / `src/game_agent/cognition/npc/` | 记忆流从 per-player 泛化到 per-entity; NPC 互相感知、关系反思、信任; 谣言按传播跳数折扣 |
@@ -130,13 +130,13 @@ npc = NPC("Klaus", {"social": 0.4, "goal_oriented": 0.8},
   可让对话开思考。
 - **结构化输出**: 反思问题/洞察、日计划、活动分解都要求模型返回严格 JSON,
   `_extract_json` 容忍 markdown 围栏与前后杂字, 解析失败自动重试一次。
-- **非全知**: 对话 prompt 只把检索到的记忆喂给模型, 没检索到就答"没印象"。
+- **非全知**: 对话只使用当前对象与共享流的背景/证据；无历史命中也可正常交流，对具体往事不得编造。
 - **无依赖**: 用标准库 `urllib` 发请求, 不引入 openai/requests。
 
 ## 持久化 (NPC 落库)
 
 默认 NPC 是**内存态**的 (进程退出即失忆)。要持久化, 用 `NPC.create` /
-`NPC.load`, 记忆流与元数据存于 `data/<name>.db` (一个 NPC 一个 SQLite 库):
+`NPC.load`。每个 NPC 独立保存两份 SQLite 文件：`data/<name>.db` 保存派生记忆与元数据，`data/<name>.archive.db` 保存原文、检索索引及待处理状态。不同 NPC 不共用原文库。
 
 ```python
 from game_agent import NPC, RealLLM, make_embedder
@@ -154,11 +154,34 @@ isabella2.trust_toward("Aria")   # +1.00, 与上次一致
 
 - 持久化的内容: 全部记忆流 (观察/反思/计划)、信任状态 (由记忆派生)、游戏时钟。
 - `save()` 只写元数据 (名称/人格/时钟), 记忆流落库即持久, 无需额外同步。
-- 向量不入库: `HashEmbedder` 确定性、`RealEmbedder` 端点稳定, 加载后向量缓存
-  按需重建, 检索结果一致。
+- 原文先落库，后续感知、评分、嵌入或生成失败仍保留，使用 `npc.retry_pending_memories(limit=20)` 显式补处理；原文落库失败会明确抛出 `ArchiveWriteError`。
+- 向量缓存有界且不入库，加载后按需重建；更换真实嵌入模型可能改变排序。
+- 手动复制 NPC 存档须包含两个文件；暂停写入时可分别调用 `store.backup(main_path)` 和 `store.backup_archive(archive_path)`，完整世界优先使用检查点接口。
 - 同一 .db 同一时刻只应被一个进程打开 (未做并发写锁)。
 
 `python examples/persistence.py` 演示两次游戏会话的跨进程往返。
+
+## 分层记忆（2026-10-25）
+
+- **L1 常用层**：名称/人格、当前关系与共享流最近 24 游戏小时的有限记录，以及至多两条有效高阶概况；上下文共同限制为 3000 字符。
+- **L2 重要层**：重要观察与反思/情节/身份信念；最多预选 128 条后按原 importance/10 评分重排。
+- **L3 原文档案**：每 NPC 独立追加保存。真实重复事件各有原文，主库观察仍可合并；普通低重要性旧事也可通过原文索引找到。
+
+对话上下文阶段，普通闲聊不查询远期档案、不做历史向量检索；明确回忆或约定类问题才查询历史，候选读取不刷新访问水位。NPC.speak 的既有关系反思门控仍可能产生额外模型开销，其有界窗口调整已向用户提问，确认前保持原行为。提示词区分背景与可提及证据；检索命中不表示需要主动复述。首版路由为确定性词语规则，档案检索为关键词/时间及有限邻文展开，不保证任意无词面重叠的历史语义召回。
+
+```python
+# 从当前 NPC 自己的档案查找；仍隔离其他玩家的私有关系流。
+hits = isabella2.store.search_archive(
+    "菜单", player_id="Aria", include_shared=True,
+    before=isabella2.game_time, limit=4,
+)
+# 精确读取同一关系可见的原文；旧库导入项明确标为 legacy_snapshot。
+if hits:
+    original = isabella2.store.read_archive(hits[0]["id"], player_id="Aria",
+                                          include_shared=True)
+```
+
+旧库无法恢复过去已经丢失的原话，只导入剩余记录快照。已有档案缺失或主库/档案错配时拒绝加载。新检查点同时保存各 NPC 两库；旧版检查点仍可恢复为旧记录快照。设计、测试与未验证范围见 [分层记忆](docs/modules/tiered-memory.md)。演示运行器仍按新运行重建指定目录，续跑使用保存/检查点恢复入口。
 
 ## 游戏世界层 (多 NPC 真实世界)
 
@@ -191,7 +214,7 @@ isabella2.trust_toward("Aria")   # +1.00, 与上次一致
   attack/help/hide/flee/wait/world_event`），中文描述由 `describe()` 派生，
   前端不再解析事件串。
 - **独立持久化**：世界状态单独存 `world.db`（实体位置+时钟+NPC 注册表），与每
-  NPC 的独立 `<name>.db` 分离，不破坏"一 NPC 一库"。`World.load(llm, embedder)`
+  NPC 的独立 `<name>.db` 主库和 `<name>.archive.db` 原文库分离。`World.load(llm, embedder)`
   跨进程恢复整个世界（含各 NPC 记忆流与面）。
 
 ```python

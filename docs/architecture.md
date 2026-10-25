@@ -17,7 +17,7 @@ Git 仓库位于 GameAgentEngine，正式 Python 包为 game_agent，采用 src 
 | cognition/planning/ | 时间规则、计划记忆、PlanState 与生成编排 | [规划](modules/planning.md) |
 | cognition/reacting/ | 事件评分、关系信任、纯效用与各自缓存 | [事件反应](modules/reaction.md) |
 | cognition/dialogue/、autonomous.py | 对话上下文/生成/轮流，以及独立自治输入 | [对话](modules/dialogue.md)、[自治](modules/decision.md) |
-| src/game_agent/memory/ | 记录模型、排序、维护策略、SQLite 仓储及门面 | [记忆](modules/memory.md) |
+| src/game_agent/memory/ | 派生记忆、每 NPC 原文档案、持久检索索引、排序、维护及门面 | [记忆](modules/memory.md)、[分层](modules/tiered-memory.md) |
 | src/game_agent/world/ | 实体、事件、感知、动作、社交、扩展、快照及循环编排 | [世界循环](modules/world-runtime.md) |
 | src/game_agent/models/ | 能力接口、配置、单次 HTTP、任务提示词、解析、重试与统计 | [模型接入](modules/model-adapters.md) |
 | src/game_agent/scenarios/inazuma/ | 人物地图、具体效果、裁决、结局与脚本剧情 | [场景](modules/scenarios.md) |
@@ -55,7 +55,8 @@ World 不导入稻妻场景或运行器；场景通过公开钩子注册效果�
 
 | 状态 | 所有者 | 保存范围 |
 |---|---|---|
-| 记忆记录、有效性、证据、置信度及重要性 | MemoryRepository / MemoryStore | 单 NPC SQLite 库；向量缓存重建 |
+| 记忆记录、有效性、证据、置信度及重要性 | MemoryRepository / MemoryStore | 每 NPC 主库；有界向量缓存重建 |
+| 原文、片段索引及补处理队列 | 每 NPC ArchiveRepository | 独立 archive.db，与主库配对；完整检查点同时备份 |
 | 时钟、档位、累积、反思水位及共享冲突签名 | NPC RuntimeState | 实时库按原键保存；独立检查点另保存档位、累积及签名 |
 | 计划块和中断兜底 | PlanState | 实时库保存计划块；独立检查点另保存中断兜底 |
 | 完整反应 LRU | NPC ReactionCache | 不持久化；512 上限 |
@@ -72,7 +73,7 @@ World 不导入稻妻场景或运行器；场景通过公开钩子注册效果�
 - 对话只使用当前对象关系面与共享流；自治仍可合并共享流与全部可见对象关系面并取原末 5 条，不擅自改为先选目标。
 - 事件反应与自治行动继续分开；效用阈值、信任取证、缓存键与失效边界、计划时刻及回流顺序不变。
 - 实时库不承诺跨库事务；保存失败明确上报，完整检查点通过独立代与清单发布，恢复到新运行目录。
-- 默认模型、提示词、超时/退避、JSON 修复、统计口径、试验参数、场景数值和运行目录策略保持原行为。
+- 默认模型、超时/退避、JSON 修复、统计口径、试验参数、场景数值和运行目录策略保持；对话提示词按已确认分层设计调整为区分背景/原文及允许无历史交流。
 - 旧时间线读取属于现有回放行为，仍受验证；它与已移除的 Python 包兼容层无关。
 
 ## 当前验证边界
@@ -85,3 +86,7 @@ World 不导入稻妻场景或运行器；场景通过公开钩子注册效果�
 ## 2026-10-25 正确性修正
 
 共享观察去重限定共享流，保持全量查询语义。信任缓存按实际有序模型证据失效；完整反应使用实际信任、完整计划和人格的结构化键，评分缓存同样区分人格。直播按成功行推进，坏行原位重试；文件替换提示重新加载，异步摄入和场景组装限制单次在途。默认 pytest 跳过在线探针并拦截外部网络，统一验收入口为 `tools/check_project.py`。
+
+## 2026-10-25 分层记忆
+
+每 NPC 使用独立主库与独立原文档案；先归档再派生，失败保留待处理来源。常用层按近期/概况及字符预算加载，明确历史意图才检索重要层与原文，关系/共享和时间边界保持。新检查点 v2 包含每 NPC 两库，旧 v1 以历史快照兼容。最终 Python 离线全集 481 项通过、6 项跳过；独立 wheel 安装和恢复通过。关系反思全量读取的额外调整待用户确认；细节、已知限制及验证见 [分层设计](modules/tiered-memory.md)。
