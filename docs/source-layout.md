@@ -13,6 +13,8 @@ src/
     ├── cognition/        # NPC 编排、反思、规划、对话、反应和自治决策
     ├── memory/           # 记录、门面、排序、维护策略和 SQLite 仓储
     ├── world/            # 世界运行、实体、感知、动作、事件、社交和世界持久化
+    ├── integration/      # 通用请求、动态动作、定向事件与会话协调
+    ├── adapters/         # 现有空间 World 的显式接入
     ├── models/           # LLM / 向量接口、哈希实现及兼容 HTTP 适配
     ├── evaluation/       # 纯指标、结果格式、显式运行依赖与真实探针
     ├── scenarios/        # 人物、地图、具体规则及故事顺序
@@ -35,7 +37,7 @@ NPC 编排后续已整理为 `cognition/npc/` 子包，内部区分运行状态�
 
 ## 模块边界
 
-2026-10-25 计划扩展：新增 integration/（纯数据契约与会话协调）、adapters/（空间 World 接入）、cognition/game.py（无空间依赖的决策上下文）和 scenarios/werewolf/（独立游戏规则与适配）。核心只依赖接入契约，不导入具体适配器/场景。详见 [多游戏接入](modules/game-integration.md)，当前待实现。
+2026-10-25 已实现：integration/（纯数据契约与会话协调）、adapters/（空间 World 接入）、cognition/game.py（无空间依赖的决策上下文）和 scenarios/werewolf/（独立游戏规则与适配）。核心只依赖接入契约，不导入具体适配器/场景。详见 [多游戏接入](modules/game-integration.md)；569 项离线测试及独立安装后的两个游戏运行通过。
 
 - 原有依赖方向和逻辑不变，本次只调整物理布局、导入、安装与文档。
 - 模块内部使用相对导入；跨组件通过明确的子包路径导入，不借助公共根入口绕行。

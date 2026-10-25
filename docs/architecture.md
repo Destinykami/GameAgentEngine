@@ -10,7 +10,7 @@ Git 仓库位于 GameAgentEngine，正式 Python 包为 game_agent，采用 src 
 
 ## 当前结构
 
-2026-10-25 新设计：[多游戏接入](modules/game-integration.md) 将通过轻量契约连接各游戏自己的 World 与 NPC 核心。计划新增 integration/ 和 adapters/；空间 World 保留，狼人杀为独立阶段样例。尚未实现，不改变下述既有入口语义。
+2026-10-25 已实现：[多游戏接入](modules/game-integration.md) 通过轻量契约连接各游戏自己的 World 与 NPC。integration/ 负责契约和会话协调，adapters/ 接入现有空间 World，scenarios/werewolf/ 拥有独立阶段规则；cognition/game.py 不依赖空间实体。旧稻妻入口保留，569 项离线测试通过，独立安装后的两个游戏完成运行。
 
 | 目录 | 责任 | 设计 |
 |---|---|---|

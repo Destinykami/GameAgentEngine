@@ -20,9 +20,11 @@
 
 2026-10-25 追加：[通用记忆事件与组合查询](modules/memory-events.md) 已实现。新增 28 项事件/NPC 专项用例及 1 项导入边界用例，最新 Python 离线全集 522 项通过、6 项真实端点测试跳过。独立 wheel 源码一致性、安装及两库检查点往返通过；自然语言查询规划器与世界地点/物理结果的自动回流仍待后续设计。
 
+2026-10-25 多游戏接入完成：统一协议、空间适配和独立简化狼人杀已实现。当前离线全集 **569 项通过、6 项真实端点跳过**；两个 CLI 和仓库外独立安装运行通过。新入口使用实例原文与动态动作，旧稻妻自治入口保留，详见 [接入设计与使用](modules/game-integration.md)。
+
 | 模块蓝图 | 状态 | 实现入口 |
 |---|---|---|
-| [多游戏接入协议](modules/game-integration.md) | 设计先行，待实现 | 计划新增 integration/、adapters/、cognition/game.py 和狼人杀场景 |
+| [多游戏接入协议](modules/game-integration.md) | 已实现，569 项离线测试通过 | integration/、adapters/、cognition/game.py、scenarios/werewolf/ |
 | [通用记忆事件与组合查询](modules/memory-events.md) | 已实现，522 项离线测试通过 | `src/game_agent/memory/events.py`、`event_repository.py`、`store.py` |
 | [世界实体与空间模型](modules/world-model.md) | 已实现，246 个离线测试通过 | `src/game_agent/world/entities.py` |
 | [结构化事件契约](modules/events.md) | 已实现，246 个离线测试通过 | `src/game_agent/world/events.py` |
