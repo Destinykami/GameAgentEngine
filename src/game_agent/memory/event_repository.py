@@ -13,6 +13,7 @@ class EventIndex:
         self._conn, self._lock = connection, lock
         self._archive_id, self._tokenize = archive_id, tokenize
         self._conn.executescript('''
+            CREATE INDEX IF NOT EXISTS source_stream_sequence ON source(player_id, sequence);
             CREATE TABLE IF NOT EXISTS event (
                 source_id TEXT PRIMARY KEY, event_type TEXT NOT NULL,
                 occurred_at REAL, observed_at REAL, actor TEXT, target TEXT,

@@ -18,9 +18,11 @@
 
 2026-10-25 新工作：[分层记忆与每 NPC 独立原文档案](modules/tiered-memory.md) 及用户追加确认的 [关系反思窗口](modules/reflection.md) 已按模块实现。Python 离线全集 493 项通过、6 项真实端点探针跳过；原料最近 100 条、证据候选最多 128 条，触发水位保持观察总量。离线 wheel 独立安装、两库检查点恢复通过。下表保留各模块历史验收，不代表最新测试数量。
 
+2026-10-25 追加：[通用记忆事件与组合查询](modules/memory-events.md) 已实现。新增 28 项事件/NPC 专项用例及 1 项导入边界用例，最新 Python 离线全集 522 项通过、6 项真实端点测试跳过。独立 wheel 源码一致性、安装及两库检查点往返通过；自然语言查询规划器与世界地点/物理结果的自动回流仍待后续设计。
+
 | 模块蓝图 | 状态 | 实现入口 |
 |---|---|---|
-| [通用记忆事件与组合查询](modules/memory-events.md) | 设计已确认方向，待实现 | 计划新增 `src/game_agent/memory/events.py` 及档案查询组件 |
+| [通用记忆事件与组合查询](modules/memory-events.md) | 已实现，522 项离线测试通过 | `src/game_agent/memory/events.py`、`event_repository.py`、`store.py` |
 | [世界实体与空间模型](modules/world-model.md) | 已实现，246 个离线测试通过 | `src/game_agent/world/entities.py` |
 | [结构化事件契约](modules/events.md) | 已实现，246 个离线测试通过 | `src/game_agent/world/events.py` |
 | [世界持久化](modules/persistence.md) | 已实现，247 个离线测试通过 | `src/game_agent/world/persistence.py` |
