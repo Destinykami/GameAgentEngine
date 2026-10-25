@@ -12,7 +12,7 @@ import pytest
     "world.checkpoints", "world.errors", "world.entities", "world.events", "world.perception", "cognition.autonomous",
     "world.extensions", "world.social", "world.actions", "memory.models",
     "memory.policies", "memory.ranking", "memory.events", "world", "memory", "models",
-    "cognition", "evaluation",
+    "cognition", "evaluation", "integration", "integration.contracts", "integration.state",
     "cognition.reflection", "cognition.reflection.engine",
     "cognition.reflection.contracts", "cognition.reflection.policies",
     "cognition.reflection.writing", "cognition.reflection.conflicts",
@@ -95,7 +95,7 @@ def test_core_layers_do_not_import_scenarios_runners_or_evaluation():
     source = Path(__file__).resolve().parents[1] / 'src' / 'game_agent'
     forbidden = ('game_agent.scenarios', 'game_agent.runners', 'game_agent.evaluation')
     violations = []
-    for layer in ('world', 'memory', 'cognition', 'models'):
+    for layer in ('world', 'memory', 'cognition', 'models', 'integration'):
         for path in (source / layer).rglob('*.py'):
             parts = path.relative_to(source.parent).with_suffix('').parts
             package = '.'.join(parts[:-1])
