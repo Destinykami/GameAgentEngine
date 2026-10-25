@@ -190,8 +190,7 @@ class NPC:
         """只对 full 档的新关系观察反思；成功后再推进反思水位。"""
         if self._runtime.tier != "full":
             return []
-        obs_count = len(self.store.all_valid(player_id=player_id,
-                                             types=["observation"]))
+        obs_count = self.store.count(player_id, types=['observation'])
         if obs_count <= self._runtime.reflected_obs.get(player_id, 0):
             return []
         ids = self.reflect_relationship(player_id, now)

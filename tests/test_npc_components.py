@@ -329,6 +329,43 @@ def test_npc_cache_clear_order_and_diagnostic_isolation(monkeypatch):
         npc.store.close()
 
 
+def test_relationship_trigger_uses_total_count_after_material_window_is_full(monkeypatch):
+    class Model(_StubLLM):
+        def __init__(self):
+            super().__init__()
+            self.materials = []
+
+        def reflection_questions(self, recent):
+            self.materials.append(list(recent))
+            return super().reflection_questions(recent)
+
+    model = Model()
+    npc = NPC('N', {}, model)
+    try:
+        for i in range(100):
+            npc.store.add(MemoryRecord(f'P 的关系观察{i}', 1, player_id='P'))
+        original_read = npc.store.all_valid
+        def reject_full_observation_read(*args, **filters):
+            if filters.get('types') == ['observation']:
+                raise AssertionError('触发水位和原料窗口不应读取全部观察正文')
+            return original_read(*args, **filters)
+        monkeypatch.setattr(npc.store, 'all_valid', reject_full_observation_read)
+        # 此用例只验证触发/生成，冲突扫描是独立且未改动的流程。
+        monkeypatch.setattr(npc.reflection, 'check_conflicts', lambda *args, **kwargs: [])
+        npc.maybe_reflect_relationship('P', 1)
+        assert npc.runtime_state().reflected_obs == {'P': 100}
+        npc.store.add(MemoryRecord('第101条新观察', 2, player_id='P'))
+        npc.maybe_reflect_relationship('P', 2)
+        assert [len(texts) for texts in model.materials] == [100, 100]
+        assert model.materials[-1][-1] == '第101条新观察'
+        assert 'P 的关系观察0' not in model.materials[-1]
+        assert npc.runtime_state().reflected_obs == {'P': 101}
+        assert npc.maybe_reflect_relationship('P', 3) == []
+        assert len(model.materials) == 2
+    finally:
+        npc.store.close()
+
+
 class MetadataPort:
     def __init__(self, meta=None, fail=None):
         self.meta = dict(meta or {})
