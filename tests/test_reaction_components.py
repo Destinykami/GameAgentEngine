@@ -68,12 +68,12 @@ def test_trust_window_order_hearsay_full_signature_and_instance_isolation():
     assert evidence[0] == ("episode", "[传闻2跳] high-11", 0.4)
     trust.get("Aria")
     assert len(model.calls) == 1
-    plan.timestamp += 1  # 未入选的类型仍参与全量签名。
+    plan.timestamp += 1  # 未进入模型输入的变化不重判。
     trust.get("Aria")
-    assert len(model.calls) == 2 and model.calls[0] == model.calls[1]
+    assert len(model.calls) == 1
     other = RelationshipTrust(memory, model)
     other.get("Aria")
-    assert len(model.calls) == 3
+    assert len(model.calls) == 2
     trust.clear_cache()
     assert trust.cache_size == 0 and other.cache_size == 1
 
@@ -90,7 +90,7 @@ def test_trust_pool_quotas_do_not_borrow_and_other_types_still_trigger_model(kin
     assert trust.get("Aria") == 0.5
 
 
-def test_trust_neutral_empty_and_existing_signature_boundaries():
+def test_trust_neutral_empty_and_actual_input_signature():
     class Model:
         calls = 0
 
@@ -108,7 +108,10 @@ def test_trust_neutral_empty_and_existing_signature_boundaries():
     memory.records[0].confidence = 0.2
     memory.records[0].content = "原地修改内容"
     memory.records[0].importance = 1.0
-    assert trust.get("Aria") == 0.1 and model.calls == 1
+    assert trust.get("Aria") == 0.2 and model.calls == 2
+    memory.records[0].importance = 9.0
+    memory.records[0].last_accessed = 20
+    assert trust.get("Aria") == 0.2 and model.calls == 2
     memory.records.append(record(1, "plan"))
     assert trust.get("Aria") == 0.2 and model.calls == 2
     memory.records.clear()
@@ -227,3 +230,34 @@ def test_disabled_modulation_skips_trust_but_direct_query_remains_available():
     assert memory.reads == [] and model.calls == 0
     assert decider.relationship_trust("Aria") == 0.25
     assert model.calls == 1
+
+
+@pytest.mark.parametrize("field,value", [("content", "新证据"), ("confidence", 0.3),
+                                          ("hearsay", True), ("hop", 3),
+                                          ("timestamp", 9)])
+def test_trust_refreshes_when_ordered_evidence_changes(field, value):
+    class Model:
+        calls = 0
+        def judge_trust(self, memories, player_id):
+            self.calls += 1
+            return self.calls / 10
+    memory = MemoryPort([record(1, hearsay=True, hop=1), record(2)])
+    model = Model()
+    trust = RelationshipTrust(memory, model)
+    assert trust.get("Aria") == 0.1
+    # hearsay case upgrades from rumor to direct observation.
+    setattr(memory.records[0], field, False if field == "hearsay" else value)
+    assert trust.get("Aria") == 0.2
+    assert trust.get("Aria") == 0.2 and model.calls == 2
+
+
+def test_same_count_and_timestamp_evidence_replacement_refreshes_trust():
+    class Model:
+        def judge_trust(self, memories, player_id):
+            return 0.1 if memories[0][1] == "observation-1" else 0.9
+    memory = MemoryPort([record(1)])
+    trust = RelationshipTrust(memory, Model())
+    assert trust.get("Aria") == 0.1
+    memory.records[0].valid = False
+    memory.records.append(replace(record(1), content="替换观察", id=99))
+    assert trust.get("Aria") == 0.9

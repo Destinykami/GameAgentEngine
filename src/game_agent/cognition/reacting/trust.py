@@ -25,8 +25,8 @@ class RelationshipTrust:
         信任是**持久的关系认知**: 判断只看关系记忆的内容 (帮过/背叛过),
         刻意**不看 importance** —— 遗忘只降权不删除, 久远的帮助/背叛仍是
         认知, 不会因"久远"而清零。故信任度不随遗忘淡化。
-        每次查询关系流，以条数+最新时间戳比较缓存；命中只省模型调用。
-        保留原签名边界：内容、置信度或 importance 单独改变不触发重判。
+        每次查询关系流，比较实际有序模型证据；命中只省模型调用。
+        内容、来源或置信度改变触发重判；importance 和访问时间不参与签名。
 
         E2: player_id=None 是"无玩家" (世界事件, 如火灾), 不存在"对 None 的信任
         度" —— 旧实现 all_valid(None) 拿全玩家流, 把不同玩家的关系记忆合在一起
@@ -37,12 +37,8 @@ class RelationshipTrust:
         rel = self._store.all_valid(player_id=player_id)
         if not rel:
             return 0.0
-        sig = (len(rel), max(m.timestamp for m in rel))
-        cached = self._cache.get(player_id)
-        if cached is not None and cached[1] == sig:
-            return cached[0]
         # 高阶最多 10 条、观察最多 20 条，不借用另一池的空位；
-        # 缓存签名仍按全部有效关系记忆计算。
+        # 只比较实际输入，窗口外及未使用类型的变化不重判。
         high = [m for m in rel
                 if m.type in ("reflection", "identity", "episode")]
         obs = [m for m in rel if m.type == "observation"]
@@ -59,6 +55,10 @@ class RelationshipTrust:
                  (f"[传闻{m.hop}跳] {m.content}" if m.hearsay else m.content),
                  m.confidence)
                 for m in selected]
+        sig = tuple(mems)
+        cached = self._cache.get(player_id)
+        if cached is not None and cached[1] == sig:
+            return cached[0]
         trust = self._llm.judge_trust(mems, player_id)
         self._cache[player_id] = (trust, sig)
         return trust
