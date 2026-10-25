@@ -106,14 +106,37 @@ def test_json_repair_once_uses_original_suffix_and_zero_temperature():
         parsing.request_json(lambda *args, **kw: "bad", "system", "user")
 
 
-def test_complete_empty_memories_skips_requests_and_thinking_only_applies_to_dialogue(monkeypatch):
+def test_complete_empty_memories_generates_and_thinking_only_applies_to_dialogue(monkeypatch):
     llm = RealLLM(enable_thinking=True)
     calls = []
     monkeypatch.setattr(llm, "_chat", lambda *args, **kw: calls.append(kw) or "5")
-    assert llm.complete(LLMContext()) == "我对此没有印象。" and calls == []
+    assert llm.complete(LLMContext()) == '5' and len(calls) == 1
     llm.complete(LLMContext(memories=[{"type": "observation", "content": "记忆"}]))
     llm.score_importance("记忆")
-    assert [call["think"] for call in calls] == [True, False]
+    assert [call["think"] for call in calls] == [True, True, False]
+
+
+def test_dialogue_prompt_distinguishes_background_raw_quotes_and_no_evidence():
+    from game_agent.models.llm_http.dialogue import complete
+    calls = []
+    def request(system, user, **options):
+        calls.append((system, user))
+        return '回答'
+    complete(request, LLMContext(question='你好'))
+    assert '(无历史证据)' in calls[-1][1] and '可正常对话' in calls[-1][1]
+    complete(request, LLMContext(memories=[
+        {'type': 'reflection', 'content': '对他有所保留', 'confidence': 0.5,
+         'usage': 'background'},
+        {'type': 'original', 'layer': 'archive', 'content': '假如我有矿石呢',
+         'kind': 'dialogue_in', 'speaker': 'P', 'timestamp': 1, 'id': 'raw-id'},
+        {'type': 'original', 'layer': 'archive', 'content': '旧库文本',
+         'kind': 'legacy_snapshot', 'id': 'legacy-id'},
+    ]))
+    prompt = calls[-1][1]
+    assert '[背景，不主动引用]' in prompt and '置信度0.50' in prompt
+    assert '来源:dialogue_in,说话者:P' in prompt and 'ID:raw-id' in prompt
+    assert '旧库快照（非原话保证）' in prompt
+    assert '假设、转述不等于事件已发生' in prompt
 
 
 def test_embedding_batch_sort_normalize_dim_and_empty_request(monkeypatch):
