@@ -8,6 +8,10 @@
 # 0.90~0.92 的重叠区是已知取舍 —— 宁可少误并, 不追求把 0.85~0.90 的灰区也吃掉)。
 DEDUP_THRESHOLD = 0.92
 
+# 关系反思只向问题生成提供有限原料；证据先混选近期/重要记录，再按原公式重排。
+RELATIONSHIP_OBSERVATION_LIMIT = 100
+RELATIONSHIP_EVIDENCE_CANDIDATES = 128
+
 # 冲突失效阈值 (LLM 判矛盾强度 0-10): >= 7 直接推翻 → 反思失效; 3-6 部分削弱 → 衰减。
 CONFLICT_INVALIDATE = 7
 CONFLICT_DECAY = 3

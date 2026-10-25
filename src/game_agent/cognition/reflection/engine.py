@@ -5,7 +5,8 @@ from __future__ import annotations
 from ...models.embeddings import Embedder
 from .contracts import ConflictMemory, ReflectionMemory, ReflectionModel
 from .conflicts import ConflictResolver
-from .policies import DEDUP_THRESHOLD
+from .policies import (DEDUP_THRESHOLD, RELATIONSHIP_OBSERVATION_LIMIT,
+                       RELATIONSHIP_EVIDENCE_CANDIDATES)
 from .writing import ReflectionWriter
 
 
@@ -69,7 +70,8 @@ class ReflectionEngine:
     def reflect_relationship(self, store: ReflectionMemory, player_id: str,
                              now: float) -> list[int]:
         """对某玩家的关系记忆生成关系反思, 返回新记忆 id。"""
-        rel = store.all_valid(player_id=player_id, types=["observation"])
+        rel = store.recent_relationship_observations(
+            player_id, now, limit=RELATIONSHIP_OBSERVATION_LIMIT)
         if not rel:
             return []
         texts = [m.content for m in rel]
@@ -92,7 +94,8 @@ class ReflectionEngine:
                                       top_k=10, include_player=player_id,
                                       types=list(self.evidence_types),
                                       min_relevance=self.evidence_min_relevance,
-                                      mark_accessed=False)
+                                      mark_accessed=False,
+                                      candidate_limit=RELATIONSHIP_EVIDENCE_CANDIDATES)
             ev_pairs = [(e["id"], e["content"]) for e in evidence]
             if not ev_pairs:
                 continue

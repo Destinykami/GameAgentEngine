@@ -125,6 +125,10 @@ def test_generation_uses_memory_port_and_updated_public_configuration():
                 content="Aria 帮助了我", timestamp=0.0, id=5, player_id="Aria")]
             self.retrieval_options = None
 
+        def recent_relationship_observations(self, player_id, now, *, limit=100):
+            assert player_id == 'Aria' and now == 1.0 and limit == 100
+            return self.records[:limit]
+
         def all_valid(self, player_id=None, *, types=None, shared=False,
                       consolidated=None):
             return [record for record in self.records
@@ -162,6 +166,7 @@ def test_generation_uses_memory_port_and_updated_public_configuration():
     assert engine.reflect_relationship(memory, "Aria", 1.0) == [6]
     assert memory.retrieval_options["min_relevance"] == 0.6
     assert memory.retrieval_options["mark_accessed"] is False
+    assert memory.retrieval_options['candidate_limit'] == 128
     assert memory.records[-1].evidence == [5]
     # 原始两个引用决定置信度，过滤幻影引用后仍保持原置信度。
     assert memory.records[-1].confidence == pytest.approx(0.7)

@@ -38,9 +38,13 @@ class ConflictMemory(ReflectionRecords, Protocol):
 
 
 class ReflectionMemory(ReflectionWriteMemory, Protocol):
+    def recent_relationship_observations(self, player_id: str, now: float, *,
+                                         limit: int = 100) -> list[MemoryRecord]: ...
+
     def retrieve(self, query: str, now: float, *,
                  player_id: str | None = None, top_k: int = 8,
                  include_player: str | None = None,
                  types: Sequence[str] | None = None,
                  mark_accessed: bool = True, min_relevance: float = 0.0,
-                 shared: bool = False) -> list[dict]: ...
+                 shared: bool = False,
+                 candidate_limit: int | None = None) -> list[dict]: ...
