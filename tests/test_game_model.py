@@ -18,6 +18,7 @@ def test_dynamic_model_schema_and_invalid_output_have_no_space_fallback():
     result = decide_game(send, context)
     assert result.action == 'vote' and result.private_note == '策略'
     assert 'vote' in captured['user'] and '"move"' not in captured['user']
+    assert '"now": 1' in captured['user']
     assert captured['options']['_stats_tag'] == 'decide_game'
     for response in ({'action': 'attack'}, {'action': 'vote', 'arguments': {'target': 'X'}},
                      {'action': 'vote', 'arguments': [], 'world': 'secret'}):

@@ -40,3 +40,5 @@ models/config.py 集中原 LLM/embedding 默认值和每实例 EndpointConfig。
 按 [多游戏接入](game-integration.md) 为 RealLLM 增加可选 decide_game，使用游戏提供的动作定义与参数，复用现有 JSON/传输/统计。不向旧 LLMClient 增加抽象方法，旧 decide_action 保留原契约。参数与玩法需分别校验。
 
 离线任务与导入边界 84 项通过；动态 vote 参数、非法目标、未知字段及无空间动作回退通过，未运行真实模型。
+
+收尾核对：通用请求的实例逻辑时间 now 应显式进入模型任务包，不能只存在于 Python 上下文。追加时间字段与提示词回归，单位由游戏场景解释。

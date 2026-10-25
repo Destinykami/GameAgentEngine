@@ -7,7 +7,7 @@ from ...integration.contracts import ActionIntent
 
 def decide_game(request_json, context):
     req = context.request
-    packet = {'actor': req.actor_id, 'phase': req.phase, 'goal': req.goal,
+    packet = {'actor': req.actor_id, 'phase': req.phase, 'now': req.now, 'goal': req.goal,
               'view': req.view, 'instructions': req.instructions,
               'persona_traits': context.persona_traits, 'memories': context.memories,
               'allowed_actions': [asdict(a) for a in req.actions]}
