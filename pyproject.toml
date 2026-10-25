@@ -21,3 +21,5 @@ namespaces = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "."]
+
+markers = ["online: 需要显式 --online 的真实端点探针"]

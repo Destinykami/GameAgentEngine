@@ -63,7 +63,11 @@ python -m pip install -e '.[dev]'
 uv pip install --python .venv/bin/python -e '.[dev]'
 
 # 当前真实模型 API 不可达，以离线测试验收：
-python -m pytest tests/ --ignore=tests/test_probes.py -q
+python -m pytest tests/ -q
+# 统一验收（需本地 npm 依赖、uv 和已缓存的 Python 构建依赖）：
+python tools/check_project.py
+# 追加浏览器检查（需已安装 Chromium）：
+python tools/check_project.py --e2e
 ```
 
 下方真实模拟和在线评测需要 LLM 端点可达（默认 10.121.39.10:30005），当前暂不运行。
@@ -81,8 +85,8 @@ python examples/forgetting.py           # ~8 天时间跳跃后的分层降权
 python examples/world_demo.py           # 稻妻城·眼狩令, 5 NPC + 旅行者
 python examples/world_auto_sim.py       # 10 天 × 8 步, 所有实体都由 LLM 决策
 
-# 完整测试入口（含 6 个真实 LLM 探针；当前仅运行上面的离线测试命令）
-pytest tests/ -q
+# 在线探针需显式开启；当前真实 API 不可达，暂不执行
+pytest tests/test_probes.py --online -q
 
 # 评测 (需真实 LLM; 方法与结果见 evals/README.md)
 python evals/memory_consistency.py --smoke
@@ -283,7 +287,7 @@ w.npc("桃音").trust_toward("旅行者")  # 千人千面
 `src/game_agent/evaluation/probes.py` 把"它真的千人千面了吗"变成对真实 LLM 的集成回归。每个探针混合
 **确定性架构断言** (信任度差异、特质稳定, 不依赖 LLM 措辞) 与 **宽松真实 LLM
 断言** (对话不同、非全知不编造、计划目标导向, 对措辞鲁棒)。需 LLM 可达,
-不可达时 `pytest` 自动 skip。当前 **417 个离线测试已通过**；以下 6 个探针保留，因真实 API 不可达，本轮未执行：
+默认不探测端点，显式 `--online` 后不可达则 skip。当前 **453 个离线测试已通过，6 个在线探针默认跳过**；以下 6 个探针保留，因真实 API 不可达，本轮未执行：
 
 1. **一致性探针** — 对两个玩家信任度不同, 且同一问话回答不同。
 2. **非全知探针** — 没观察过的玩家, 不应自信编造其背叛。判定用 **LLM 裁判**
@@ -401,3 +405,12 @@ age   = now − max(timestamp, last_accessed)  # 被回忆过 → 衰减更慢
 后续可扩展（见 [NextPlan.md](NextPlan.md)）：**P3 关系阶段 + 修复 + 称呼**、
 **P4 idle 低成本自治**；以及 [AutoSimPlan.md](AutoSimPlan.md) 的阶段 3（涌现：
 NPC 互相求助、结盟对抗）、多玩家对抗、更多区域与 NPC。
+
+
+## 可靠性加固（2026-10-25）
+
+共享观察去重严格限定共享流；关系信任按实际证据更新，反应缓存按实际信任、完整计划和人格区分。SQLite 与绝对 importance/10 保持不变。
+
+实时 `World.save()` 部分失败会抛出 `game_agent.world.SaveError`，包含阶段、NPC 名称和原始异常；该接口不保证跨库原子性。运行器正常结束发布 `data_dir/checkpoints`，使用 `World.from_checkpoint(root, new_data_dir, llm, embedder, configure=...)` 可从完整代恢复至新目录。场景回调需要重新绑定，示例与边界见 [检查点设计](docs/modules/persistence.md)。
+
+直播坏行会显示提示并原位重试；文件更换为新运行时保留现有回放并提示重新加载。完整实施与各模块验收见 [加固计划](docs/reliability-plan.md)。

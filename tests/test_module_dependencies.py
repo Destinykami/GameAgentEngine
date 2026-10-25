@@ -87,3 +87,26 @@ assert "game_agent.memory.store" not in sys.modules
         os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src")),
         capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+
+
+def test_core_layers_do_not_import_scenarios_runners_or_evaluation():
+    import ast
+    import importlib.util
+    source = Path(__file__).resolve().parents[1] / 'src' / 'game_agent'
+    forbidden = ('game_agent.scenarios', 'game_agent.runners', 'game_agent.evaluation')
+    violations = []
+    for layer in ('world', 'memory', 'cognition', 'models'):
+        for path in (source / layer).rglob('*.py'):
+            parts = path.relative_to(source.parent).with_suffix('').parts
+            package = '.'.join(parts[:-1])
+            for node in ast.walk(ast.parse(path.read_text())):
+                targets = []
+                if isinstance(node, ast.Import):
+                    targets = [alias.name for alias in node.names]
+                elif isinstance(node, ast.ImportFrom):
+                    base = importlib.util.resolve_name('.' * node.level + (node.module or ''), package) if node.level else (node.module or '')
+                    targets = [base, *(base + '.' + alias.name for alias in node.names)]
+                for target in targets:
+                    if any(target == prefix or target.startswith(prefix + '.') for prefix in forbidden):
+                        violations.append(f'{path.relative_to(source)}:{node.lineno}: {target}')
+    assert not violations, '\n'.join(violations)

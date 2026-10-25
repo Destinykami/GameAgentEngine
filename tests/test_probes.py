@@ -1,12 +1,14 @@
 """集成探针 pytest: 对真实 LLM 断言千人千面不退化。
 
-需网络可达 10.121.39.10:30005; 不可达时自动 skip (非硬失败)。
+仅显式 --online 启用；默认不探测网络。启用后端点不可达则 skip。
 """
 
 from __future__ import annotations
 
 
 import pytest
+
+pytestmark = pytest.mark.online
 
 
 from game_agent.evaluation.probes import (
