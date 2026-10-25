@@ -160,12 +160,12 @@ class MemoryRepository:
         with self._lock, self._conn:
             self._conn.execute("INSERT INTO memory_source VALUES (?,?)", (source_id, memory_id))
 
-    def unlinked(self, limit: int = 100) -> list[MemoryRecord]:
+    def unlinked(self, limit: int = 100, after_id: int = 0) -> list[MemoryRecord]:
         with self._lock:
             rows = self._conn.execute(
-                "SELECT m.* FROM memory m WHERE NOT EXISTS "
+                "SELECT m.* FROM memory m WHERE m.id>? AND NOT EXISTS "
                 "(SELECT 1 FROM memory_source s WHERE s.memory_id=m.id) ORDER BY m.id LIMIT ?",
-                (limit,)).fetchall()
+                (after_id, limit)).fetchall()
         return [self._row_to_rec(row) for row in rows]
 
     def context_candidates(self, player_id: str, now: float, *, limit: int = 8,

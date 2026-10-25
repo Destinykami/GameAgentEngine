@@ -76,8 +76,11 @@ class MemoryStore:
             raise
 
     def _import_legacy(self) -> None:
+        if self.get_meta('archive_import_complete', False):
+            return
+        watermark = int(self.get_meta('archive_import_after_id', 0))
         while True:
-            rows = self._repository.unlinked()
+            rows = self._repository.unlinked(after_id=watermark)
             if not rows:
                 break
             for rec in rows:
@@ -88,6 +91,9 @@ class MemoryStore:
                     event_key=f'legacy:{rec.id}')
                 self._repository.link_source(sid, rec.id)
                 self._archive.set_state(sid, 'done')
+            watermark = rows[-1].id
+            self.set_meta('archive_import_after_id', watermark)
+        self.set_meta('archive_import_complete', True)
 
     @property
     def archive_identity(self) -> str:
@@ -219,8 +225,12 @@ class MemoryStore:
             source_id = self.archive_input(rec.content, rec.timestamp, rec.player_id,
                 kind=rec.type, hearsay=rec.hearsay, hop=rec.hop,
                 metadata={'projection': 'record', 'record': payload})
-        elif self.archived(source_id) is None:
-            raise ValueError('原文来源不属于当前 NPC 档案')
+        else:
+            source = self.archived(source_id)
+            if source is None:
+                raise ValueError('原文来源不属于当前 NPC 档案')
+            if source.player_id != rec.player_id or source.timestamp != rec.timestamp:
+                raise ValueError('派生记忆与原文的关系或时间不一致')
         existing = self.projected_id(source_id)
         if existing is not None:
             self.archive_done(source_id)
@@ -463,6 +473,10 @@ class MemoryStore:
         见到"不会让亲见被永久按传闻打折。
         """
         with self._repository.edit_observation(mem_id, source_id) as rec:
+            if source_id is not None:
+                source = self.archived(source_id)
+                if source is None or source.player_id != rec.player_id or source.timestamp != now:
+                    raise ValueError('合并来源与观察的关系或时间不一致')
             old_content = rec.content
             apply_observation_merge(
                 rec, now, new_hearsay=new_hearsay, new_hop=new_hop,

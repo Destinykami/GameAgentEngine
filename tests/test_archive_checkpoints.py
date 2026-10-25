@@ -89,7 +89,7 @@ def test_legacy_version_one_is_imported_as_snapshots_only(tmp_path):
             del manifest['files'][archive]
             database = directory / npc['file']
             with sqlite3.connect(database) as conn:
-                conn.execute("DELETE FROM meta WHERE key='archive_identity'")
+                conn.execute("DELETE FROM meta WHERE key LIKE 'archive_%'")
                 conn.execute('DROP TABLE memory_source')
             manifest['files'][npc['file']] = hashlib.sha256(database.read_bytes()).hexdigest()
         (directory / 'manifest.json').write_text(json.dumps(manifest))

@@ -135,3 +135,49 @@ def test_archive_append_failure_leaves_no_main_record(monkeypatch):
         assert store.count() == 0
     finally:
         store.close()
+
+
+def test_completed_migration_does_not_rescan_history(tmp_path, monkeypatch):
+    from game_agent.memory.repository import MemoryRepository
+    path = str(tmp_path / 'A.db')
+    repository = MemoryRepository(path)
+    for i in range(205):
+        with repository.insert(MemoryRecord(f'旧事件{i}', i)):
+            pass
+    repository.close()
+    store = MemoryStore(HashEmbedder(), path)
+    assert store.archive_count() == 205
+    store.close()
+    def fail(*args, **kwargs):
+        raise AssertionError('迁移完成后不应再扫描')
+    monkeypatch.setattr(MemoryRepository, 'unlinked', fail)
+    restored = MemoryStore(HashEmbedder(), path)
+    try:
+        assert restored.archive_count() == 205
+    finally:
+        restored.close()
+
+
+def test_source_binding_rejects_wrong_stream_and_timestamp():
+    store = MemoryStore(HashEmbedder())
+    try:
+        sid = store.archive_input('P 的原文', 1, 'P')
+        with pytest.raises(ValueError, match='关系或时间'):
+            store.add(MemoryRecord('错误关系', 1, player_id='Q'), source_id=sid)
+        with pytest.raises(ValueError, match='关系或时间'):
+            store.add(MemoryRecord('错误时间', 2, player_id='P'), source_id=sid)
+        assert store.count() == 0
+    finally:
+        store.close()
+
+
+def test_readonly_inspector_skips_archives_and_world_database(tmp_path, capsys):
+    from tools.inspect_npc import list_npcs
+    store = MemoryStore(HashEmbedder(), str(tmp_path / 'N.db'))
+    store.set_meta('npc', {'name': 'N'})
+    store.add(MemoryRecord('主库观察', 1))
+    store.close()
+    sqlite3.connect(tmp_path / 'world.db').close()
+    list_npcs(str(tmp_path))
+    output = capsys.readouterr().out
+    assert 'N.db' in output and 'archive.db' not in output and 'world.db' not in output

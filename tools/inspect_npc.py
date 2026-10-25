@@ -174,12 +174,17 @@ def dump_json(path: str) -> None:
 def list_npcs(data_dir: str) -> None:
     if not os.path.isdir(data_dir):
         sys.exit(f"目录不存在: {data_dir}")
-    dbs = sorted(f for f in os.listdir(data_dir) if f.endswith(".db"))
+    dbs = sorted(f for f in os.listdir(data_dir)
+                 if f.endswith('.db') and not f.endswith('.archive.db'))
     if not dbs:
         print(f"({data_dir} 下没有 .db)")
         return
     for f in dbs:
         conn = _open_ro(os.path.join(data_dir, f))
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if not {'memory', 'meta'} <= tables:
+            conn.close()
+            continue
         npc = _meta(conn).get("npc", {})
         n = conn.execute("SELECT COUNT(*) FROM memory WHERE valid=1").fetchone()[0]
         conn.close()
