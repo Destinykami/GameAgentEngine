@@ -117,7 +117,7 @@ class ArchiveRepository:
                             context.instance_id)
                             or participants != tuple(sorted(context.participants))
                             or (session_id and original['session_id'] != session_id)
-                            or json.loads(original['metadata']) != (metadata or {})):
+                            or json.loads(original['metadata']) != json.loads(payload)):
                         raise ValueError('同一事件 ID 的上下文不一致')
                     return existing[0]
             source_id = uuid.uuid4().hex

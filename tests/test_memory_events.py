@@ -201,8 +201,9 @@ def test_atomic_source_event_pending_and_text_index(store, monkeypatch):
 
 def test_event_key_is_idempotent_and_rejects_mutated_context(store):
     ctx = EventContext(event_type='help', actor='P', target='N', location='城门')
-    first = store.archive_input('尝试帮忙', 1, 'P', event_key='command-1', event=ctx)
-    assert store.archive_input('尝试帮忙', 1, 'P', event_key='command-1', event=ctx) == first
+    metadata = {'recipients': ('P', 'N')}
+    first = store.archive_input('尝试帮忙', 1, 'P', event_key='command-1', event=ctx, metadata=metadata)
+    assert store.archive_input('尝试帮忙', 1, 'P', event_key='command-1', event=ctx, metadata=metadata) == first
     with pytest.raises(ArchiveWriteError, match='上下文不一致'):
         store.archive_input('尝试帮忙', 1, 'P', event_key='command-1', event=replace(ctx, location='码头'))
     assert store.archive_count() == 1
