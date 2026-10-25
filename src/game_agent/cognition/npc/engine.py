@@ -332,3 +332,41 @@ class NPC:
         """记忆即时落库；另按既有键保存 NPC 元数据及部分运行状态。"""
         save_checkpoint(self.store, self.name, self.persona_traits,
                         self._runtime, self.plan_state)
+
+    def checkpoint_state(self) -> dict:
+        """一致检查点专用；旧 save/load 的恢复范围保持独立。"""
+        from dataclasses import asdict
+        runtime = asdict(self._runtime)
+        runtime.pop("data_path")
+        return {
+            "name": self.name, "persona_traits": dict(self.persona_traits),
+            "configuration": {
+                "reflection_threshold": self._runtime.reflection_threshold,
+                "conflict_policy": self.reflection.conflict_policy,
+                "evidence_types": list(self.reflection.evidence_types),
+                "evidence_min_relevance": self.reflection.evidence_min_relevance,
+                "use_relationship": self.decider.use_relationship,
+            },
+            "runtime": runtime,
+            "plan": {"blocks": self.plan_state.saved_blocks(),
+                     "interruption": self.plan_state.interruption},
+        }
+
+    @classmethod
+    def from_checkpoint(cls, path: str, state: dict, llm: LLMClient,
+                        embedder: Embedder | None = None) -> "NPC":
+        embedder = embedder or HashEmbedder()
+        store = MemoryStore(embedder, path=path)
+        try:
+            npc = cls(state["name"], dict(state["persona_traits"]), llm,
+                      embedder=embedder, store=store, **state["configuration"])
+            runtime = dict(state["runtime"])
+            if runtime.get("shared_conflict_sig") is not None:
+                runtime["shared_conflict_sig"] = tuple(runtime["shared_conflict_sig"])
+            npc._runtime = RuntimeState(**runtime, data_path=path)
+            npc.plan_state = PlanState([tuple(block) for block in state["plan"]["blocks"]],
+                                       state["plan"]["interruption"])
+            return npc
+        except Exception:
+            store.close()
+            raise

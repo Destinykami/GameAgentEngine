@@ -297,6 +297,15 @@ class MemoryRepository:
         return self.db_path() is not None
 
 
+    def backup(self, path: str) -> None:
+        """锁内用 SQLite backup 导出已提交快照，不复制 WAL 临时文件。"""
+        with self._lock:
+            target = sqlite3.connect(path)
+            try:
+                self._conn.backup(target)
+            finally:
+                target.close()
+
     def close(self) -> None:
         with self._lock:
             self._conn.close()

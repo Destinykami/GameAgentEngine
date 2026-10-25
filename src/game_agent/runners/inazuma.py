@@ -70,6 +70,7 @@ def run(paths: RunPaths, *, llm_factory=RealLLM, embedder_factory=make_embedder,
             if decree_ended or shogun.dead:
                 break
 
+        w.save_checkpoint(os.path.join(paths.data_dir, "checkpoints"))
         writer.finish({"decree_ended": decree_ended, "shogun_dead": shogun.dead})
 
         banner("结局")

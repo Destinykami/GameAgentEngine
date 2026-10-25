@@ -46,3 +46,19 @@ class WorldExtensions:
             counters[key] = 0
             return description
         return None
+
+    def checkpoint_state(self) -> dict:
+        return {"rules": {key: list(rule) for key, rule in self._chain_rules.items()},
+                "counters": {actor: [[action, target, count] for (action, target), count in counts.items()]
+                             for actor, counts in self._chain_counters.items()},
+                "effects": {action: len(effects) for action, effects in self.action_effects.items()}}
+
+    def restore_checkpoint(self, state: dict) -> None:
+        self._chain_rules = {action: tuple(rule) for action, rule in state["rules"].items()}
+        self._chain_counters = {actor: {(action, target): count for action, target, count in rows}
+                                for actor, rows in state["counters"].items()}
+
+    def validate_bindings(self, state: dict) -> None:
+        actual = {action: len(effects) for action, effects in self.action_effects.items()}
+        if actual != state["effects"]:
+            raise ValueError("检查点动作效果必须由 configure 完整重绑定")

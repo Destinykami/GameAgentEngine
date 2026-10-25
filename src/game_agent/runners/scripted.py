@@ -24,6 +24,7 @@ def run(data_dir: str, *, llm_factory=RealLLM, embedder_factory=make_embedder) -
         w.add_player("旅行者", "稻妻主城")
 
         play_week(w)
+        w.save_checkpoint(os.path.join(data_dir, "checkpoints"))
     finally:
         w.close()
     print(f"\n世界状态已存: {os.path.abspath(data_dir)}/world.db  (每 NPC 独立 <name>.db)")

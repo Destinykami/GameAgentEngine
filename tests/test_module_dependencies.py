@@ -9,7 +9,7 @@ import pytest
 
 
 @pytest.mark.parametrize("module", [
-    "world.entities", "world.events", "world.perception", "cognition.autonomous",
+    "world.checkpoints", "world.errors", "world.entities", "world.events", "world.perception", "cognition.autonomous",
     "world.extensions", "world.social", "world.actions", "memory.models",
     "memory.policies", "memory.ranking", "world", "memory", "models",
     "cognition", "evaluation",

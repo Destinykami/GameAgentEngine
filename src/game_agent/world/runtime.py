@@ -681,6 +681,85 @@ class World:
                     if name in self._npcs:
                         self.register_agent(name, (agent_llms or {}).get(name, llm))
 
+    def save_checkpoint(self, root: str) -> str:
+        """步间暂停修改时发布完整检查点；实时 save 失败不发布新代。"""
+        from dataclasses import asdict
+        from pathlib import Path
+        from .checkpoints import publish
+        self.save()
+        npcs = []
+        databases = {"world.db": self._storage.backup}
+        for index, (name, npc) in enumerate(self._npcs.items()):
+            if Path(name).name != name or name in (".", ".."):
+                raise ValueError("检查点 NPC 名称不能包含路径")
+            relative = f"npcs/{index}/{name}.db"
+            npcs.append({"name": name, "file": relative, "state": npc.checkpoint_state()})
+            databases[relative] = npc.store.backup
+        state = {
+            "name": self.name,
+            "locations": [asdict(loc) for loc in self.locations.values()],
+            "configuration": {
+                "perception_radius": self.perception_radius, "full_radius": self.full_radius,
+                "force_full_tier": self._force_full_tier,
+                "decision_tier_gate": self._decision_tier_gate,
+                "social_perception": self._social_perception, "rumor_spread": self._rumor_spread,
+                "consolidation": self._consolidation, "use_identity_beliefs": self._use_identity_beliefs,
+                "consolidate_hour": self._consolidate_hour,
+                "player_perception_transition": self._player_perception_transition,
+            },
+            "reason_cap": self.reason_cap,
+            "npcs": npcs,
+            "agents": [{"name": name, "persona": self._agent_personas[name]}
+                       for name in self._agent_llms],
+            "presence": self._presence.checkpoint_state(),
+            "social": self._social.checkpoint_state(),
+            "extensions": self._extensions.checkpoint_state(),
+            "requires_threat_filter": self.threat_filter is not None,
+        }
+        return publish(root, state, databases)
+
+    @classmethod
+    def from_checkpoint(cls, root: str, data_dir: str, llm, embedder=None,
+                        agent_llms: dict | None = None, configure=None) -> "World":
+        """从完整代复制到新运行目录；模型和场景函数由调用者重绑定。"""
+        from .checkpoints import read, materialize
+        from ..cognition.npc import NPC
+        directory, manifest = read(root)
+        state = manifest["state"]
+        if configure is None and (state["requires_threat_filter"] or state["extensions"]["effects"]):
+            raise ValueError("检查点需要 configure 重绑定场景效果或威胁过滤")
+        target = materialize(directory, manifest, data_dir)
+        world = cls(state["name"], [Location(**loc) for loc in state["locations"]],
+                    path=str(target / "world.db"), **state["configuration"])
+        try:
+            world.load()
+            world.reason_cap = state["reason_cap"]
+            for item in state["npcs"]:
+                name = item["name"]
+                path = target / item["file"]
+                world._npcs[name] = NPC.from_checkpoint(str(path), item["state"],
+                    (agent_llms or {}).get(name, llm), embedder=embedder)
+                world._npc_data_dirs[name] = str(path.parent)
+            for item in state["agents"]:
+                world.register_agent(item["name"], (agent_llms or {}).get(item["name"], llm),
+                                     item["persona"])
+            world._presence.restore_checkpoint(state["presence"])
+            world._social.restore_checkpoint(state["social"], world._npcs)
+            world._extensions.restore_checkpoint(state["extensions"])
+            if configure is not None:
+                configure(world)
+            world._extensions.validate_bindings(state["extensions"])
+            if state["requires_threat_filter"] and world.threat_filter is None:
+                raise ValueError("检查点威胁过滤函数未重绑定")
+            # 将实时库注册表改为新目录，旧 load 不会重新打开源运行数据库。
+            world.save()
+            return world
+        except Exception:
+            import shutil
+            world.close()
+            shutil.rmtree(target)
+            raise
+
     def close(self) -> None:
         """关闭各 NPC 记忆库和世界存储。"""
         for npc in self._npcs.values():

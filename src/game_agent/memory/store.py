@@ -342,5 +342,9 @@ class MemoryStore:
         """是否为文件库 (可持久化); :memory: 返回 False。"""
         return self._repository.is_persistent()
 
+    def backup(self, path: str) -> None:
+        """导出数据库；向量缓存由恢复后的实例重建。"""
+        self._repository.backup(path)
+
     def close(self) -> None:
         self._repository.close()

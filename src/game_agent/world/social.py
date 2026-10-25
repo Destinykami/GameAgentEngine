@@ -15,6 +15,12 @@ class SocialRuntime:
     def __init__(self) -> None:
         self.pending: list[tuple[SocialCognition, str]] = []
 
+    def checkpoint_state(self) -> list[list[str]]:
+        return [[npc.name, actor] for npc, actor in self.pending]
+
+    def restore_checkpoint(self, rows: list, cognitions: Mapping[str, SocialCognition]) -> None:
+        self.pending = [(cognitions[name], actor) for name, actor in rows]
+
     def enqueue(self, cognition: SocialCognition, actor_id: str) -> None:
         self.pending.append((cognition, actor_id))
 

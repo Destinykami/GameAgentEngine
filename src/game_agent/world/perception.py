@@ -47,6 +47,16 @@ class PresenceTracker:
         self._player_seen: dict[str, dict[str, tuple[str, str]]] = {}
         self._social_seen: dict[str, set[str]] = {}
 
+    def checkpoint_state(self) -> dict:
+        return {"players": {name: {other: list(key) for other, key in seen.items()}
+                            for name, seen in self._player_seen.items()},
+                "social": {name: sorted(seen) for name, seen in self._social_seen.items()}}
+
+    def restore_checkpoint(self, state: dict) -> None:
+        self._player_seen = {name: {other: tuple(key) for other, key in seen.items()}
+                             for name, seen in state["players"].items()}
+        self._social_seen = {name: set(seen) for name, seen in state["social"].items()}
+
     def perceive(self, me: Entity, npc: ObservationSink,
                  entities: Collection[Entity], now: float, radius: float, *,
                  social_perception: bool, player_transition: bool,
