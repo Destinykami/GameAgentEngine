@@ -35,7 +35,7 @@ import pytest
     "scenarios", "scenarios.inazuma", "scenarios.inazuma.definition",
     "scenarios.inazuma.effects", "scenarios.inazuma.judgment", "scenarios.inazuma.outcome",
     "scenarios.inazuma.setup", "scenarios.inazuma.scripted", "scenarios.inazuma.reporting",
-    "runners", "runners.artifacts", "runners.presentation",
+    "runners", "runners.artifacts", "runners.presentation", "runners.game_demo",
     "evaluation.metrics", "evaluation.artifacts",
     "runners.replay", "runners.replay.cli", "runners.replay.terminal", "runners.replay.html",
 ])
@@ -94,7 +94,7 @@ def test_core_layers_do_not_import_scenarios_runners_or_evaluation():
     import ast
     import importlib.util
     source = Path(__file__).resolve().parents[1] / 'src' / 'game_agent'
-    forbidden = ('game_agent.scenarios', 'game_agent.runners', 'game_agent.evaluation')
+    forbidden = ('game_agent.scenarios', 'game_agent.adapters', 'game_agent.runners', 'game_agent.evaluation')
     violations = []
     for layer in ('world', 'memory', 'cognition', 'models', 'integration'):
         for path in (source / layer).rglob('*.py'):

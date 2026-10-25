@@ -21,6 +21,18 @@ NPC 对玩家 p 的面 (每玩家独立成流, 动态)
 
 同一个 NPC: 帮过它的玩家被亲近, 骗过它的玩家被警惕, 互不污染。
 
+## 多游戏接入
+
+每个游戏拥有自己的 World、合法动作、可见性和结算，通过适配层接入同一套 NPC。已提供空间 World 的 `SpatialAdapter` 和独立阶段式简化狼人杀 `WerewolfAdapter`；旧稻妻入口保留。
+
+```bash
+# 默认离线，不连接真实服务；自动新建运行目录
+.venv/bin/python examples/game_adapters.py --game werewolf
+.venv/bin/python examples/game_adapters.py --game spatial
+```
+
+接口位于 `game_agent.integration`，NPC 使用 `decide_game` 与 `receive_game_event`。每 NPC 原文按游戏实例隔离，私密身份和技能反馈定向投递。新增游戏无须继承空间 World，详见 [接入设计与用法](docs/modules/game-integration.md)。狼人杀为简化样例，离线验证不代表真实模型策略质量。主持人快照与公共输出分开，成套恢复须配对保存 NPC 两库。
+
 ## 模块映射 (论文 → 本框架)
 
 | 论文模块 | 文件 | 为千人千面扩展了什么 |
@@ -37,6 +49,8 @@ NPC 对玩家 p 的面 (每玩家独立成流, 动态)
 | 评测与可视化 | `evals/` / `visualization/` | 三组消融实验; Phaser 像素风时间线回放器 (含直播跟随) |
 
 ## LLM / 向量层
+
+- 通用游戏路径使用可选 `decide_game(context) -> ActionIntent`，`RealLLM` 已实现；也可注入仅实现这一能力的模型，不要求实现下面的全部旧空间认知方法。
 
 - `game_agent.models.llm.LLMClient`: 抽象接口, **十二个方法** `complete / score_importance /
   reflection_questions / reflection_insights / generate_plan / decompose_activity /
