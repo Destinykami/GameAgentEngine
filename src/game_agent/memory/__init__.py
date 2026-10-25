@@ -7,6 +7,12 @@ _EXPORTS = {
     'MemoryRecord': ('.models', 'MemoryRecord'),
     'ArchiveRecord': ('.archive', 'ArchiveRecord'),
     'ArchiveWriteError': ('.errors', 'ArchiveWriteError'),
+    'EventContext': ('.events', 'EventContext'),
+    'EventScope': ('.events', 'EventScope'),
+    'EventQuery': ('.events', 'EventQuery'),
+    'EventRecord': ('.events', 'EventRecord'),
+    'EventPage': ('.events', 'EventPage'),
+    'EventCursor': ('.events', 'EventCursor'),
 }
 
 __all__ = list(_EXPORTS)

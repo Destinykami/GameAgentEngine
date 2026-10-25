@@ -11,7 +11,7 @@ import pytest
 @pytest.mark.parametrize("module", [
     "world.checkpoints", "world.errors", "world.entities", "world.events", "world.perception", "cognition.autonomous",
     "world.extensions", "world.social", "world.actions", "memory.models",
-    "memory.policies", "memory.ranking", "world", "memory", "models",
+    "memory.policies", "memory.ranking", "memory.events", "world", "memory", "models",
     "cognition", "evaluation",
     "cognition.reflection", "cognition.reflection.engine",
     "cognition.reflection.contracts", "cognition.reflection.policies",

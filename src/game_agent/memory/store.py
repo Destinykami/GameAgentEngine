@@ -43,6 +43,7 @@ from .ranking import rank_memories
 from .repository import MemoryRepository
 from .archive import ArchiveRecord, ArchiveRepository
 from .errors import ArchiveWriteError
+from .events import EventContext, EventCursor, EventPage, EventQuery, EventScope
 
 
 class MemoryStore:
@@ -102,11 +103,12 @@ class MemoryStore:
     def archive_input(self, content: str, now: float, player_id: str | None = None,
                       *, kind: str = 'observation', speaker: str | None = None,
                       session_id: str = '', hearsay: bool = False, hop: int = 0,
-                      metadata: dict | None = None, event_key: str | None = None) -> str:
+                      metadata: dict | None = None, event_key: str | None = None,
+                      event: EventContext | None = None) -> str:
         try:
             return self._archive.append(content, now, player_id, kind=kind, speaker=speaker,
                 session_id=session_id, hearsay=hearsay, hop=hop, metadata=metadata,
-                event_key=event_key)
+                event_key=event_key, event=event)
         except Exception as exc:
             raise ArchiveWriteError(f'NPC 原文归档失败: {exc}') from exc
 
@@ -128,6 +130,17 @@ class MemoryStore:
 
     def archive_count(self) -> int:
         return self._archive.count()
+
+    def query_events(self, scope: EventScope, query: EventQuery = EventQuery(), *,
+                     limit: int = 32, cursor: EventCursor | None = None) -> EventPage:
+        """组合查询轻量事件引用；原文通过 read_event_source 显式读取。"""
+        return self._archive.query_events(scope, query, limit=limit, cursor=cursor)
+
+    def count_events(self, scope: EventScope, query: EventQuery = EventQuery()) -> int:
+        return self._archive.count_events(scope, query)
+
+    def read_event_source(self, source_id: str, scope: EventScope) -> ArchiveRecord | None:
+        return self._archive.read_event_source(source_id, scope)
 
     def search_archive(self, query: str, *, player_id: str | None = None,
                        include_shared: bool = False, after: float | None = None,

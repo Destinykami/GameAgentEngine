@@ -10,6 +10,9 @@ import threading
 from typing import Any
 import uuid
 
+from .event_repository import EventIndex
+from .events import EventContext, EventCursor, EventPage, EventQuery, EventScope, _finite
+
 
 def search_terms(text: str) -> list[str]:
     """预分词兼容中文短名；FTS 不直接解释用户的查询语法。"""
@@ -78,6 +81,7 @@ class ArchiveRepository:
                 if row is None:
                     self._conn.execute("INSERT INTO archive_meta VALUES ('identity', ?)",
                                        (self.identity,))
+            self.events = EventIndex(self._conn, self._lock, self.identity, search_terms)
         except Exception:
             self._conn.close()
             raise
@@ -85,9 +89,13 @@ class ArchiveRepository:
     def append(self, content: str, timestamp: float, player_id: str | None, *,
                kind: str = "observation", speaker: str | None = None,
                session_id: str = "", hearsay: bool = False, hop: int = 0,
-               metadata: dict | None = None, event_key: str | None = None) -> str:
+               metadata: dict | None = None, event_key: str | None = None,
+               event: EventContext | None = None) -> str:
         """原文、片段索引和 pending 在同一事务提交，模型不可参与。"""
         payload = json.dumps(metadata or {}, ensure_ascii=False, allow_nan=False)
+        _finite('timestamp', timestamp)
+        context = self.events.context(kind, speaker, hearsay, event)
+        observed_at = None if kind == 'legacy_snapshot' else timestamp
         with self._lock, self._conn:
             if event_key is not None:
                 existing = self._conn.execute(
@@ -97,6 +105,19 @@ class ArchiveRepository:
                     if tuple(existing)[1:] != (content, timestamp, player_id, kind,
                                               speaker, int(hearsay), hop):
                         raise ValueError("同一事件 ID 的原文或来源不一致")
+                    old = self._conn.execute('SELECT * FROM event WHERE source_id=?',
+                                             (existing[0],)).fetchone()
+                    participants = tuple(r[0] for r in self._conn.execute(
+                        'SELECT participant FROM event_participant WHERE source_id=? '
+                        'ORDER BY participant', (existing[0],)))
+                    original = self._conn.execute(
+                        'SELECT session_id,metadata FROM source WHERE id=?', (existing[0],)).fetchone()
+                    if (tuple(old)[1:] != (context.event_type, context.occurred_at, observed_at,
+                            context.actor, context.target, context.location, context.evidence_kind)
+                            or participants != tuple(sorted(context.participants))
+                            or (session_id and original['session_id'] != session_id)
+                            or json.loads(original['metadata']) != (metadata or {})):
+                        raise ValueError('同一事件 ID 的上下文不一致')
                     return existing[0]
             source_id = uuid.uuid4().hex
             self._conn.execute(
@@ -107,6 +128,7 @@ class ArchiveRepository:
                  hashlib.sha256(content.encode('utf-8')).hexdigest()))
             self._conn.execute("INSERT INTO processing (source_id,state) VALUES (?, 'pending')",
                                (source_id,))
+            self.events.insert(source_id, context, observed_at)
             self._index(source_id, content)
             return source_id
 
@@ -136,6 +158,19 @@ class ArchiveRepository:
         with self._lock:
             row = self._conn.execute(self._SELECT + " WHERE s.id=?", (source_id,)).fetchone()
         return self._record(row) if row else None
+
+    def query_events(self, scope: EventScope, query: EventQuery, *, limit: int = 32,
+                     cursor: EventCursor | None = None) -> EventPage:
+        return self.events.query(scope, query, limit=limit, cursor=cursor)
+
+    def count_events(self, scope: EventScope, query: EventQuery) -> int:
+        return self.events.count(scope, query)
+
+    def read_event_source(self, source_id: str, scope: EventScope) -> ArchiveRecord | None:
+        with self._lock:
+            if self.events.visible(source_id, scope) is None:
+                return None
+            return self.get(source_id)
 
     def set_state(self, source_id: str, state: str, error: str = "") -> None:
         if state not in ('pending', 'done'):

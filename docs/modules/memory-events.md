@@ -1,6 +1,6 @@
 # 通用记忆事件与组合查询
 
-状态：待实现。设计日期：2026-10-25。
+状态：存储与查询已实现；NPC 元数据接入待实施。设计日期：2026-10-25。
 关联设计：[分层记忆](tiered-memory.md)、[NPC 编排](npc-runtime.md)、[展示事件](events.md)。
 
 ## 目标与边界
@@ -44,4 +44,23 @@ observe 新增可选事件上下文；调用方可显式提交地点、参与者
 
 验收覆盖组合筛选、词项与重复片段、精确计数、时间与追加顺序区别、稳定分页、NPC/关系/未来隔离、不可见锚点、旧档案升级/重启、事务回滚、待补处理事件、备份恢复及 NPC 入口。运行离线全集及独立 wheel 安装检查；不运行真实模型，也不把功能测试视作十万轮延迟或任意语义召回验证。
 
-当前实现与验收：尚未实施。无待确认设计冲突；上述能力为现有档案的增量扩展。
+存储阶段实现：memory/events.py 为轻量契约，event_repository.py 负责事件索引与查询，ArchiveRepository 同事务写入，MemoryStore 提供公开入口。事件类型、参与者、时间、锚点、全文词项可自由组合；按时间排序排除对应时间未知的事件，count 与同一查询结果集一致。现有档案检查点格式无需升级。
+
+存储阶段离线验证：114 项通过（事件专项、原文档案、依赖边界和两库检查点），包含独立 NPC 查询隔离。NPC 接入与完整包验证尚未完成。无待确认设计冲突。
+
+调用方式（已知事件类型及地点由业务记录方提供，不从问题推断写入）：
+
+```python
+from game_agent.memory import EventQuery, EventScope
+
+scope = EventScope(player_id="P", as_of=world_time)
+gifts = store.query_events(scope, EventQuery(event_types=("gift",), location="码头"), limit=1)
+if gifts.events:
+    previous = store.query_events(scope, EventQuery(
+        evidence_kinds=("utterance",), before_event=gifts.events[0].source_id,
+        speaker="P", descending=True), limit=1)
+    if previous.events:
+        original = store.read_event_source(previous.events[0].source_id, scope)
+```
+
+这里“之前”明确指追加顺序；若业务要按实际发生时间查，使用 occurred_before 和 order_by="occurred_at"。同一时间的严格先后只能依赖业务已有顺序，不能从时间戳恢复未记录的因果关系。
