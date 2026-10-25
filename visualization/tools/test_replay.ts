@@ -45,15 +45,23 @@ test("live source consumes complete lines once and waits for a partial last line
   } finally { globalThis.fetch = saved; }
 });
 
-test("live source preserves the existing malformed-complete-line progress boundary", async () => {
+test("live source retries a malformed line without losing following records", async () => {
   const saved = globalThis.fetch;
-  const text = JSON.stringify(step(1)) + "\nbad-json\n" + JSON.stringify(step(2)) + "\n";
+  const prefix = JSON.stringify(step(1)) + "\n";
+  let text = prefix + "bad-json\n" + JSON.stringify(step(3)) + "\n";
   globalThis.fetch = async () => new Response(text);
   try {
     const live = new LiveSource();
-    assert.equal((await live.poll()).newSteps.length, 1);
+    const first = await live.poll();
+    assert.equal(first.newSteps.length, 1);
+    assert.equal(first.error?.kind, "parse");
     assert.equal((await live.poll()).newSteps.length, 0);
-    assert.equal(live.stepCount, 1);
+    text = prefix + JSON.stringify(step(2)) + "\n" + JSON.stringify(step(3)) + '\n{"__done__":true}\n';
+    const repaired = await live.poll();
+    assert.deepEqual(repaired.newSteps.map(s => s.clock), [2, 3]);
+    assert.equal(repaired.error, null);
+    assert.equal(repaired.done, true);
+    assert.equal(live.stepCount, 3);
   } finally { globalThis.fetch = saved; }
 });
 
@@ -107,4 +115,131 @@ test("snapshot projection keeps stable offsets and applies death after jump posi
   assert.equal(projection.apply({ ...step(2), states: { A: { ...state, dead: true } } }, 3), true);
   assert.deepEqual(calls.map(call => call[1]), ["position", "health", "dead"]);
   assert.equal(calls[2][2], true);
+});
+
+
+test("live source rejects replacement and truncation without mixing runs", async () => {
+  const saved = globalThis.fetch;
+  for (const replacement of [
+    JSON.stringify({ __meta__: true, run_id: "second" }) + "\n" + JSON.stringify(step(9)) + "\n",
+    JSON.stringify({ __meta__: true, run_id: "first" }) + "\n",
+    JSON.stringify({ __meta__: true, run_id: "first" }) + "\n" + JSON.stringify(step(9)) + "\n",
+  ]) {
+    let text = JSON.stringify({ __meta__: true, run_id: "first" }) + "\n" + JSON.stringify(step(1)) + "\n";
+    globalThis.fetch = async () => new Response(text);
+    try {
+      const live = new LiveSource();
+      await live.poll();
+      text = replacement;
+      const result = await live.poll();
+      assert.equal(result.error?.kind, "replaced");
+      assert.deepEqual(result.newSteps, []);
+      assert.deepEqual(live.allSteps.map(s => s.clock), [1]);
+      assert.equal((await live.poll()).error?.kind, "replaced");
+    } finally { globalThis.fetch = saved; }
+  }
+});
+
+test("live source allows only one request and retries network failures", async () => {
+  const saved = globalThis.fetch;
+  let resolve!: (value: Response) => void;
+  let calls = 0;
+  globalThis.fetch = () => { calls++; return new Promise(r => { resolve = r; }); };
+  try {
+    const live = new LiveSource();
+    const pending = live.poll();
+    assert.deepEqual((await live.poll()).newSteps, []);
+    assert.equal(calls, 1);
+    resolve(new Response("", { status: 404 }));
+    assert.equal((await pending).error?.kind, "network");
+    globalThis.fetch = async () => new Response(JSON.stringify(step(1)) + "\n");
+    const recovered = await live.poll();
+    assert.equal(recovered.error, null);
+    assert.equal(recovered.newSteps.length, 1);
+  } finally { globalThis.fetch = saved; }
+});
+
+async function liveHarness(resourceReady: Promise<HTMLImageElement>) {
+  const { LivePlayback } = await import("../src/replay/LivePlayback");
+  let setups = 0;
+  const texts: { text: string; visible: boolean; destroy: () => void; setText: (s: string) => unknown }[] = [];
+  const text = (value: string) => {
+    const item = { text: value, visible: true,
+      setOrigin: () => item, setDepth: () => item,
+      setText: (s: string) => { item.text = s; return item; },
+      destroy: () => { item.visible = false; } };
+    texts.push(item);
+    return item;
+  };
+  const scene = { add: { text: (_x: number, _y: number, value: string) => text(value) },
+    tweens: { add: () => {}, killTweensOf: () => {} },
+    time: { addEvent: () => ({ remove: () => {} }) }, events: { once: () => {} } } as unknown as Phaser.Scene;
+  const controller = { totalSteps: 1, seek: () => {}, addStep: () => { controller.totalSteps++; } };
+  const resources = [resourceReady, Promise.resolve(new Map()), Promise.resolve(new Map()), Promise.resolve(null)] as ConstructorParameters<typeof LivePlayback>[1];
+  const host = { setup: () => { setups++; }, controller: () => controller,
+    scrubber: () => ({ grow: () => {} }), loadingText: text("loading") } as unknown as ConstructorParameters<typeof LivePlayback>[2];
+  const live = new LivePlayback(scene, resources, host);
+  return { live, setups: () => setups, texts, controller };
+}
+
+test("live playback prevents duplicate setup while resources are pending", async () => {
+  const saved = globalThis.fetch;
+  let resolve!: (value: HTMLImageElement) => void;
+  const resources = new Promise<HTMLImageElement>(r => { resolve = r; });
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return new Response('{"__meta__":true}\n' + JSON.stringify(step(1)) + '\n');
+  };
+  const { live, setups } = await liveHarness(resources);
+  try {
+    const pending = live.pollOnce();
+    await new Promise(r => setTimeout(r, 0));
+    await live.pollOnce();
+    assert.equal(calls, 1);
+    resolve({} as HTMLImageElement);
+    await pending;
+    assert.equal(setups(), 1);
+    assert.equal(live.status().error, null);
+  } finally { live.dispose(); globalThis.fetch = saved; }
+});
+
+test("live playback cancels pending setup after scene disposal", async () => {
+  const saved = globalThis.fetch;
+  let resolve!: (value: HTMLImageElement) => void;
+  const resources = new Promise<HTMLImageElement>(r => { resolve = r; });
+  globalThis.fetch = async () => new Response('{"__meta__":true}\n' + JSON.stringify(step(1)) + '\n');
+  const { live, setups } = await liveHarness(resources);
+  try {
+    const pending = live.pollOnce();
+    await new Promise(r => setTimeout(r, 0));
+    live.dispose();
+    resolve({} as HTMLImageElement);
+    await pending;
+    assert.equal(setups(), 0);
+  } finally { globalThis.fetch = saved; }
+});
+
+test("live playback shows a recoverable issue after setup and retains steps on replacement", async () => {
+  const saved = globalThis.fetch;
+  const prefix = '{"__meta__":true,"run_id":"first"}\n' + JSON.stringify(step(1)) + '\n';
+  let data = prefix;
+  globalThis.fetch = async () => new Response(data);
+  const { live, texts, controller } = await liveHarness(Promise.resolve({} as HTMLImageElement));
+  try {
+    await live.pollOnce();
+    data = prefix + 'bad\n';
+    await live.pollOnce();
+    assert.equal(live.status().error?.kind, "parse");
+    assert.ok(texts.some(t => t.visible && t.text.includes("等待数据修复")));
+    data = prefix + JSON.stringify(step(2)) + '\n';
+    await live.pollOnce();
+    assert.equal(live.status().error, null);
+    assert.equal(controller.totalSteps, 2);
+    data = '{"__meta__":true,"run_id":"second"}\n' + JSON.stringify(step(9)) + '\n';
+    await live.pollOnce();
+    assert.equal(live.status().error?.kind, "replaced");
+    assert.equal(controller.totalSteps, 2);
+    assert.equal(live.status().badgeVisible, false);
+  } finally { live.dispose(); globalThis.fetch = saved; }
 });

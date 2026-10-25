@@ -685,6 +685,27 @@ await page3.close();
 mock.kill();
 rmSync(liveGateDir, { recursive: true, force: true });
 
+console.log("\n== 12. 直播坏行恢复与运行替换 ==");
+const page4 = await browser.newPage({ viewport: { width: 980, height: 560 } });
+const errors4 = [];
+page4.on("pageerror", e => errors4.push(String(e)));
+const livePrefix = JSON.stringify({ __meta__: true, schema_version: 1, run_id: "fault-test-1" }) + "\n";
+let liveData = livePrefix + JSON.stringify(fixture.steps[0]) + "\nbad-json\n";
+await page4.route("**/live.jsonl?*", route => route.fulfill({ status: 200, body: liveData }));
+await page4.goto(`http://localhost:${PORT}/?live`, { waitUntil: "load" });
+await page4.waitForFunction(() => window.__REPLAY__?.live?.status().error?.kind === "parse");
+check(await page4.evaluate(() => window.__REPLAY__.controller.totalSteps === 1), "坏行阻塞，保留已成功摄入的首步");
+await page4.screenshot({ path: resolve(SHOTS, "15_live_parse_error.png") });
+liveData = livePrefix + JSON.stringify(fixture.steps[0]) + "\n" + JSON.stringify(fixture.steps[1]) + "\n";
+await page4.waitForFunction(() => window.__REPLAY__.controller.totalSteps === 2 && !window.__REPLAY__.live.status().error);
+check(true, "坏行修复后继续摄入且清除提示");
+liveData = JSON.stringify({ __meta__: true, schema_version: 1, run_id: "fault-test-2" }) + "\n" + JSON.stringify(fixture.steps[0]) + "\n";
+await page4.waitForFunction(() => window.__REPLAY__.live.status().error?.kind === "replaced");
+check(await page4.evaluate(() => window.__REPLAY__.controller.totalSteps === 2), "新运行不混入原时间线，提示重新加载");
+check(errors4.length === 0, "直播异常页无 page 错误");
+await page4.screenshot({ path: resolve(SHOTS, "16_live_replaced.png") });
+await page4.close();
+
 console.log("\n== 12. 无残留错误 (stub + 真实样本 + 直播三页) ==");
 check(errors.length === 0, "stub 页全程无 console/page 错误" + (errors.length ? " (" + errors.join("; ") + ")" : ""));
 check(errors2.length === 0, "真实样本页全程无 console/page 错误" + (errors2.length ? " (" + errors2.join("; ") + ")" : ""));

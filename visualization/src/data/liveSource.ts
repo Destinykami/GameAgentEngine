@@ -1,4 +1,5 @@
 import type { TimelineStep } from "./schema";
+import { validateTimeline } from "./timelineLoader";
 
 // 直播数据源 (计划 M5 扩展: 运行中实时可视化)。
 // 引擎 (world_auto_sim.py) 每跑完一步就 append 一行 JSON 到 live.jsonl:
@@ -18,55 +19,87 @@ export interface LiveMeta {
   persuade_n?: number | null;
 }
 
+export interface LiveIssue {
+  kind: "parse" | "network" | "replaced";
+  message: string;
+}
+
 export interface LivePollResult {
-  meta: LiveMeta | null;      // 首次见到 meta 行时返回 (之后一直持有)
-  newSteps: TimelineStep[];   // 本轮新增的 step (已按行顺序)
-  done: boolean;              // 见到 __done__ 行
+  meta: LiveMeta | null;
+  newSteps: TimelineStep[];
+  done: boolean;
+  error: LiveIssue | null;
 }
 
 export class LiveSource {
-  private url: string;
-  private ingested = 0;       // 已摄入的行数 (只处理其后的新行)
+  private consumed: string[] = [];
   private meta: LiveMeta | null = null;
   private doneSeen = false;
-  private steps: TimelineStep[] = [];      // 累计摄入的所有 step (供首次 setup 建完整时间线)
+  private steps: TimelineStep[] = [];
+  private polling = false;
+  private replacement: LiveIssue | null = null;
 
-  constructor(url = "live.jsonl") { this.url = url; }
+  constructor(private url = "live.jsonl") {}
 
   get stepCount(): number { return this.steps.length; }
   get allSteps(): readonly TimelineStep[] { return this.steps; }
   get done(): boolean { return this.doneSeen; }
 
   async poll(): Promise<LivePollResult> {
-    const result: LivePollResult = { meta: this.meta, newSteps: [], done: this.doneSeen };
-    let text = "";
+    const result: LivePollResult = {
+      meta: this.meta, newSteps: [], done: this.doneSeen, error: this.replacement,
+    };
+    if (this.polling || this.replacement) return result;
+    this.polling = true;
     try {
-      const res = await fetch(this.url + "?t=" + Date.now(), { cache: "no-store" });
-      if (!res.ok) return result;   // 文件还没生成 (模拟未启动), 下轮再试
-      text = await res.text();
-    } catch { return result; }      // 网络/404, 下轮再试
-
-    // 只处理完整行: 末尾无换行 → 末行是写了一半的半行, 丢弃 (下轮重试)。
-    let lines = text.split("\n");
-    if (!text.endsWith("\n") && lines.length > 0) lines = lines.slice(0, -1);
-    lines = lines.filter((l) => l.trim().length > 0);
-
-    for (let i = this.ingested; i < lines.length; i++) {
-      let obj: Record<string, unknown>;
-      try { obj = JSON.parse(lines[i]); } catch { break; }   // 半行/坏行, 停在本轮, 下轮重试
-      if (obj.__meta__) {
-        this.meta = obj as unknown as LiveMeta;
-        result.meta = this.meta;
-      } else if (obj.__done__) {
-        this.doneSeen = true;
-        result.done = true;
-      } else {
-        const st = obj as unknown as TimelineStep;
-        result.newSteps.push(st);
-        this.steps.push(st);
+      let text: string;
+      try {
+        const res = await fetch(this.url + "?t=" + Date.now(), { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        text = await res.text();
+      } catch {
+        result.error = { kind: "network", message: "直播数据暂不可用，正在重试…" };
+        return result;
       }
+      // 不消费尾部半行；完整坏行也留在原位置等待修复。
+      let lines = text.split("\n");
+      if (!text.endsWith("\n")) lines = lines.slice(0, -1);
+      lines = lines.filter(line => line.trim().length > 0);
+      if (lines.length < this.consumed.length || this.consumed.some((line, i) => line !== lines[i])) {
+        this.replacement = { kind: "replaced", message: "直播文件已更换或重置，请重新加载页面。" };
+        result.error = this.replacement;
+        return result;
+      }
+      for (let i = this.consumed.length; i < lines.length; i++) {
+        let obj: Record<string, unknown>;
+        try {
+          obj = JSON.parse(lines[i]);
+          if (!obj || typeof obj !== "object" || Array.isArray(obj)) throw new Error("invalid record");
+          if (!obj.__meta__ && !obj.__done__) {
+            const previous = this.steps[this.steps.length - 1];
+            validateTimeline({ schema_version: 1, world: {}, steps: previous ? [previous, obj] : [obj] });
+            if (!Number.isFinite(obj.clock)) throw new Error("invalid clock");
+          }
+        } catch {
+          result.error = { kind: "parse", message: `直播第 ${i + 1} 行损坏，等待数据修复…` };
+          break;
+        }
+        if (obj.__meta__) {
+          this.meta = obj as unknown as LiveMeta;
+          result.meta = this.meta;
+        } else if (obj.__done__) {
+          this.doneSeen = true;
+          result.done = true;
+        } else {
+          const step = obj as unknown as TimelineStep;
+          this.steps.push(step);
+          result.newSteps.push(step);
+        }
+        this.consumed.push(lines[i]);
+      }
+      return result;
+    } finally {
+      this.polling = false;
     }
-    this.ingested = lines.length;
-    return result;
   }
 }
