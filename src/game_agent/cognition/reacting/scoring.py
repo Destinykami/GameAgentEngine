@@ -13,7 +13,7 @@ class EventScorer:
     def __init__(self, llm: EventModel) -> None:
         self._llm = llm
         self._cache: OrderedDict[
-            tuple[str, str], tuple[float, float, float]] = OrderedDict()
+            tuple, tuple[float, float, float]] = OrderedDict()
 
     @property
     def cache_size(self) -> int:
@@ -21,8 +21,8 @@ class EventScorer:
 
     def score(self, event: str, persona_traits: dict[str, float],
               current_plan: str) -> tuple[float, float, float]:
-        """LLM 判断事件价值, 按 (事件, 计划) 缓存。"""
-        key = (event, current_plan)
+        """LLM 判断事件价值, 按 (事件, 完整计划, 人格) 缓存。"""
+        key = (event, current_plan, tuple(sorted(persona_traits.items())))
         if key in self._cache:
             self._cache.move_to_end(key)
             return self._cache[key]

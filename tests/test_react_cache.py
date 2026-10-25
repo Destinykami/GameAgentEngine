@@ -38,3 +38,44 @@ def test_cached_accept_still_accepts():
     assert first.react is True
     assert second.react is True and second.action == first.action
     assert second.utility == first.utility
+
+
+def test_source_upgrade_recomputes_utility_within_old_trust_bucket():
+    class Model(_StubLLM):
+        calls = 0
+        def judge_trust(self, memories, player_id):
+            self.calls += 1
+            return 0.1 if '[传闻' in memories[0][1] else 0.2
+        def score_event(self, *args):
+            return (10, 0, 11.5)
+    model = Model()
+    npc = NPC('T', {'social': 1}, llm=model)
+    try:
+        npc.observe('P 帮我修好了咖啡机', 0, 'P', hearsay=True, hop=2)
+        first = npc.react('邀请', 'P', 1)
+        npc.observe('P 帮我修好了咖啡机', 2, 'P')
+        second = npc.react('邀请', 'P', 3)
+        assert not first.react and second.react
+        assert abs(second.utility - 0.5) < 1e-9
+        assert model.calls == 2
+        assert npc.react('邀请', 'P', 4).reason == '决策缓存命中'
+        assert model.calls == 2
+    finally:
+        npc.store.close()
+
+
+def test_persona_mutation_refreshes_both_decision_and_event_score():
+    class Model(_StubLLM):
+        calls = 0
+        def score_event(self, event, traits, current_plan=''):
+            self.calls += 1
+            return (traits['social'] * 10, 0, 3)
+    model = Model()
+    npc = NPC('T', {'social': 0.1}, llm=model)
+    try:
+        assert not npc.react('邀请', 'P', 0).react
+        npc.persona_traits['social'] = 1
+        assert npc.react('邀请', 'P', 1).react
+        assert model.calls == 2
+    finally:
+        npc.store.close()

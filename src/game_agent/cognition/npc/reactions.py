@@ -13,7 +13,7 @@ NPC_CACHE_LIMIT = 512
 
 class ReactionCache:
     def __init__(self) -> None:
-        self._cache: OrderedDict[str, ReactionDecision] = OrderedDict()
+        self._cache: OrderedDict[tuple, ReactionDecision] = OrderedDict()
 
     @property
     def size(self) -> int:
@@ -27,10 +27,10 @@ class ReactionCache:
                can_cache: Callable[[], bool]) -> ReactionDecision:
         if decider.use_relationship:
             trust = decider.relationship_trust(player_id)
-            trust_bucket = round(trust * 2) / 2   # -1..1 量化到 0.5
         else:
-            trust_bucket = "-"
-        cache_key = f"{event}|{player_id}|{trust_bucket}|{plan[:20]}"
+            trust = None
+        cache_key = (event, player_id, trust, plan,
+                     tuple(sorted(persona_traits.items())), decider.use_relationship)
         cached = self._cache.get(cache_key)
         if cached is not None:
             self._cache.move_to_end(cache_key)   # LRU 命中提权

@@ -131,7 +131,7 @@ def test_event_lru_zero_values_persona_key_boundary_and_clear():
     scorer = EventScorer(model)
     for index in range(EVENT_VALUE_CACHE_LIMIT):
         scorer.score(str(index), {}, "计划")
-    scorer.score("0", {"social": 0.9}, "计划")
+    scorer.score("0", {}, "计划")
     scorer.score("新增", {}, "计划")
     scorer.score("0", {}, "计划")
     assert model.calls == EVENT_VALUE_CACHE_LIMIT + 1

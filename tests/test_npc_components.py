@@ -278,7 +278,7 @@ def test_reaction_cache_rechecks_trust_on_hit_and_write_gate_after_decision():
     decider = Decider()
     first = cache.decide(decider, "event", "P", {}, "a" * 21, lambda: enabled[0])
     enabled[0] = False
-    second = cache.decide(decider, "event", "P", {}, "a" * 20 + "b", lambda: enabled[0])
+    second = cache.decide(decider, "event", "P", {}, "a" * 21, lambda: enabled[0])
     assert second.action == first.action and second.utility == first.utility
     assert second.reason == "决策缓存命中" and calls == ["trust", "decide", "trust"]
     cache.clear()
@@ -371,3 +371,19 @@ def test_metadata_save_partial_failure_keeps_key_order_and_delays_path_update():
     assert port.meta["plan_blocks"] == [[7, 9, "工作"]] and state.data_path == "npc.db"
     state.reflected_obs["P"] = 99
     assert port.meta["reflected_obs"] == {"P": 3}
+
+
+def test_reaction_cache_uses_entire_plan_and_structured_event_player_key():
+    cache = ReactionCache()
+    class Decider:
+        use_relationship = False
+        calls = 0
+        def decide(self, *args):
+            self.calls += 1
+            return ReactionDecision(True, str(self.calls), self.calls, "new")
+    decider = Decider()
+    for event, player, plan in [("e|P", "Q", "a" * 21),
+                                ("e|P", "Q", "a" * 20 + "b"),
+                                ("e", "P|Q", "a" * 21)]:
+        cache.decide(decider, event, player, {}, plan, lambda: True)
+    assert decider.calls == 3
