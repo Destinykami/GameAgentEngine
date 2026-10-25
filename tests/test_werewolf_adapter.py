@@ -189,3 +189,13 @@ def test_corrupted_world_snapshot_is_rejected(field, value):
     state[field] = value
     with pytest.raises(ValueError):
         WerewolfWorld.restore(state)
+
+
+def test_json_key_sorting_does_not_change_seat_order_or_pending_requests():
+    roles = {'Z': 'wolf', 'B': 'seer', 'Y': 'villager', 'A': 'villager'}
+    adapter = WerewolfAdapter(WerewolfWorld('g', roles))
+    expected = adapter.requests()
+    state = json.loads(json.dumps(adapter.snapshot(), sort_keys=True))
+    restored = WerewolfAdapter.restore(state)
+    assert restored.world.actors == ('Z', 'B', 'Y', 'A')
+    assert restored.requests() == expected

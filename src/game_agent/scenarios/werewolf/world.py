@@ -166,7 +166,7 @@ class WerewolfWorld:
     def snapshot(self):
         """主持人私密快照，不能作为玩家视图或公开回放。"""
         return json_copy({'schema_version': 1, 'instance_id': self.instance_id,
-            'roles': self._roles, 'max_rounds': self.max_rounds, 'alive': self.living(),
+            'roles': self._roles, 'actors': self.actors, 'max_rounds': self.max_rounds, 'alive': self.living(),
             'round': self.round, 'version': self.version, 'phase': self.phase,
             'winner': self.winner, 'speakers': self.speakers,
             'speaker_index': self.speaker_index, 'transcript': self.transcript})
@@ -175,7 +175,10 @@ class WerewolfWorld:
     def restore(cls, state):
         if state['schema_version'] != 1:
             raise ValueError('不支持的对局快照版本')
-        world = cls(state['instance_id'], state['roles'], max_rounds=state['max_rounds'])
+        seats = state.get('actors', list(state['roles']))
+        if len(seats) != len(set(seats)) or set(seats) != set(state['roles']):
+            raise ValueError('快照席位与角色不一致')
+        world = cls(state['instance_id'], {a: state['roles'][a] for a in seats}, max_rounds=state['max_rounds'])
         world.alive = set(state['alive'])
         if not world.alive <= set(world.actors):
             raise ValueError('快照包含未知存活角色')

@@ -1,6 +1,6 @@
 # 多游戏接入与 NPC 决策协议
 
-状态：待实现。设计日期：2026-10-25。关联：[NPC](npc-runtime.md)、[记忆事件](memory-events.md)、[世界](world-runtime.md)、[模型](model-adapters.md)、[场景](scenarios.md)。
+状态：已实现并完成离线验收。设计日期：2026-10-25。关联：[NPC](npc-runtime.md)、[记忆事件](memory-events.md)、[世界](world-runtime.md)、[模型](model-adapters.md)、[场景](scenarios.md)。
 
 ## 目标与边界
 
@@ -21,7 +21,7 @@
 
 动作参数支持 JSON 基本类型、对象和数组；不执行模型代码。参数结构校验不替代玩法校验。非法/过期动作拒绝且不改变状态；重复相同行动可幂等确认，冲突重提拒绝。模型异常直接报告、保留当前请求和已提交结果，不擅自把所有游戏降级为 wait。
 
-契约在构造时校验个人视角/目标/说明为字符串，防止误把完整 World 对象传入模型；时间须为有限数且不能用布尔值代替。请求批与事件队列先验证整个新增集合再修改，以免非法定义留下半批状态。
+契约在构造时校验个人视角/目标/说明为字符串，防止误把完整 World 对象传入模型；时间须为有限数且不能用布尔值代替。请求批与事件队列先验证整个新增集合再修改，以免非法定义留下半批状态。依赖边界检查禁止核心导入 adapters/、具体场景、运行器或评测实现。
 
 原文事件写入每个接收者自己的档案，事件投递无模型调用。完成所有接收者写入后才能确认事件；部分失败不确认，重投用稳定 event_key 去重。游戏状态与各 NPC 档案不宣称跨库原子事务。适配器保存权威状态、请求/提交和未确认事件；恢复后通过事件 ID 补投。
 
@@ -53,7 +53,7 @@ SpatialAdapter 引用现有 World 的公开感知/执行接口。显式 begin_tu
 
 WerewolfWorld 持有角色真相、阶段、提交和结果，无坐标/血量/NPC 依赖；适配器只投递公开信息及对应私密视角，发言不会让每个旁观者自动回复。技能反馈、发言声明与游戏裁决分清证据性质。提供 JSON 状态快照，包含未完成提交、未确认事件及稳定 ID；新进程恢复不重复结算。公开输出不包含角色真相和私人备注。
 
-恢复时校验阶段/版本/席位/胜负一致性、请求与当前个人视角一致性、待投递事件的实例与接收者；非法快照明确拒绝，不能静默补全游戏状态。
+恢复时校验阶段/版本/席位/胜负一致性、请求与当前个人视角一致性、待投递事件的实例与接收者；席位以显式列表保存，JSON 字典键排序不得改变发言或平票顺序。非法快照明确拒绝，不能静默补全游戏状态。
 
 ## 实施、验证与限制
 
@@ -61,6 +61,60 @@ WerewolfWorld 持有角色真相、阶段、提交和结果，无坐标/血量/N
 
 验证：参数/请求校验、私密投递、部分失败重投、跨实例/关系/未来隔离、动态动作模型提示词、空间真实执行与旧测试回归、阶段顺序/同时提交/平票/胜负/恢复、第三方假 World 无继承接入、导入依赖边界。最终运行离线全集和 wheel 独立安装，提供不调用真实服务的运行示例。前端无变更，不运行真实模型或宣称博弈质量。
 
-运行示例计划为 examples/game_adapters.py（薄入口）与 runners/game_demo.py。默认使用离线确定性模型，显式 --real-model 才连接已配置服务；新目录运行且拒绝覆盖已有数据。两个游戏使用相同的 GameSession 与 NPC 接口。输出公共结果和独立主持人私密适配器快照，后者不进入公共回放。适配器 JSON 不是自动包含各 NPC 两库的一致检查点；复制/分支恢复须配对保存 NPC 档案，空间 World 继续使用既有完整检查点。首轮不新增跨游戏检查点发布器。
+运行示例已实现于 examples/game_adapters.py（薄入口）与 runners/game_demo.py。默认使用离线确定性模型，显式 --real-model 才连接已配置服务；新目录运行且拒绝覆盖已有数据。两个游戏使用相同的 GameSession 与 NPC 接口。输出公共结果和独立主持人私密适配器快照，后者不进入公共回放。适配器 JSON 不是自动包含各 NPC 两库的一致检查点；复制/分支恢复须配对保存 NPC 档案，空间 World 继续使用既有完整检查点。首轮不新增跨游戏检查点发布器。
 
-实施记录：实例记忆范围已完成；integration/ 的值契约、请求批、待投递队列和 GameSession 已实现。90 项协议与导入边界离线测试通过，包含第三方无继承游戏、非法参数、过期/重复提交、部分投递失败、模型失败后只补未提交请求。NPC/模型及两个适配器仍在实施。无新增待确认冲突；新行为使用新接口，旧入口保持兼容。人物关系推理、长期跨局经验选择和完整狼人杀策略质量不属于首轮接入验收。
+实施记录：实例记忆范围、协议/会话、NPC/动态模型、空间适配和独立狼人杀均完成。无新增待确认冲突；旧入口保持兼容。人物关系推理、长期跨局经验选择和完整狼人杀策略质量不属于首轮验收。
+
+## 使用与新增游戏
+
+从仓库根目录运行（默认无网络、目录省略时新建临时目录）：
+
+```bash
+.venv/bin/python examples/game_adapters.py --game werewolf
+.venv/bin/python examples/game_adapters.py --game spatial
+```
+
+独立狼人杀使用现有 NPC 与同一会话协调器：
+
+```python
+from uuid import uuid4
+from game_agent import NPC, RealLLM
+from game_agent.integration import GameSession
+from game_agent.scenarios.werewolf import WerewolfWorld, WerewolfAdapter
+
+roles = {"A": "wolf", "B": "seer", "C": "villager", "D": "villager"}
+world = WerewolfWorld(uuid4().hex, roles)
+model = RealLLM()  # 需要可达端点；也可传仅实现 decide_game 的离线模型
+actors = {name: NPC.create(name, {"social": 0.5}, model, data_dir="data/actors")
+          for name in roles}
+try:
+    session = GameSession(WerewolfAdapter(world), actors)
+    moderator_events = session.run(max_steps=200)
+    public_events = [e for e in moderator_events if e.channel == "public"]
+finally:
+    for actor in actors.values():
+        actor.save()
+        actor.store.close()
+```
+
+每次新局使用新的 instance_id，恢复才复用原 ID；游戏类型名不能作为所有对局共用实例 ID。GameSession 返回值是主持人视角，公共界面须筛选频道；角色可以按游戏策略主动披露或谎报自己的信息，权限与策略分开。
+
+对已有稻妻 World 可构造 SpatialAdapter(world, instance_id)，将 world.npc_names() 对应 NPC 绑定到 GameSession；每次 begin_turn(now) 后 session.run()。没有绑定 NPC 控制器的玩家由游戏自行控制，也可以实现 GameActor 端口加入会话；不强制把玩家实体转换成 NPC。
+
+新增游戏提供自己的权威状态和实现 requests/submit/resolve/pending_events/ack_event/finished 的适配器，无须继承 World。参数支持 string/integer/number/boolean/object/array，复杂语义由游戏检查。模型异常保留批次，修复后可继续 step。
+
+## 最终验收与提交
+
+2026-10-25：Python 离线全集 568 项通过、6 项真实端点测试跳过（45.67 秒）。两个示例 CLI 离线完成；wheel 所有 Python 源码与当前 src 匹配，仓库外独立安装后禁网导入、旧两库检查点往返以及两个新游戏均运行完成。未修改前端，不运行前端构建；未运行真实模型、博弈效果或大规模性能评测。
+
+| 模块 | 提交 |
+|---|---|
+| 设计先行 | 4fe89ca |
+| 实例记忆与重投修正 | 8ec8856、d62b662 |
+| 通用协议与输入边界 | fc849f8、7e3ab49 |
+| 动态模型 | 8c0abb0 |
+| NPC 接入与最小模型回归 | ac3769b、e78ec45 |
+| 空间适配与检查点续跑 | 87752db、bdf7747 |
+| 独立狼人杀 | ed55a5d |
+
+后续方向：可插拔的结构化信念/取证策略、通用成套检查点发布器、完整狼人杀角色与真实策略评测。当前不将这些计划计入完成范围。
