@@ -19,6 +19,7 @@ from ..dialogue import DialogueManager
 from ...models.embeddings import Embedder, HashEmbedder
 from ...models.llm import LLMClient
 from ...memory.store import MemoryStore
+from ...memory.events import EventContext
 from ...world.social_contracts import Hearsay
 from ..planning import PlanningEngine, PlanState
 from ..planning.memory import previous_day_context, shared_world_context
@@ -86,10 +87,12 @@ class NPC:
     def observe(self, content: str, now: float,
                 player_id: str | None = None,
                 hearsay: bool = False, hop: int = 0,
-                importance: float | None = None) -> int:
+                importance: float | None = None, *,
+                event: EventContext | None = None) -> int:
         """观察先去重再打分；仅新增共享观察驱动自我反思累积。"""
         source_id = archive_observation(self.store, content, now, player_id,
-                                         hearsay=hearsay, hop=hop, importance=importance)
+                                         hearsay=hearsay, hop=hop, importance=importance,
+                                         event=event)
         return self._project_observation(source_id, content, now, player_id,
                                           hearsay, hop, importance)
 
@@ -111,6 +114,8 @@ class NPC:
             action[len(prefix):] if dialogue else action, now, player_name,
             kind='dialogue_in' if dialogue else 'action', speaker=player_name,
             session_id=f'dialogue:{player_name}:{now}' if dialogue else '',
+            event=EventContext(occurred_at=now, actor=player_name, target=self.name,
+                evidence_kind='utterance' if dialogue else 'action_attempt'),
             metadata={'projection': 'action', 'action': action})
         return self._project_action(source_id, player_name, action, now)
 
@@ -163,8 +168,13 @@ class NPC:
                    else f'{speaker} 说: {utterance}')
         source_id = archive_observation(self.store, content, now, player_id,
             raw_content=utterance, kind='dialogue_out' if outgoing else 'dialogue_in',
-            speaker=speaker, session_id=f'dialogue:{player_id}:{now}')
+            speaker=speaker, session_id=f'dialogue:{player_id}:{now}',
+            event=self._dialogue_event(player_id, speaker, now))
         return self._project_observation(source_id, content, now, player_id)
+
+    def _dialogue_event(self, player_id: str, speaker: str, now: float) -> EventContext:
+        return EventContext(occurred_at=now, actor=speaker,
+            target=player_id if speaker == self.name else self.name, evidence_kind='utterance')
 
     # ---------------------------------------------------------------- 反思
     def maybe_reflect_self(self, now: float) -> list[int]:
@@ -246,7 +256,8 @@ class NPC:
         if remember and record_utterance and utterance:
             incoming = archive_observation(self.store,
                 f'{player_id} 对我说: {utterance}', now, player_id,
-                raw_content=utterance, kind='dialogue_in', speaker=player_id, session_id=session)
+                raw_content=utterance, kind='dialogue_in', speaker=player_id, session_id=session,
+                event=self._dialogue_event(player_id, player_id, now))
         try:
             self._advance(now)
             self.maybe_reflect_relationship(player_id, now)
@@ -260,7 +271,8 @@ class NPC:
         if remember and reply:
             outgoing = archive_observation(self.store,
                 f'我对 {player_id} 说: {reply}', now, player_id,
-                raw_content=str(reply), kind='dialogue_out', speaker=self.name, session_id=session)
+                raw_content=str(reply), kind='dialogue_out', speaker=self.name, session_id=session,
+                event=self._dialogue_event(player_id, self.name, now))
         if incoming is not None:
             self._project_observation(incoming, f'{player_id} 对我说: {utterance}', now, player_id)
         if outgoing is not None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ...memory.models import MemoryRecord
+from ...memory.events import EventContext
 from .contracts import ImportanceModel, MemoryReader, ObservationMemory, PerceptionModel
 
 
@@ -39,10 +40,11 @@ def archive_observation(store: ObservationMemory, content: str, now: float,
                         player_id: str | None = None, *, hearsay: bool = False,
                         hop: int = 0, importance: float | None = None,
                         raw_content: str | None = None, kind: str = 'observation',
-                        speaker: str | None = None, session_id: str = '') -> str:
+                        speaker: str | None = None, session_id: str = '',
+                        event: EventContext | None = None) -> str:
     return store.archive_input(content if raw_content is None else raw_content, now,
         player_id, kind=kind, speaker=speaker, session_id=session_id,
-        hearsay=hearsay, hop=hop,
+        hearsay=hearsay, hop=hop, event=event,
         metadata={'projection': 'observation', 'content': content, 'importance': importance})
 
 
