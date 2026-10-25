@@ -27,7 +27,7 @@ from ..reflection import ReflectionEngine
 
 from .consolidation import consolidate_observations
 from .context import decision_context, identity_belief, rumor_to_share
-from .observation import describe_action, write_observation
+from .observation import archive_observation, describe_action, write_observation
 from .persistence import (load_configuration, prepare_path, restore_runtime,
                           save_checkpoint)
 from .reactions import ReactionCache
@@ -88,18 +88,83 @@ class NPC:
                 hearsay: bool = False, hop: int = 0,
                 importance: float | None = None) -> int:
         """观察先去重再打分；仅新增共享观察驱动自我反思累积。"""
+        source_id = archive_observation(self.store, content, now, player_id,
+                                         hearsay=hearsay, hop=hop, importance=importance)
+        return self._project_observation(source_id, content, now, player_id,
+                                          hearsay, hop, importance)
+
+    def _project_observation(self, source_id: str, content: str, now: float,
+                             player_id: str | None, hearsay: bool = False,
+                             hop: int = 0, importance: float | None = None) -> int:
         self._advance(now)
         result = write_observation(self.store, self.llm, content, now,
-                                   player_id, hearsay, hop, importance)
+                                   player_id, hearsay, hop, importance, source_id=source_id)
         if result.created:
             self._runtime.record_observation(result.importance, player_id)
         return result.memory_id
 
     def perceive_action(self, player_name: str, action: str, now: float) -> int:
         """按近期关系观察生成描述，再走统一观察入口。"""
-        self._advance(now)
-        content = describe_action(self.store, self.llm, self.name, player_name, action)
-        return self.observe(content, now, player_id=player_name)
+        prefix = '对TA说: '
+        dialogue = action.startswith(prefix)
+        source_id = self.store.archive_input(
+            action[len(prefix):] if dialogue else action, now, player_name,
+            kind='dialogue_in' if dialogue else 'action', speaker=player_name,
+            session_id=f'dialogue:{player_name}:{now}' if dialogue else '',
+            metadata={'projection': 'action', 'action': action})
+        return self._project_action(source_id, player_name, action, now)
+
+    def _project_action(self, source_id: str, player_name: str, action: str, now: float) -> int:
+        existing = self.store.projected_id(source_id)
+        if existing is not None:
+            self.store.archive_done(source_id)
+            return existing
+        try:
+            self._advance(now)
+            content = describe_action(self.store, self.llm, self.name, player_name, action)
+            return self._project_observation(source_id, content, now, player_name)
+        except Exception as exc:
+            self.store.archive_failed(source_id, exc)
+            raise
+
+    def retry_pending_memories(self, limit: int = 20) -> dict:
+        """显式限批重试；失败保留原文，不因一个失败阻断其余记录。"""
+        completed, failed = [], []
+        for source in self.store.pending_archive(limit):
+            try:
+                mode = source.metadata.get('projection')
+                existing = self.store.projected_id(source.id)
+                if existing is not None:
+                    self.store.archive_done(source.id)
+                    completed.append(existing)
+                elif mode == 'observation':
+                    completed.append(self._project_observation(source.id,
+                        source.metadata['content'], source.timestamp, source.player_id,
+                        source.hearsay, source.hop, source.metadata.get('importance')))
+                elif mode == 'action':
+                    completed.append(self._project_action(source.id, source.player_id,
+                        source.metadata['action'], source.timestamp))
+                elif mode == 'record':
+                    from ...memory.models import MemoryRecord
+                    completed.append(self.store.add(MemoryRecord(**source.metadata['record']),
+                                                     source_id=source.id))
+                else:
+                    self.store.archive_done(source.id)
+            except Exception as exc:
+                self.store.archive_failed(source.id, exc)
+                failed.append(source.id)
+        return {'completed': completed, 'failed': failed}
+
+    def remember_dialogue(self, player_id: str, utterance: str, now: float, *,
+                           speaker: str) -> int:
+        """世界对话回流：保存实际原话，并关联可合并的观察描述。"""
+        outgoing = speaker == self.name
+        content = (f'我对 {player_id} 说: {utterance}' if outgoing
+                   else f'{speaker} 说: {utterance}')
+        source_id = archive_observation(self.store, content, now, player_id,
+            raw_content=utterance, kind='dialogue_out' if outgoing else 'dialogue_in',
+            speaker=speaker, session_id=f'dialogue:{player_id}:{now}')
+        return self._project_observation(source_id, content, now, player_id)
 
     # ---------------------------------------------------------------- 反思
     def maybe_reflect_self(self, now: float) -> list[int]:
@@ -177,16 +242,30 @@ class NPC:
         """
         # 近处: 仅当该玩家出现新观察时才重跑关系反思 (否则反思无限增殖、
         # 信任度随反复反思漂移)。已有反思足以指导本次对话。
-        self._advance(now)
-        self.maybe_reflect_relationship(player_id, now)
-        # 先拿到回复, 再写记忆: 本轮反思不该把"刚听到的这句话"当作旧证据。
-        reply = self.dialogue.reply(player_id, utterance, now)
+        incoming = None
+        session = f'dialogue:{player_id}:{now}'
         if remember and record_utterance and utterance:
-            self.observe(f"{player_id} 对我说: {utterance}", now,
-                         player_id=player_id)
+            incoming = archive_observation(self.store,
+                f'{player_id} 对我说: {utterance}', now, player_id,
+                raw_content=utterance, kind='dialogue_in', speaker=player_id, session_id=session)
+        try:
+            self._advance(now)
+            self.maybe_reflect_relationship(player_id, now)
+            # 原文已归档；主库观察仍在回复后写入，不提前成为旧证据。
+            reply = self.dialogue.reply(player_id, utterance, now)
+        except Exception as exc:
+            if incoming is not None:
+                self.store.archive_failed(incoming, exc)
+            raise
+        outgoing = None
         if remember and reply:
-            self.observe(f"我对 {player_id} 说: {reply}", now,
-                         player_id=player_id)
+            outgoing = archive_observation(self.store,
+                f'我对 {player_id} 说: {reply}', now, player_id,
+                raw_content=str(reply), kind='dialogue_out', speaker=self.name, session_id=session)
+        if incoming is not None:
+            self._project_observation(incoming, f'{player_id} 对我说: {utterance}', now, player_id)
+        if outgoing is not None:
+            self._project_observation(outgoing, f'我对 {player_id} 说: {reply}', now, player_id)
         return reply
 
     # ---------------------------------------------------------------- 反应

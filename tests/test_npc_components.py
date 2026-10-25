@@ -48,6 +48,19 @@ def test_observation_write_ports_deduplicate_before_scoring_and_preserve_source(
     class Store:
         duplicate = None
 
+        def archive_input(self, *args, **options):
+            calls.append(('archive', args, options))
+            return 'source'
+
+        def projected_id(self, source_id):
+            return None
+
+        def archive_done(self, source_id):
+            pass
+
+        def archive_failed(self, source_id, exc):
+            raise AssertionError(str(exc))
+
         def find_similar_observation(self, content, player_id):
             calls.append(("find", content, player_id))
             return self.duplicate
@@ -56,7 +69,7 @@ def test_observation_write_ports_deduplicate_before_scoring_and_preserve_source(
             calls.append(("merge", memory_id, now, options))
             return 9.0
 
-        def add(self, record):
+        def add(self, record, *, source_id=None):
             calls.append(("add", record))
             return 7
 
@@ -68,19 +81,20 @@ def test_observation_write_ports_deduplicate_before_scoring_and_preserve_source(
     store = Store()
     result = write_observation(store, Model(), "传闻", 1, "P", True, 2)
     assert result.created and result.memory_id == 7 and result.importance == 5
-    assert [call[0] for call in calls] == ["find", "score", "add"]
+    assert [call[0] for call in calls] == ['archive', "find", "score", "add"]
     assert calls[-1][1].hearsay and calls[-1][1].hop == 2
     calls.clear()
     store.duplicate = MemoryRecord("旧传闻", 0, id=7)
     result = write_observation(store, object(), "亲见", 2, "P", False, 0)
     assert not result.created and result.memory_id == 7
-    assert calls == [("find", "亲见", "P"),
+    assert calls[0][0] == 'archive'
+    assert calls[1:] == [("find", "亲见", "P"),
                      ("merge", 7, 2, {"new_hearsay": False, "new_hop": 0,
-                                        "new_content": "亲见"})]
+                                        "new_content": "亲见", 'source_id': 'source'})]
     calls.clear()
     store.duplicate = None
     assert write_observation(store, object(), "预打分", 3, importance=0).importance == 0
-    assert [call[0] for call in calls] == ["find", "add"]
+    assert [call[0] for call in calls] == ['archive', "find", "add"]
 
 
 def test_action_description_only_needs_relation_reader_and_perception_model():
