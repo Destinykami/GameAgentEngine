@@ -27,6 +27,7 @@
 | 模块蓝图 | 状态 | 实现入口 |
 |---|---|---|
 | [多游戏接入协议](modules/game-integration.md) | 已实现，573 项离线测试通过 | integration/、adapters/、cognition/game.py、scenarios/werewolf/ |
+| [通用对局回放与狼人杀界面](modules/game-replay.md) | 设计已确认，待实现 | runners/werewolf_replay.py、visualization/src/werewolf/ |
 | [通用记忆事件与组合查询](modules/memory-events.md) | 已实现，522 项离线测试通过 | `src/game_agent/memory/events.py`、`event_repository.py`、`store.py` |
 | [世界实体与空间模型](modules/world-model.md) | 已实现，246 个离线测试通过 | `src/game_agent/world/entities.py` |
 | [结构化事件契约](modules/events.md) | 已实现，246 个离线测试通过 | `src/game_agent/world/events.py` |
