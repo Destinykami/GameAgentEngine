@@ -15,7 +15,7 @@ from .game_demo import DemoModel
 
 
 PRIVATE_EVENT_TYPES = {'role_assignment', 'inspection_result', 'wolf_result',
-                       'wolf_chat', 'witch_result'}
+                       'wolf_chat', 'wolf_target', 'witch_result'}
 
 
 def _parse_votes(content: str) -> dict:

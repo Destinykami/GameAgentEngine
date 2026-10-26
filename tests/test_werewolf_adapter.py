@@ -121,6 +121,8 @@ def test_witch_view_contains_wolf_target_and_can_save():
     for req in adapter.requests():
         adapter.submit(choose(req, action='kill', arguments={'target': 'E'}))
     events.extend(adapter.resolve())
+    assert any(e.event_type == 'wolf_target' and e.recipients == ('C',)
+               for e in events)
     assert adapter.world.phase == 'seer'
     seer = adapter.requests()[0]
     adapter.submit(choose(seer, action='inspect', arguments={'target': 'A'}))
@@ -132,6 +134,8 @@ def test_witch_view_contains_wolf_target_and_can_save():
     events.extend(adapter.resolve())
     assert 'E' in adapter.world.alive
     assert adapter.world.witch_antidote is False
+    assert adapter.world.witch_seen_target == 'E'
+    assert '你昨夜看到狼人目标：E' in adapter.world.view_for('C')
     assert any(e.event_type == 'announcement' and '无人死亡' in e.content for e in events)
 
 
@@ -279,6 +283,8 @@ def test_witch_saves_wolf_target_and_uses_antidote():
     events = play_night(adapter, wolf_target='E', seer_target='A', witch_action='save')
     assert 'E' in adapter.world.alive
     assert adapter.world.witch_antidote is False
+    assert adapter.world.witch_seen_target == 'E'
+    assert '你昨夜看到狼人目标：E' in adapter.world.view_for('C')
     assert adapter.world.witch_poison is True
     assert adapter.world.phase == 'speech'
     assert any(e.event_type == 'witch_result' and e.recipients == ('C',)

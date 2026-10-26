@@ -104,6 +104,7 @@ function eventLabel(event: WerewolfEvent): string {
     case "inspection_result": return "查验";
     case "wolf_result": return "狼人";
     case "wolf_chat": return "密谈";
+    case "wolf_target": return "刀口";
     case "witch_result": return "女巫";
     case "hunter_shot": return "猎人";
     case "hunter_pass": return "猎人";

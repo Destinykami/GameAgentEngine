@@ -44,7 +44,7 @@ export interface WerewolfGod {
 
 export const PRIVATE_EVENT_TYPES = new Set([
   "role_assignment", "inspection_result", "wolf_result", "wolf_chat",
-  "witch_result",
+  "wolf_target", "witch_result",
 ]);
 
 export function phaseLabel(step: WerewolfStep): string {

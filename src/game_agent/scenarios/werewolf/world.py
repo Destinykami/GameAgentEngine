@@ -51,6 +51,7 @@ class WerewolfWorld:
         self.wolf_speaker_index = 0
         self.wolf_chat: list[str] = []
         self.wolf_target: str | None = None
+        self.witch_seen_target: str | None = None
         self.witch_antidote = 'witch' in roles.values()
         self.witch_poison = 'witch' in roles.values()
         self.hunter_shot = 'hunter' not in roles.values()
@@ -138,8 +139,10 @@ class WerewolfWorld:
         elif role == 'witch':
             view += ('女巫药水：解药' + ('可用' if self.witch_antidote else '已用完')
                      + '，毒药' + ('可用' if self.witch_poison else '已用完') + '。')
-            if self.wolf_target is not None:
+            if self.phase in ('seer', 'witch') and self.wolf_target is not None:
                 view += f'今晚狼人投票选定的目标：{self.wolf_target}。'
+            elif self.witch_seen_target is not None:
+                view += f'你昨夜看到狼人目标：{self.witch_seen_target}。'
         elif role == 'hunter':
             view += ('猎人技能：你被狼人或投票淘汰时可开枪；被毒杀时不能开枪。'
                      + ('本局已使用。' if self.hunter_shot else '本局尚未使用。'))
@@ -194,6 +197,7 @@ class WerewolfWorld:
         self.wolf_speaker_index = 0
         self.wolf_chat = []
         self.wolf_target = None
+        self.witch_seen_target = None
 
     def _start_speech(self):
         self.speakers, self.speaker_index = list(self.living()), 0
@@ -229,10 +233,16 @@ class WerewolfWorld:
             votes = Counter(kills)
             target = next(a for a in self.actors if votes[a] == max(votes.values()))
         self.wolf_target = target
+        self.witch_seen_target = target
         wolves = self._living_wolves()
+        witch = next((a for a in self.living() if self._roles[a] == 'witch'), None)
         if target is not None:
             self._emit(events, 'wolf_result', f'狼人投票选定目标：{target}。',
                        wolves, 'team', participants=(target,))
+            if witch is not None:
+                self._emit(events, 'wolf_target',
+                           f'主持人反馈：今晚狼人投票选定的目标是 {target}。',
+                           (witch,), 'private', participants=(target,))
         if any(self._roles[a] == 'seer' for a in self.living()):
             self.phase = 'seer'
         elif any(self._roles[a] == 'witch' for a in self.living()):
@@ -380,6 +390,7 @@ class WerewolfWorld:
             'speaker_index': self.speaker_index, 'transcript': self.transcript,
             'wolf_speakers': self.wolf_speakers, 'wolf_speaker_index': self.wolf_speaker_index,
             'wolf_chat': self.wolf_chat, 'wolf_target': self.wolf_target,
+            'witch_seen_target': self.witch_seen_target,
             'witch_antidote': self.witch_antidote, 'witch_poison': self.witch_poison,
             'hunter_shot': self.hunter_shot, 'hunter_pending': self.hunter_pending,
             'hunter_next_phase': self.hunter_next_phase})
@@ -398,7 +409,7 @@ class WerewolfWorld:
             raise ValueError('快照包含未知存活角色')
         for key in ('round', 'version', 'phase', 'winner', 'speakers', 'speaker_index',
                     'transcript', 'wolf_speakers', 'wolf_speaker_index', 'wolf_chat',
-                    'wolf_target'):
+                    'wolf_target', 'witch_seen_target'):
             setattr(world, key, json_copy(state.get(key, getattr(world, key))))
         for key in ('witch_antidote', 'witch_poison', 'hunter_shot',
                     'hunter_pending', 'hunter_next_phase'):
@@ -420,7 +431,9 @@ class WerewolfWorld:
                 or world.wolf_target is not None and
                 (world.wolf_target not in world.actors or
                  world._roles[world.wolf_target] == 'wolf' or
-                 world.wolf_target not in world.alive)):
+                 world.wolf_target not in world.alive)
+                or world.witch_seen_target is not None and
+                world.witch_seen_target not in world.actors):
             raise ValueError('非法狼人夜间状态')
         if any(type(getattr(world, key)) is not bool for key in
                ('witch_antidote', 'witch_poison', 'hunter_shot')):
