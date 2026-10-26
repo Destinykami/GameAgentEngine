@@ -199,3 +199,97 @@ def test_json_key_sorting_does_not_change_seat_order_or_pending_requests():
     restored = WerewolfAdapter.restore(state)
     assert restored.world.actors == ('Z', 'B', 'Y', 'A')
     assert restored.requests() == expected
+
+
+SKILL_ROLES = {'A': 'wolf', 'B': 'seer', 'C': 'witch', 'D': 'hunter',
+               'E': 'villager', 'F': 'villager'}
+
+
+def night(adapter, actions):
+    for req in adapter.requests():
+        action, arguments = actions[req.actor_id]
+        adapter.submit(choose(req, action=action, arguments=arguments))
+    return adapter.resolve()
+
+
+def test_default_roles_are_ten_with_witch_and_hunter():
+    from game_agent.scenarios.werewolf import DEFAULT_ROLES
+    assert len(DEFAULT_ROLES) == 10
+    assert sum(v == 'wolf' for v in DEFAULT_ROLES.values()) == 3
+    assert set(DEFAULT_ROLES.values()) == {'wolf', 'seer', 'witch', 'hunter', 'villager'}
+    assert list(DEFAULT_ROLES.values()).count('witch') == 1
+    assert list(DEFAULT_ROLES.values()).count('hunter') == 1
+
+
+def test_witch_saves_wolf_target_and_uses_antidote():
+    adapter = WerewolfAdapter(WerewolfWorld('g', SKILL_ROLES))
+    events = night(adapter, {
+        'A': ('kill', {'target': 'E'}),
+        'B': ('inspect', {'target': 'A'}),
+        'C': ('save', {}),
+    })
+    assert 'E' in adapter.world.alive
+    assert adapter.world.witch_antidote is False
+    assert adapter.world.witch_poison is True
+    assert adapter.world.phase == 'speech'
+    assert any(e.event_type == 'witch_result' and e.recipients == ('C',)
+               and '解药' in e.content for e in events)
+    assert any(e.event_type == 'announcement' and '无人死亡' in e.content for e in events)
+
+
+def test_witch_poison_kills_hunter_without_a_shot():
+    adapter = WerewolfAdapter(WerewolfWorld('g', SKILL_ROLES))
+    events = night(adapter, {
+        'A': ('kill', {'target': 'D'}),
+        'B': ('inspect', {'target': 'A'}),
+        'C': ('poison', {'target': 'D'}),
+    })
+    assert 'D' not in adapter.world.alive
+    assert adapter.world.witch_poison is False
+    assert adapter.world.hunter_pending is None
+    assert adapter.world.hunter_shot is False
+    assert adapter.world.phase == 'speech'
+    assert not any(e.event_type.startswith('hunter_') for e in events)
+
+
+def test_hunter_shoots_after_wolf_kill_and_can_win():
+    roles = {'A': 'wolf', 'B': 'seer', 'C': 'witch', 'D': 'hunter', 'E': 'villager'}
+    adapter = WerewolfAdapter(WerewolfWorld('g', roles))
+    night(adapter, {
+        'A': ('kill', {'target': 'D'}),
+        'B': ('inspect', {'target': 'A'}),
+        'C': ('wait', {}),
+    })
+    assert adapter.world.phase == 'hunter'
+    assert adapter.world.actors_to_act() == ('D',)
+    request = adapter.requests()[0]
+    assert {a.name for a in request.actions} == {'shoot', 'pass'}
+    adapter.submit(choose(request, action='shoot', arguments={'target': 'A'}))
+    events = adapter.resolve()
+    assert adapter.world.winner == 'good'
+    assert adapter.world.phase == 'finished'
+    assert adapter.world.hunter_shot is True
+    assert any(e.event_type == 'hunter_shot' and e.channel == 'public' for e in events)
+
+
+def test_hunter_can_shoot_after_being_voted_out():
+    adapter = WerewolfAdapter(WerewolfWorld('g', SKILL_ROLES))
+    night(adapter, {
+        'A': ('kill', {'target': 'E'}),
+        'B': ('inspect', {'target': 'A'}),
+        'C': ('wait', {}),
+    })
+    while adapter.world.phase == 'speech':
+        phase(adapter)
+    living = adapter.world.living()
+    overrides = {a: ({'action': 'abstain', 'arguments': {}} if a == 'D'
+                     else {'arguments': {'target': 'D'}}) for a in living}
+    phase(adapter, overrides)
+    assert adapter.world.phase == 'hunter'
+    assert adapter.world.hunter_pending == 'D'
+    request = adapter.requests()[0]
+    adapter.submit(choose(request, action='shoot', arguments={'target': 'A'}))
+    adapter.resolve()
+    assert adapter.world.winner == 'good'
+    assert adapter.world.phase == 'finished'
+    assert adapter.world.hunter_shot is True

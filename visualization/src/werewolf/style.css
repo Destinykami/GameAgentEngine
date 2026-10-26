@@ -36,6 +36,10 @@ body[data-phase="vote"] {
   background: radial-gradient(circle at 50% 0%, #3a261e 0%, #241813 50%, #130d0a 100%);
 }
 
+body[data-phase="hunter"] {
+  background: radial-gradient(circle at 50% 0%, #44231d 0%, #2a1512 52%, #140a08 100%);
+}
+
 body[data-phase="finished"] {
   background: radial-gradient(circle at 50% 0%, #3a2e16 0%, #221b0e 52%, #100c06 100%);
 }
@@ -131,6 +135,10 @@ button, input { font: inherit; }
   align-content: center;
 }
 
+.ww-seats.many {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .ww-seat {
   min-height: 108px;
   padding: 12px;
@@ -179,7 +187,16 @@ button, input { font: inherit; }
 
 .role-wolf { color: var(--wolf); }
 .role-seer { color: var(--seer); }
+.role-witch { color: #b58ad8; }
+.role-hunter { color: #e0a15c; }
 .role-villager { color: var(--villager); }
+
+.ww-seats.many .ww-seat {
+  min-height: 96px;
+  padding: 9px;
+}
+
+.ww-seats.many .ww-seat-name { font-size: 16px; }
 
 .ww-vote {
   color: var(--gold);
@@ -341,7 +358,7 @@ button, input { font: inherit; }
 @media (max-width: 900px) {
   .ww-app { padding: 16px; }
   .ww-main { grid-template-columns: 1fr; }
-  .ww-seats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ww-seats, .ww-seats.many { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ww-controls { grid-template-columns: repeat(3, auto) 1fr; }
   .ww-controls .ww-step-label { display: none; }
 }

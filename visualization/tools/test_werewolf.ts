@@ -15,7 +15,7 @@ const god = JSON.parse(readFileSync(
 
 test("狼人杀公共时间线可加载且不含私密身份", () => {
   assert.equal(timeline.game, "werewolf");
-  assert.equal(timeline.seats.length, 6);
+  assert.equal(timeline.seats.length, 10);
   assert.ok(timeline.steps.length > 0);
   assert.equal("roles" in timeline, false);
   for (const step of timeline.steps) {
@@ -33,13 +33,17 @@ test("阶段、票型与结局可读", () => {
   assert.ok(night);
   assert.ok(vote);
   assert.match(phaseLabel(night), /第 \d+ 夜/);
+  assert.equal(phaseLabel({ ...night, phase: "hunter" }), "猎人开枪");
   assert.match(votesText(vote.votes), /→/);
   assert.equal(last.phase, "finished");
   assert.notEqual(last.winner, null);
+  assert.ok(timeline.steps.some((step) => step.phase === "hunter"));
+  assert.ok(timeline.steps.some((step) => step.events.some((event) => event.type === "hunter_shot")));
 });
 
 test("上帝文件单独保存身份与私密事件", () => {
   assert.equal(god.roles["1号"], "wolf");
+  assert.deepEqual(new Set(Object.values(god.roles)), new Set(["wolf", "seer", "witch", "hunter", "villager"]));
   const types = new Set<string>();
   for (const step of god.steps) {
     for (const event of step.events) types.add(event.type);

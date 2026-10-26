@@ -40,7 +40,7 @@ class DemoModel:
 def run_demo(game: str, data_dir: str, *, model=None):
     from ..cognition.npc import NPC
     from ..adapters import SpatialAdapter
-    from ..scenarios.werewolf import WerewolfAdapter, WerewolfWorld
+    from ..scenarios.werewolf import DEFAULT_ROLES, WerewolfAdapter, WerewolfWorld
     from ..world.runtime import World
     from ..world.entities import Location
 
@@ -56,8 +56,7 @@ def run_demo(game: str, data_dir: str, *, model=None):
     actors, spatial = {}, None
     try:
         if game == 'werewolf':
-            roles = {'1号': 'wolf', '2号': 'seer', '3号': 'villager',
-                     '4号': 'villager', '5号': 'villager', '6号': 'wolf'}
+            roles = dict(DEFAULT_ROLES)
             for name in roles:
                 actors[name] = NPC.create(name, {'social': .5}, model, data_dir=str(directory))
             adapter = WerewolfAdapter(WerewolfWorld(instance_id, roles))

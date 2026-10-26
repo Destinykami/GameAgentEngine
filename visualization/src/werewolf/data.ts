@@ -41,12 +41,13 @@ export interface WerewolfGod {
 }
 
 export const PRIVATE_EVENT_TYPES = new Set([
-  "role_assignment", "inspection_result", "wolf_result",
+  "role_assignment", "inspection_result", "wolf_result", "witch_result",
 ]);
 
 export function phaseLabel(step: WerewolfStep): string {
   if (step.phase === "finished") return "对局结束";
   if (step.phase === "night") return `第 ${step.round} 夜`;
+  if (step.phase === "hunter") return "猎人开枪";
   if (step.phase === "vote") return `第 ${step.round} 轮 · 投票`;
   if (step.phase === "speech") return `第 ${step.round} 轮 · 发言`;
   return step.phase;

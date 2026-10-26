@@ -3,6 +3,7 @@ import json
 
 from game_agent.runners.game_demo import DemoModel
 from game_agent.runners.werewolf_replay import PRIVATE_EVENT_TYPES, run_werewolf_replay
+from game_agent.scenarios.werewolf import DEFAULT_ROLES
 
 
 def _read_jsonl(path):
@@ -18,10 +19,11 @@ def test_public_timeline_live_and_god_are_separated(tmp_path):
 
     assert result['winner'] == timeline['steps'][-1]['winner'] == god['steps'][-1]['winner']
     assert timeline['game'] == 'werewolf'
-    assert timeline['seats'] == ['1号', '2号', '3号', '4号', '5号', '6号']
+    assert timeline['seats'] == list(DEFAULT_ROLES)
+    assert len(timeline['seats']) == 10
     assert 'roles' not in timeline and 'reasons' not in timeline
-    assert god['roles'] == {'1号': 'wolf', '2号': 'seer', '3号': 'villager',
-                            '4号': 'villager', '5号': 'villager', '6号': 'wolf'}
+    assert god['roles'] == DEFAULT_ROLES
+    assert set(god['roles'].values()) == {'wolf', 'seer', 'witch', 'hunter', 'villager'}
     assert published_god == god
 
     public_events = [e for step in timeline['steps'] for e in step['events']]

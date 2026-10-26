@@ -75,7 +75,7 @@ let liveMode = false;
 let lastError = "";
 
 const ROLE_LABEL: Record<string, string> = {
-  wolf: "狼人", seer: "预言家", villager: "村民",
+  wolf: "狼人", seer: "预言家", witch: "女巫", hunter: "猎人", villager: "村民",
 };
 
 function el<K extends keyof HTMLElementTagNameMap>(
@@ -103,6 +103,9 @@ function eventLabel(event: WerewolfEvent): string {
     case "announcement": return "公告";
     case "inspection_result": return "查验";
     case "wolf_result": return "狼人";
+    case "witch_result": return "女巫";
+    case "hunter_shot": return "猎人";
+    case "hunter_pass": return "猎人";
     case "role_assignment": return "身份";
     default: return event.type;
   }
@@ -120,6 +123,8 @@ function eventText(event: WerewolfEvent): string {
 
 function stepEventLabel(step: WerewolfStep): string {
   if (step.events.some((event) => event.type === "game_over")) return "结局";
+  if (step.events.some((event) => event.type === "hunter_shot" ||
+    event.type === "hunter_pass")) return "猎人";
   if (step.events.some((event) => event.type === "vote_result")) return "投票";
   if (step.events.some((event) => event.type === "public_speech")) return "发言";
   if (step.events.some((event) => event.type === "elimination")) return "淘汰";
@@ -128,6 +133,7 @@ function stepEventLabel(step: WerewolfStep): string {
 
 function renderSeats(step: WerewolfStep): void {
   if (!timeline) return;
+  ui.seats.classList.toggle("many", timeline.seats.length > 6);
   ui.seats.replaceChildren();
   for (const seat of timeline.seats) {
     const dead = !step.alive.includes(seat);

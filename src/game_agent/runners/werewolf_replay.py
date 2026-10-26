@@ -7,14 +7,13 @@ import uuid
 
 from ..cognition.npc import NPC
 from ..integration import GameSession
-from ..scenarios.werewolf import WerewolfAdapter, WerewolfWorld
+from ..scenarios.werewolf import DEFAULT_ROLES, WerewolfAdapter, WerewolfWorld
 from .artifacts import TimelineWriter, reset_directory
 from .game_demo import DemoModel
 
 
-DEFAULT_ROLES = {'1号': 'wolf', '2号': 'seer', '3号': 'villager',
-                 '4号': 'villager', '5号': 'villager', '6号': 'wolf'}
-PRIVATE_EVENT_TYPES = {'role_assignment', 'inspection_result', 'wolf_result'}
+PRIVATE_EVENT_TYPES = {'role_assignment', 'inspection_result', 'wolf_result',
+                       'witch_result'}
 
 
 def _parse_votes(content: str) -> dict:
