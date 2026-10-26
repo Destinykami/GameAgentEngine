@@ -71,7 +71,7 @@ npm run e2e
 
 ## 狼人杀对局回放
 
-默认样本已入库：`public/werewolf_timeline.json` 与 `public/werewolf_god.json`（真实模型 10 人局、31 步、人格种子 42）。启动后打开：
+默认样本已入库：`public/werewolf_timeline.json` 与 `public/werewolf_god.json`（真实模型 10 人局、42 步、人格种子 42）。启动后打开：
 
 ```text
 http://localhost:5173/werewolf.html          # 公共视角
