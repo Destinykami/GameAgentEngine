@@ -12,7 +12,7 @@
 - 公共时间线只含 `channel == 'public'` 的事件；私密身份、查验反馈和狼人夜间目标默认不进入公共文件。
 - 上帝视角是本地调试/演示能力：单独文件、显式加载、不自动混入公共记录。
 - 前端不解析模型原始输出，只读运行器整理后的结构化步骤。
-- 首版只覆盖简化狼人杀的 3 类身份、公开发言、投票/弃票、淘汰和胜负；不新增规则、不评估策略质量。
+- 首版覆盖狼人/预言家/女巫/猎人/村民、公开发言、投票/弃票、淘汰、猎人开枪和胜负；不新增规则、不评估策略质量。
 
 ## 数据契约
 
@@ -23,7 +23,7 @@
   "schema_version": 1,
   "game": "werewolf",
   "instance_id": "werewolf-...",
-  "seats": ["1号", "2号", "3号", "4号", "5号", "6号"],
+  "seats": ["1号", "2号", "3号", "4号", "5号", "6号", "7号", "8号", "9号", "10号"],
   "max_rounds": 16,
   "steps": [
     {
@@ -31,7 +31,7 @@
       "round": 1,
       "phase": "night",
       "version": 0,
-      "alive": ["1号", "2号", "3号", "4号", "5号", "6号"],
+      "alive": ["1号", "2号", "3号", "4号", "5号", "6号", "7号", "8号", "9号", "10号"],
       "events": [
         {"id": "opening", "type": "announcement", "content": "对局开始。席位：..."}
       ],
@@ -43,8 +43,8 @@
 ```
 
 - `step` 从 0 递增；`version` 使用 `WerewolfWorld` 的状态版本，便于和适配器快照对齐。
-- `phase` 取值 `night / speech / vote / finished`。
-- `events` 只包含公共事件；`public_speech` 额外带 `actor` 与 `text`，`vote_result` 额外带 `votes`，`elimination` 额外带 `target`，`game_over` 额外带 `winner`。
+- `phase` 取值 `night / speech / vote / hunter / finished`；`hunter` 表示猎人出局后的开枪选择阶段。
+- `events` 只包含公共事件；`public_speech` 额外带 `actor` 与 `text`，`vote_result` 额外带 `votes`，`elimination` 额外带 `target`，`hunter_shot`/`hunter_pass` 记录猎人开枪或放弃，`game_over` 额外带 `winner`。
 - `votes` 为 `{投票者: 目标或 null}`，`null` 表示弃票；由运行器从 `vote_result` 原文确定性解析，不猜模型意图。
 - 直播文件 `werewolf_live.jsonl` 首行 meta、每步一行、末行 `__done__`，断行/坏行由前端原位重试。
 
@@ -56,7 +56,7 @@
 
 - 默认只写到运行目录；`--god` 才复制到前端可访问目录。
 - 前端 `?god` 或按钮显式请求；未找到时提示，不回退到猜测身份。
-- 公共时间线不得出现 `role_assignment`、`inspection_result`、`wolf_result` 或 `roles` 字段。
+- 公共时间线不得出现 `role_assignment`、`inspection_result`、`wolf_result`、`witch_result` 或 `roles` 字段。
 
 ## 运行器
 
@@ -74,7 +74,7 @@
 
 新增独立页面 `visualization/werewolf.html` 与 `visualization/src/werewolf/`：
 
-- 6 席位圆桌/网格：姓名、存活/淘汰、上帝视角下的身份；淘汰置灰。
+- 10 席位（默认 5×2 网格）：姓名、存活/淘汰、上帝视角下的身份；淘汰置灰。
 - 顶部显示第几轮、夜晚/发言/投票/结束、存活人数和胜负。
 - 主区域为公开记录：发言、票型、淘汰、公告；当前步高亮。
 - 播放控制：上一步/下一步/播放/暂停/进度条；默认加载 `public/werewolf_timeline.json`。
@@ -101,10 +101,10 @@
 
 2026-10-26 验收结果：
 
-- Python 离线全集 **575 项通过、6 项真实端点测试跳过**；新增 2 项运行器用例。
+- Python 离线全集 **580 项通过、6 项真实端点测试跳过**；新增 2 项运行器用例和 5 项女巫/猎人/10 人默认配置用例。
 - 前端 **14 项测试通过**（原有 10 项 + 狼人杀 4 项）；`npm run build` 通过并同时产出 `index.html` / `werewolf.html`。
-- 独立 Chromium 检查：加载 8 步真实模型样本，6 个席位；公共日志不含私密事件；`?god` 显示 6 个身份和私密反馈；分两次追加直播行可依次从 1 步增到 2 步，done 后隐藏 LIVE；无 console/page 错误。
-- 真实模型运行 `examples/werewolf_visual.py --real-model --god` 完成一局（狼人胜，8 步），公共与上帝文件分离，样本写入 `visualization/public/`。
+- 独立 Chromium 检查：加载 23 步真实模型样本，10 个席位；公共日志不含私密事件；`?god` 显示 10 个身份和私密反馈；终局可见 6 号猎人开枪带走 3 号；分两次追加直播行可依次从 1 步增到 2 步，done 后隐藏 LIVE；无 console/page 错误。
+- 真实模型运行 `examples/werewolf_visual.py --real-model --god` 完成一局（10 人、好人胜、23 步），公共与上帝文件分离，样本写入 `visualization/public/`。
 - 未运行仓库既有 `npm run e2e` 全量套件；未做真实多人实时观战或公开部署权限验证。
 
 ## 非目标

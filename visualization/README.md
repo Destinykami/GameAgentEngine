@@ -71,7 +71,7 @@ npm run e2e
 
 ## 狼人杀对局回放
 
-默认样本已入库：`public/werewolf_timeline.json` 与 `public/werewolf_god.json`。启动后打开：
+默认样本已入库：`public/werewolf_timeline.json` 与 `public/werewolf_god.json`（真实模型 10 人局，23 步，含女巫/猎人）。启动后打开：
 
 ```text
 http://localhost:5173/werewolf.html          # 公共视角
@@ -86,7 +86,7 @@ http://localhost:5173/werewolf.html?live     # 轮询 werewolf_live.jsonl
 ../.venv/bin/python ../examples/werewolf_visual.py --real-model --god
 ```
 
-公共时间线只含 `channel=public` 的公告、发言、票型、淘汰和结局；真实身份、查验反馈、狼人夜间目标只在 `werewolf_god.json`。`?god` 是本地演示/调试入口，公开部署时应删除该文件或加访问控制。
+公共时间线只含 `channel=public` 的公告、发言、票型、淘汰、猎人开枪和结局；真实身份、查验/女巫反馈、狼人夜间目标只在 `werewolf_god.json`。`?god` 是本地演示/调试入口，公开部署时应删除该文件或加访问控制。
 
 `npm test` 同时校验狼人杀公共/上帝文件契约；`npm run build` 会同时构建 `index.html` 与 `werewolf.html`。
 

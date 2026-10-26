@@ -25,6 +25,8 @@ NPC 对玩家 p 的面 (每玩家独立成流, 动态)
 
 每个游戏拥有自己的 World、合法动作、可见性和结算，通过适配层接入同一套 NPC。已提供空间 World 的 `SpatialAdapter` 和独立阶段式简化狼人杀 `WerewolfAdapter`；旧稻妻入口保留。
 
+狼人杀默认 10 人局：3 狼 + 预言家 + 女巫 + 猎人 + 4 村民。女巫有解药/毒药各一次且同夜只能用一种；猎人被狼人或投票淘汰时可开枪，被毒杀不能开枪。规则细节见 [接入设计](docs/modules/game-integration.md#独立阶段样例)。
+
 ```bash
 # 默认离线，不连接真实服务；自动新建运行目录
 .venv/bin/python examples/game_adapters.py --game werewolf
