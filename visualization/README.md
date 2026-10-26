@@ -1,7 +1,11 @@
-# 稻妻城回放器 (visualization/)
+# 回放器 (visualization/)
 
-基于 Phaser 的像素风只读回放器，可视化 `稻妻城多智能体自治世界模拟` 跑出来的时间线。
-实现 [`../VisualizationPlan.md`](../VisualizationPlan.md) 的 M0–M2 里程碑。
+包含两个只读页面：
+
+- **稻妻城回放器**：基于 Phaser 的像素风自治世界回放，数据来自 `stub_timeline.json` / `timeline.json`。
+- **狼人杀对局回放**：独立 DOM/CSS 页面 `werewolf.html`，消费运行器写出的公共时间线；支持回放、直播跟随和本地上帝视角。
+
+稻妻实现 [`../VisualizationPlan.md`](../VisualizationPlan.md) 的 M0–M2 里程碑；狼人杀设计见 [`../docs/modules/game-replay.md`](../docs/modules/game-replay.md)。
 
 当前职责与验证以 [回放设计](../docs/modules/visualization.md) 为准：Scene 只做组装，`scenes/assets.ts` 管素材与地图，`replay/` 分管投影、事件呈现、输入和直播。终端/静态 HTML 回放实现位于 `src/game_agent/runners/replay/`，原示例命令不变。
 
@@ -12,22 +16,28 @@
 
 ```
 visualization/
-├── index.html              # #game 容器
+├── index.html              # 稻妻 #game 容器
+├── werewolf.html           # 狼人杀对局回放页
 ├── package.json            # dev / build / preview / validate / test / e2e
 ├── tsconfig.json           # strict, noUnusedLocals, bundler resolution
-├── vite.config.ts          # base "./", 端口 5173
+├── vite.config.ts          # base "./", 多页面入口, 端口 5173
 ├── public/
 │   ├── stub_timeline.json  # 确定性 stub 时间线 (由 tools/gen_stub_timeline.py 生成)
 │   ├── real_timeline.json  # 真实 9/10 天旧格式样本 (data/auto_sim/timeline.json 拷贝, M5 回放)
-│   ├── live.jsonl          # 直播增量文件 (运行时产物, 引擎每步 append; gitignore, 不入库)
+│   ├── live.jsonl          # 稻妻直播增量文件 (运行时产物; gitignore)
+│   ├── werewolf_timeline.json # 狼人杀公共时间线样本 (无身份/私密事件)
+│   ├── werewolf_god.json   # 本地上帝视角样本 (?god 才加载)
+│   ├── werewolf_live.jsonl # 狼人杀直播增量文件 (运行时产物; gitignore)
 │   └── assets/             # 地图素材: ninja/ (日式 tileset) + ninja-town.png; Tiny Town 回退
 ├── tools/
 │   ├── gen_stub_timeline.py   # 生成 stub 时间线 (复用真实引擎, 脚本化决策, 无 LLM)
 │   ├── validate_timeline.ts   # 数据层 schema/不变量校验
+│   ├── test_werewolf.ts       # 狼人杀公共/上帝文件契约
 │   ├── mock_live_source.mjs   # 模拟"运行中模拟"逐步写 live.jsonl (E2E 直播段用)
 │   └── e2e_playwright.mjs     # 无头 chromium 端到端验证
 └── src/
     ├── main.ts / config.ts    # Phaser 入口与全局显示约束 (960x540, pixelArt)
+    ├── werewolf/              # data.ts (契约) / main.ts (座位、日志、播放) / style.css
     ├── data/                  # schema.ts, timelineLoader.ts (+ 旧格式归一化), legacyEvents.ts (回退解析), liveSource.ts (直播轮询), locationAnchors.ts
     ├── PlaybackController.ts  # 播放/暂停/上一步/下一步/调速 (纯逻辑, 可单测)
     ├── scenes/                # InazumaScene 组装/生命周期，assets 素材加载与地图绘制
@@ -35,7 +45,6 @@ visualization/
     ├── entities/              # AgentSprite (像素角色动画/血条/名牌/移动/活动), AgentRegistry
     ├── dialogue/              # SpeechBubble (气泡), DamagePopup (伤害数字弹出)
     ├── art/                   # 像素素材: ninjaAssets(日式村庄布局) / townTiles+groundMap+buildings(回退) / characters(原创) / ArtFactory
-    ├── data/                  # + activityProjection.ts (Phase 3 视觉活动投影映射)
     └── ui/                    # StatusPanel / EventLog / PlaybackControls / DetailCard / TimelineScrubber
 ```
 
@@ -59,6 +68,27 @@ npm run build && npm run preview
 # 4. 无头浏览器端到端验证 (需先装 chromium)
 npm run e2e
 ```
+
+## 狼人杀对局回放
+
+默认样本已入库：`public/werewolf_timeline.json` 与 `public/werewolf_god.json`。启动后打开：
+
+```text
+http://localhost:5173/werewolf.html          # 公共视角
+http://localhost:5173/werewolf.html?god      # 自动加载本地上帝视角
+http://localhost:5173/werewolf.html?live     # 轮询 werewolf_live.jsonl
+```
+
+重新跑一局并生成时间线（默认离线模型；`--god` 才把上帝文件发布到 public）：
+
+```bash
+../.venv/bin/python ../examples/werewolf_visual.py --god
+../.venv/bin/python ../examples/werewolf_visual.py --real-model --god
+```
+
+公共时间线只含 `channel=public` 的公告、发言、票型、淘汰和结局；真实身份、查验反馈、狼人夜间目标只在 `werewolf_god.json`。`?god` 是本地演示/调试入口，公开部署时应删除该文件或加访问控制。
+
+`npm test` 同时校验狼人杀公共/上帝文件契约；`npm run build` 会同时构建 `index.html` 与 `werewolf.html`。
 
 ## 端到端验证 (`npm run e2e`)
 

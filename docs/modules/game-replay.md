@@ -1,6 +1,6 @@
 # 通用对局回放与狼人杀界面
 
-状态：设计已确认，待实现（2026-10-26）。关联：[多游戏接入](game-integration.md)、[回放与可视化](visualization.md)、[模型适配](model-adapters.md)。
+状态：已实现并完成离线、构建与浏览器验收（2026-10-26）。关联：[多游戏接入](game-integration.md)、[回放与可视化](visualization.md)、[模型适配](model-adapters.md)。
 
 ## 目标与边界
 
@@ -67,7 +67,7 @@
 - 每次 `session.step()` 后取 `world.snapshot()`，记录阶段/轮次/存活/胜负；开场事件在第一次 `step()` 投递前捕获，避免丢失。
 - 公共步骤只保留公共事件；上帝步骤保留全部频道及接收者。
 - 公共产物写 `werewolf_timeline.json` 与 `werewolf_live.jsonl`；数据库、适配器快照和 `werewolf_god.json` 留在运行目录。
-- 结束时发布 `checkpoints`，与现有自治运行器一致；异常时保留未完成直播文件，不写成功结束标记。
+- 结束时写 `adapter-state.private.json` 主持人快照；异常时保留未完成直播文件，不写成功结束标记。
 - 不修改 `WerewolfWorld` 的规则、事件文本或私有快照格式；投票解析放在回放运行器，属于展示适配。
 
 ## 前端
@@ -90,6 +90,22 @@
 - 直播：运行器写一行后前端能增加一步并跟随；done 后停止。
 - 真实模型仅验证链路，不评价博弈质量；不修改游戏规则、模型提示词或核心协议。
 - 未运行项：多人实时观战、公开部署的上帝视角权限、完整狼人杀角色扩展。
+
+## 实施与验证
+
+实现入口：
+
+- `src/game_agent/runners/werewolf_replay.py`：公共时间线/直播/上帝文件；`examples/werewolf_visual.py` 薄入口。
+- `visualization/werewolf.html`、`visualization/src/werewolf/{data,main}.ts`、`style.css`。
+- `tests/test_werewolf_replay.py` 与 `visualization/tools/test_werewolf.ts`。
+
+2026-10-26 验收结果：
+
+- Python 离线全集 **575 项通过、6 项真实端点测试跳过**；新增 2 项运行器用例。
+- 前端 **14 项测试通过**（原有 10 项 + 狼人杀 4 项）；`npm run build` 通过并同时产出 `index.html` / `werewolf.html`。
+- 独立 Chromium 检查：加载 8 步真实模型样本，6 个席位；公共日志不含私密事件；`?god` 显示 6 个身份和私密反馈；分两次追加直播行可依次从 1 步增到 2 步，done 后隐藏 LIVE；无 console/page 错误。
+- 真实模型运行 `examples/werewolf_visual.py --real-model --god` 完成一局（狼人胜，8 步），公共与上帝文件分离，样本写入 `visualization/public/`。
+- 未运行仓库既有 `npm run e2e` 全量套件；未做真实多人实时观战或公开部署权限验证。
 
 ## 非目标
 

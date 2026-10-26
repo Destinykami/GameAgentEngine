@@ -33,6 +33,18 @@ NPC 对玩家 p 的面 (每玩家独立成流, 动态)
 
 接口位于 `game_agent.integration`，NPC 使用 `decide_game` 与 `receive_game_event`。每 NPC 原文按游戏实例隔离，私密身份和技能反馈定向投递。新增游戏无须继承空间 World，详见 [接入设计与用法](docs/modules/game-integration.md)。狼人杀为简化样例，离线验证不代表真实模型策略质量。主持人快照与公共输出分开，成套恢复须配对保存 NPC 两库。
 
+狼人杀另有独立网页回放（座位、昼夜、发言、票型、淘汰、直播跟随和本地上帝视角）：
+
+```bash
+.venv/bin/python examples/werewolf_visual.py --real-model --god
+cd visualization && npm run dev
+# http://localhost:5173/werewolf.html        公共视角
+# http://localhost:5173/werewolf.html?god    本地上帝视角
+# http://localhost:5173/werewolf.html?live   直播跟随
+```
+
+公共时间线不含真实身份或私密事件；上帝文件单独生成，`?god` 仅用于本地演示/调试。设计见 [对局回放](docs/modules/game-replay.md)。
+
 ## 模块映射 (论文 → 本框架)
 
 | 论文模块 | 文件 | 为千人千面扩展了什么 |

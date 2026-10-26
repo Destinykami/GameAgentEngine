@@ -16,7 +16,16 @@ const fullbodyReady = PORTRAIT_FILES.every((f) =>
 export default defineConfig({
   base: "./",
   server: { port: 5173, open: false },
-  build: { outDir: "dist", assetsDir: "assets" },
+  build: {
+    outDir: "dist",
+    assetsDir: "assets",
+    rollupOptions: {
+      input: {
+        main: resolve(process.cwd(), "index.html"),
+        werewolf: resolve(process.cwd(), "werewolf.html"),
+      },
+    },
+  },
   define: {
     __OFFICIAL_PORTRAITS__: JSON.stringify(portraitsReady),
     __OFFICIAL_FULLBODY__: JSON.stringify(fullbodyReady),

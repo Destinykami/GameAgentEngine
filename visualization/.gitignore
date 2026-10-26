@@ -3,6 +3,9 @@ node_modules/
 dist/
 .npm-cache/
 
+# 狼人杀直播增量文件（运行时产物；公共样本 timeline/god 入库）
+public/werewolf_live.jsonl
+
 # E2E 无头浏览器与系统库 (本地下载, 不入仓)
 .browsers/
 syslibs/
