@@ -3,17 +3,19 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import uuid
 
 from ..cognition.npc import NPC
 from ..integration import GameSession
-from ..scenarios.werewolf import DEFAULT_ROLES, WerewolfAdapter, WerewolfWorld
+from ..scenarios.werewolf import (
+    DEFAULT_ROLES, WerewolfAdapter, WerewolfWorld, random_personas)
 from .artifacts import TimelineWriter, reset_directory
 from .game_demo import DemoModel
 
 
 PRIVATE_EVENT_TYPES = {'role_assignment', 'inspection_result', 'wolf_result',
-                       'witch_result'}
+                       'wolf_chat', 'witch_result'}
 
 
 def _parse_votes(content: str) -> dict:
@@ -77,11 +79,17 @@ def _write_json(path: str, value) -> None:
 
 def run_werewolf_replay(data_dir: str, public_dir: str, *, model=None,
                         publish_god: bool = False, roles=None,
+                        persona_seed: int | None = None,
                         max_rounds: int = 16, max_steps: int = 1000) -> dict:
     """跑完一局并输出公共时间线/直播；可选把上帝文件发布到前端目录。"""
+    if persona_seed is not None and (isinstance(persona_seed, bool)
+                                      or not isinstance(persona_seed, int)):
+        raise ValueError('人格随机种子须为整数')
     reset_directory(data_dir)
     os.makedirs(public_dir, exist_ok=True)
     roles = dict(roles or DEFAULT_ROLES)
+    seed = persona_seed if persona_seed is not None else secrets.randbits(31)
+    personas = random_personas(roles, seed)
     instance_id = 'werewolf-' + uuid.uuid4().hex
     world = WerewolfWorld(instance_id, roles, max_rounds=max_rounds)
     adapter = WerewolfAdapter(world)
@@ -91,11 +99,11 @@ def run_werewolf_replay(data_dir: str, public_dir: str, *, model=None,
     public_steps, god_steps = [], []
     try:
         for name in roles:
-            actors[name] = NPC.create(name, {'social': .5}, model, data_dir=data_dir)
+            actors[name] = NPC.create(name, dict(personas[name]), model, data_dir=data_dir)
         session = GameSession(adapter, actors)
         metadata = {'schema_version': 1, 'game': 'werewolf',
                     'instance_id': instance_id, 'seats': list(roles),
-                    'max_rounds': max_rounds}
+                    'max_rounds': max_rounds, 'persona_seed': seed}
         writer = TimelineWriter(os.path.join(public_dir, 'werewolf_live.jsonl'), metadata)
 
         # 开场事件在首次 step() 投递前捕获，否则 public 公告会丢失。
@@ -119,7 +127,7 @@ def run_werewolf_replay(data_dir: str, public_dir: str, *, model=None,
 
         if not adapter.finished:
             raise RuntimeError('达到回放步数上限，对局尚未结束')
-        god = {**metadata, 'roles': dict(roles), 'steps': god_steps}
+        god = {**metadata, 'roles': dict(roles), 'personas': personas, 'steps': god_steps}
         _write_json(os.path.join(data_dir, 'werewolf_god.json'), god)
         if publish_god:
             _write_json(os.path.join(public_dir, 'werewolf_god.json'), god)
@@ -128,6 +136,7 @@ def run_werewolf_replay(data_dir: str, public_dir: str, *, model=None,
         writer.write_final(os.path.join(public_dir, 'werewolf_timeline.json'), metadata)
         return {'game': 'werewolf', 'instance_id': instance_id,
                 'winner': world.winner, 'steps': len(public_steps),
+                'persona_seed': seed,
                 'public_timeline': os.path.join(public_dir, 'werewolf_timeline.json'),
                 'public_live': os.path.join(public_dir, 'werewolf_live.jsonl'),
                 'god': os.path.join(data_dir, 'werewolf_god.json')}

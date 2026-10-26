@@ -15,10 +15,11 @@ DEFAULT_ROLES = {
 ROLE_TYPES = {'wolf', 'seer', 'witch', 'hunter', 'villager'}
 UNIQUE_ROLES = {'seer', 'witch', 'hunter'}
 
-RULES = ('简化狼人杀：夜间狼人袭击、预言家查验、女巫用药；白天按座次发言，然后同时投票或弃票。'
-         '女巫有解药和毒药各一次，同夜只能用一种；解药救下今晚狼人选择的目标，毒药毒杀一人。'
+RULES = ('简化狼人杀：夜间狼人先密谈、再投票选出袭击目标；随后预言家查验、女巫用药。'
+         '白天按座次发言，然后同时投票或弃票。'
+         '女巫有解药和毒药各一次，同夜只能用一种；女巫会看到狼人投票选定的目标，再决定是否用解药。'
          '猎人被狼人或投票淘汰时可开枪带走一名存活者，被毒杀不能开枪。'
-         '投票平票无人淘汰，夜间目标平票按座次。淘汰不公布身份，无遗言。'
+         '投票平票无人淘汰，狼人目标平票按座次。淘汰不公布身份，无遗言。'
          '狼人清零好人胜，狼人达到好人人数狼人胜。允许策略性谎报身份和查验，'
          '公开声明不等于主持人反馈；自己的真实身份和技能反馈不可在私人记忆中改写。')
 
@@ -41,27 +42,41 @@ class WerewolfWorld:
         self.actors = tuple(roles)
         self.alive = set(roles)
         self.max_rounds = max_rounds
-        self.round, self.version, self.phase = 1, 0, 'night'
+        self.round, self.version = 1, 0
         self.winner = None
         self.speakers: list[str] = []
         self.speaker_index = 0
         self.transcript: list[str] = []
-        # 女巫每种药水各一次；猎人开枪也各一局一次。没有对应身份时视为已用完。
+        self.wolf_speakers: list[str] = []
+        self.wolf_speaker_index = 0
+        self.wolf_chat: list[str] = []
+        self.wolf_target: str | None = None
         self.witch_antidote = 'witch' in roles.values()
         self.witch_poison = 'witch' in roles.values()
         self.hunter_shot = 'hunter' not in roles.values()
         self.hunter_pending: str | None = None
         self.hunter_next_phase: str | None = None
+        self.phase = 'wolf_talk'
+        self._start_night()
 
     def living(self):
         return tuple(a for a in self.actors if a in self.alive)
 
+    def _living_wolves(self):
+        return tuple(a for a in self.living() if self._roles[a] == 'wolf')
+
     def actors_to_act(self):
         if self.winner:
             return ()
-        if self.phase == 'night':
-            return tuple(a for a in self.living()
-                         if self._roles[a] in ('wolf', 'seer', 'witch'))
+        if self.phase == 'wolf_talk':
+            return (self.wolf_speakers[self.wolf_speaker_index],) \
+                if self.wolf_speaker_index < len(self.wolf_speakers) else ()
+        if self.phase == 'wolf_vote':
+            return self._living_wolves()
+        if self.phase == 'seer':
+            return tuple(a for a in self.living() if self._roles[a] == 'seer')
+        if self.phase == 'witch':
+            return tuple(a for a in self.living() if self._roles[a] == 'witch')
         if self.phase == 'hunter':
             return (self.hunter_pending,) if self.hunter_pending else ()
         if self.phase == 'speech':
@@ -73,39 +88,40 @@ class WerewolfWorld:
     def actions_for(self, actor):
         if actor not in self.actors_to_act():
             return ()
-        if self.phase == 'speech':
-            return (ActionSpec('speak', '公开发表一段声明，其他人不会自动逐句回复',
-                               (ParameterSpec('text', max_length=2000),)),)
+        if self.phase == 'wolf_talk':
+            return (ActionSpec('say', '向狼人队友发送一条夜间交流',
+                               (ParameterSpec('text', max_length=1000),)),)
+        targets = tuple(a for a in self.living() if a != actor)
+        if self.phase == 'wolf_vote':
+            wolf_targets = tuple(a for a in targets if self._roles[a] != 'wolf')
+            return (ActionSpec('kill', '狼人投票选择本夜袭击目标',
+                               (ParameterSpec('target', choices=wolf_targets),)),)
+        if self.phase == 'seer':
+            return (ActionSpec('inspect', '查验一名存活玩家的阵营',
+                               (ParameterSpec('target', choices=targets),)),)
+        if self.phase == 'witch':
+            actions = []
+            if self.witch_antidote:
+                actions.append(ActionSpec('save', '使用解药救下今晚被狼人选中的目标'))
+            if self.witch_poison:
+                actions.append(ActionSpec('poison', '使用毒药毒杀一名存活玩家',
+                                          (ParameterSpec('target', choices=targets),)))
+            actions.append(ActionSpec('wait', '本夜不使用药水'))
+            return tuple(actions)
         if self.phase == 'hunter':
-            targets = tuple(a for a in self.living() if a != actor)
             actions = []
             if targets:
                 actions.append(ActionSpec('shoot', '开枪带走一名存活玩家',
                                           (ParameterSpec('target', choices=targets),)))
             actions.append(ActionSpec('pass', '放弃本次开枪'))
             return tuple(actions)
-        targets = tuple(a for a in self.living() if a != actor)
+        if self.phase == 'speech':
+            return (ActionSpec('speak', '公开发表一段声明，其他人不会自动逐句回复',
+                               (ParameterSpec('text', max_length=2000),)),)
         if self.phase == 'vote':
             return (ActionSpec('vote', '投票淘汰一名存活角色',
                                (ParameterSpec('target', choices=targets),)),
                     ActionSpec('abstain', '本次弃票'))
-        role = self._roles[actor]
-        if role == 'wolf':
-            wolf_targets = tuple(a for a in targets if self._roles[a] != 'wolf')
-            return (ActionSpec('kill', '与狼人队友共同选择本夜目标',
-                               (ParameterSpec('target', choices=wolf_targets),)),)
-        if role == 'seer':
-            return (ActionSpec('inspect', '查验一名存活玩家的阵营',
-                               (ParameterSpec('target', choices=targets),)),)
-        if role == 'witch':
-            actions = []
-            if self.witch_antidote:
-                actions.append(ActionSpec('save', '使用解药救下今晚被狼人袭击的人'))
-            if self.witch_poison:
-                actions.append(ActionSpec('poison', '使用毒药毒杀一名存活玩家',
-                                          (ParameterSpec('target', choices=targets),)))
-            actions.append(ActionSpec('wait', '本夜不使用药水'))
-            return tuple(actions)
         return ()
 
     def view_for(self, actor):
@@ -117,10 +133,13 @@ class WerewolfWorld:
         if role == 'wolf':
             view += '狼人队友：' + '、'.join(
                 a for a in self.actors if a != actor and self._roles[a] == 'wolf')
+            if self.wolf_chat:
+                view += '\n狼人夜间交流：\n' + '\n'.join(self.wolf_chat)
         elif role == 'witch':
             view += ('女巫药水：解药' + ('可用' if self.witch_antidote else '已用完')
-                     + '，毒药' + ('可用' if self.witch_poison else '已用完') + '。'
-                     + '你与狼人同时行动，解药会救下今晚狼人选择的目标。')
+                     + '，毒药' + ('可用' if self.witch_poison else '已用完') + '。')
+            if self.wolf_target is not None:
+                view += f'今晚狼人投票选定的目标：{self.wolf_target}。'
         elif role == 'hunter':
             view += ('猎人技能：你被狼人或投票淘汰时可开枪；被毒杀时不能开枪。'
                      + ('本局已使用。' if self.hunter_shot else '本局尚未使用。'))
@@ -146,10 +165,11 @@ class WerewolfWorld:
             if role == 'wolf':
                 private += '狼人队友：' + '、'.join(
                     a for a in self.actors if a != actor and self._roles[a] == 'wolf')
+                private += '夜间先与队友交流，再投票选择目标。'
             elif role == 'seer':
                 private += '每晚可查验一名存活玩家的阵营。'
             elif role == 'witch':
-                private += '你有解药和毒药各一次，同夜只能用一种；解药救下狼人目标，毒药毒杀一人。'
+                private += '你有解药和毒药各一次，同夜只能用一种；你会看到狼人投票选定的目标，再决定是否用解药。'
             elif role == 'hunter':
                 private += '你被狼人或投票淘汰时可开枪带走一名存活者，被毒杀不能开枪。'
             else:
@@ -167,6 +187,13 @@ class WerewolfWorld:
         if channel == 'public':
             self.transcript.append(content)
         return event
+
+    def _start_night(self):
+        self.phase = 'wolf_talk'
+        self.wolf_speakers = list(self._living_wolves())
+        self.wolf_speaker_index = 0
+        self.wolf_chat = []
+        self.wolf_target = None
 
     def _start_speech(self):
         self.speakers, self.speaker_index = list(self.living()), 0
@@ -195,46 +222,57 @@ class WerewolfWorld:
         elif wolves >= good:
             self.winner = 'wolves'
 
-    def _night(self, intents, events):
-        kills = []
-        witch_action, witch_target = None, None
-        for intent in intents:
-            if intent.action == 'inspect':
-                target = intent.arguments['target']
-                result = '狼人' if self._roles[target] == 'wolf' else '好人'
-                self._emit(events, 'inspection_result',
-                           f'主持人反馈：你查验 {target}，结果为{result}。',
-                           (intent.actor_id,), 'private',
-                           participants=(intent.actor_id, target))
-            elif intent.action == 'kill':
-                kills.append(intent.arguments['target'])
-            elif intent.action == 'save':
-                witch_action = 'save'
-            elif intent.action == 'poison':
-                witch_action, witch_target = 'poison', intent.arguments['target']
-            elif intent.action == 'wait':
-                witch_action = 'wait'
-        victim = None
+    def _wolf_vote(self, intents, events):
+        kills = [i.arguments['target'] for i in intents if i.action == 'kill']
+        target = None
         if kills:
             votes = Counter(kills)
-            victim = next(a for a in self.actors if votes[a] == max(votes.values()))
-        wolves = tuple(a for a in self.living() if self._roles[a] == 'wolf')
-        if victim is not None:
-            self._emit(events, 'wolf_result', f'本夜狼人选定目标：{victim}。',
-                       wolves, 'team', participants=(victim,))
-        witch = next((a for a in self.living() if self._roles[a] == 'witch'), None)
-        if witch_action == 'save':
-            self.witch_antidote = False
-            content = (f'你使用解药救下了 {victim}。' if victim
-                       else '你使用解药，但本夜无人被狼人袭击。')
-            self._emit(events, 'witch_result', content, (witch,), 'private')
-        elif witch_action == 'poison':
-            self.witch_poison = False
-            self._emit(events, 'witch_result', f'你使用毒药毒杀了 {witch_target}。',
-                       (witch,), 'private', participants=(witch, witch_target))
-        elif witch_action == 'wait':
-            self._emit(events, 'witch_result', '你本夜没有使用药水。', (witch,), 'private')
+            target = next(a for a in self.actors if votes[a] == max(votes.values()))
+        self.wolf_target = target
+        wolves = self._living_wolves()
+        if target is not None:
+            self._emit(events, 'wolf_result', f'狼人投票选定目标：{target}。',
+                       wolves, 'team', participants=(target,))
+        if any(self._roles[a] == 'seer' for a in self.living()):
+            self.phase = 'seer'
+        elif any(self._roles[a] == 'witch' for a in self.living()):
+            self.phase = 'witch'
+        else:
+            self._resolve_night(events)
 
+    def _seer(self, intents, events):
+        intent = intents[0]
+        target = intent.arguments['target']
+        result = '狼人' if self._roles[target] == 'wolf' else '好人'
+        self._emit(events, 'inspection_result',
+                   f'主持人反馈：你查验 {target}，结果为{result}。',
+                   (intent.actor_id,), 'private',
+                   participants=(intent.actor_id, target))
+        if any(self._roles[a] == 'witch' for a in self.living()):
+            self.phase = 'witch'
+        else:
+            self._resolve_night(events)
+
+    def _witch(self, intents, events):
+        intent = intents[0]
+        witch = intent.actor_id
+        action, target = intent.action, intent.arguments.get('target')
+        if action == 'save':
+            self.witch_antidote = False
+            content = (f'你使用解药救下了 {self.wolf_target}。'
+                       if self.wolf_target else '你使用解药，但今晚无人被狼人选为目标。')
+            self._emit(events, 'witch_result', content, (witch,), 'private')
+        elif action == 'poison':
+            self.witch_poison = False
+            self._emit(events, 'witch_result', f'你使用毒药毒杀了 {target}。',
+                       (witch,), 'private', participants=(witch, target))
+        else:
+            self._emit(events, 'witch_result', '你本夜没有使用药水。',
+                       (witch,), 'private')
+        self._resolve_night(events, witch_action=action, witch_target=target)
+
+    def _resolve_night(self, events, *, witch_action=None, witch_target=None):
+        victim = self.wolf_target
         saved = victim is not None and witch_action == 'save'
         deaths = {}
         if victim is not None and not saved:
@@ -247,7 +285,8 @@ class WerewolfWorld:
                        participants=(name,))
         if not deaths:
             self._emit(events, 'announcement', f'第 {self.round} 夜，无人死亡。')
-
+        self.wolf_target, self.wolf_chat = None, []
+        self.wolf_speakers, self.wolf_speaker_index = [], 0
         hunter = self._hunter_name()
         if (hunter is not None and hunter in deaths and not self.hunter_shot
                 and deaths[hunter] != 'poison'):
@@ -274,7 +313,8 @@ class WerewolfWorld:
         if next_phase == 'speech':
             self._start_speech()
         else:
-            self.phase, self.round = 'night', self.round + 1
+            self.round += 1
+            self._start_night()
         self._finish_turn(events)
 
     def advance(self, intents):
@@ -286,8 +326,21 @@ class WerewolfWorld:
         self.version += 1
         events = []
 
-        if self.phase == 'night':
-            self._night(intents, events)
+        if self.phase == 'wolf_talk':
+            intent = intents[0]
+            line = f'{intent.actor_id} 说：{intent.arguments["text"]}'
+            self.wolf_chat.append(line)
+            self._emit(events, 'wolf_chat', line, self._living_wolves(), 'team',
+                       actor=intent.actor_id, evidence='utterance')
+            self.wolf_speaker_index += 1
+            if self.wolf_speaker_index == len(self.wolf_speakers):
+                self.phase = 'wolf_vote'
+        elif self.phase == 'wolf_vote':
+            self._wolf_vote(intents, events)
+        elif self.phase == 'seer':
+            self._seer(intents, events)
+        elif self.phase == 'witch':
+            self._witch(intents, events)
         elif self.phase == 'hunter':
             self._hunter(intents, events)
         elif self.phase == 'speech':
@@ -313,7 +366,8 @@ class WerewolfWorld:
                     return tuple(events)
             else:
                 self._emit(events, 'announcement', '投票平票或全部弃票，无人淘汰。')
-            self.phase, self.round = 'night', self.round + 1
+            self.round += 1
+            self._start_night()
             self._finish_turn(events)
         return tuple(events)
 
@@ -324,6 +378,8 @@ class WerewolfWorld:
             'alive': self.living(), 'round': self.round, 'version': self.version,
             'phase': self.phase, 'winner': self.winner, 'speakers': self.speakers,
             'speaker_index': self.speaker_index, 'transcript': self.transcript,
+            'wolf_speakers': self.wolf_speakers, 'wolf_speaker_index': self.wolf_speaker_index,
+            'wolf_chat': self.wolf_chat, 'wolf_target': self.wolf_target,
             'witch_antidote': self.witch_antidote, 'witch_poison': self.witch_poison,
             'hunter_shot': self.hunter_shot, 'hunter_pending': self.hunter_pending,
             'hunter_next_phase': self.hunter_next_phase})
@@ -341,20 +397,42 @@ class WerewolfWorld:
         if not world.alive <= set(world.actors):
             raise ValueError('快照包含未知存活角色')
         for key in ('round', 'version', 'phase', 'winner', 'speakers', 'speaker_index',
-                    'transcript'):
-            setattr(world, key, json_copy(state[key]))
+                    'transcript', 'wolf_speakers', 'wolf_speaker_index', 'wolf_chat',
+                    'wolf_target'):
+            setattr(world, key, json_copy(state.get(key, getattr(world, key))))
         for key in ('witch_antidote', 'witch_poison', 'hunter_shot',
                     'hunter_pending', 'hunter_next_phase'):
             setattr(world, key, json_copy(state.get(key, getattr(world, key))))
         if (type(world.round) is not int or world.round < 1 or type(world.version) is not int
                 or world.version < 0 or world.phase not in
-                ('night', 'speech', 'vote', 'hunter', 'finished')
+                ('wolf_talk', 'wolf_vote', 'seer', 'witch', 'hunter',
+                 'speech', 'vote', 'finished')
                 or not world.alive or not isinstance(world.transcript, list)
                 or any(not isinstance(t, str) for t in world.transcript)):
             raise ValueError('非法对局阶段或时间状态')
+        if (not isinstance(world.wolf_chat, list)
+                or any(not isinstance(t, str) for t in world.wolf_chat)
+                or not isinstance(world.wolf_speakers, list)
+                or any(a not in world.actors or world._roles[a] != 'wolf'
+                       for a in world.wolf_speakers)
+                or type(world.wolf_speaker_index) is not int
+                or world.wolf_speaker_index < 0
+                or world.wolf_target is not None and
+                (world.wolf_target not in world.actors or
+                 world._roles[world.wolf_target] == 'wolf' or
+                 world.wolf_target not in world.alive)):
+            raise ValueError('非法狼人夜间状态')
         if any(type(getattr(world, key)) is not bool for key in
                ('witch_antidote', 'witch_poison', 'hunter_shot')):
             raise ValueError('非法药水或猎人状态')
+        if world.phase == 'wolf_talk':
+            expected_wolves = [a for a in world.living() if world._roles[a] == 'wolf']
+            if (world.wolf_speakers != expected_wolves
+                    or world.wolf_speaker_index >= len(world.wolf_speakers)
+                    or world.wolf_target is not None):
+                raise ValueError('狼人交流阶段状态不一致')
+        if world.phase in ('seer', 'witch') and world.wolf_target is None:
+            raise ValueError('夜间技能阶段缺少狼人目标')
         if world.hunter_pending is not None:
             if (world.phase != 'hunter' or world.hunter_pending not in world.actors
                     or world._roles[world.hunter_pending] != 'hunter'

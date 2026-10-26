@@ -3,7 +3,7 @@ import json
 
 from game_agent.runners.game_demo import DemoModel
 from game_agent.runners.werewolf_replay import PRIVATE_EVENT_TYPES, run_werewolf_replay
-from game_agent.scenarios.werewolf import DEFAULT_ROLES
+from game_agent.scenarios.werewolf import DEFAULT_ROLES, random_personas
 
 
 def _read_jsonl(path):
@@ -12,7 +12,8 @@ def _read_jsonl(path):
 
 def test_public_timeline_live_and_god_are_separated(tmp_path):
     data, public = tmp_path / 'data', tmp_path / 'public'
-    result = run_werewolf_replay(str(data), str(public), model=DemoModel(), publish_god=True)
+    result = run_werewolf_replay(str(data), str(public), model=DemoModel(),
+                                 publish_god=True, persona_seed=1234)
     timeline = json.loads((public / 'werewolf_timeline.json').read_text(encoding='utf-8'))
     god = json.loads((data / 'werewolf_god.json').read_text(encoding='utf-8'))
     published_god = json.loads((public / 'werewolf_god.json').read_text(encoding='utf-8'))
@@ -24,6 +25,10 @@ def test_public_timeline_live_and_god_are_separated(tmp_path):
     assert 'roles' not in timeline and 'reasons' not in timeline
     assert god['roles'] == DEFAULT_ROLES
     assert set(god['roles'].values()) == {'wolf', 'seer', 'witch', 'hunter', 'villager'}
+    assert result['persona_seed'] == timeline['persona_seed'] == 1234
+    assert set(god['personas']) == set(DEFAULT_ROLES)
+    assert all(0.15 <= p['social'] <= 0.9 and 0.15 <= p['goal_oriented'] <= 0.9
+               for p in god['personas'].values())
     assert published_god == god
 
     public_events = [e for step in timeline['steps'] for e in step['events']]
@@ -36,7 +41,7 @@ def test_public_timeline_live_and_god_are_separated(tmp_path):
     assert timeline['steps'][-1]['alive']
 
     god_events = [e for step in god['steps'] for e in step['events']]
-    assert PRIVATE_EVENT_TYPES & {e['type'] for e in god_events}
+    assert {'role_assignment', 'wolf_chat', 'inspection_result', 'witch_result'} <= {e['type'] for e in god_events}
     assert all('recipients' in e for e in god_events)
 
     lines = _read_jsonl(public / 'werewolf_live.jsonl')
@@ -52,3 +57,13 @@ def test_god_file_is_not_published_by_default(tmp_path):
     assert not (public / 'werewolf_god.json').exists()
     assert (public / 'werewolf_timeline.json').is_file()
     assert (public / 'werewolf_live.jsonl').is_file()
+
+
+def test_random_personas_are_reproducible_and_varied():
+    first = random_personas(DEFAULT_ROLES, 7)
+    again = random_personas(DEFAULT_ROLES, 7)
+    other = random_personas(DEFAULT_ROLES, 8)
+    assert first == again
+    assert first != other
+    assert set(first) == set(DEFAULT_ROLES)
+    assert len({(p['social'], p['goal_oriented']) for p in first.values()}) > 3

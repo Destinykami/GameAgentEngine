@@ -32,21 +32,27 @@ export interface WerewolfTimeline {
   instance_id: string;
   seats: string[];
   max_rounds: number;
+  persona_seed?: number;
   steps: WerewolfStep[];
 }
 
 export interface WerewolfGod {
   roles: Record<string, string>;
+  personas?: Record<string, { social: number; goal_oriented: number }>;
   steps: WerewolfStep[];
 }
 
 export const PRIVATE_EVENT_TYPES = new Set([
-  "role_assignment", "inspection_result", "wolf_result", "witch_result",
+  "role_assignment", "inspection_result", "wolf_result", "wolf_chat",
+  "witch_result",
 ]);
 
 export function phaseLabel(step: WerewolfStep): string {
   if (step.phase === "finished") return "对局结束";
-  if (step.phase === "night") return `第 ${step.round} 夜`;
+  if (step.phase === "wolf_talk") return `第 ${step.round} 夜 · 狼人密谈`;
+  if (step.phase === "wolf_vote") return `第 ${step.round} 夜 · 狼人投票`;
+  if (step.phase === "seer") return "预言家查验";
+  if (step.phase === "witch") return "女巫用药";
   if (step.phase === "hunter") return "猎人开枪";
   if (step.phase === "vote") return `第 ${step.round} 轮 · 投票`;
   if (step.phase === "speech") return `第 ${step.round} 轮 · 发言`;

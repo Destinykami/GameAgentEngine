@@ -103,6 +103,7 @@ function eventLabel(event: WerewolfEvent): string {
     case "announcement": return "公告";
     case "inspection_result": return "查验";
     case "wolf_result": return "狼人";
+    case "wolf_chat": return "密谈";
     case "witch_result": return "女巫";
     case "hunter_shot": return "猎人";
     case "hunter_pass": return "猎人";
@@ -143,6 +144,11 @@ function renderSeats(step: WerewolfStep): void {
     card.append(head);
     const role = god?.roles?.[seat];
     if (role) card.append(el("span", `ww-role role-${role}`, ROLE_LABEL[role] ?? role));
+    const persona = god?.personas?.[seat];
+    if (persona) {
+      card.append(el("span", "ww-persona",
+        `社 ${persona.social.toFixed(2)} · 目标 ${persona.goal_oriented.toFixed(2)}`));
+    }
     const vote = step.votes[seat];
     if (vote !== undefined) {
       card.append(el("span", "ww-vote", `投票 → ${vote ?? "弃票"}`));

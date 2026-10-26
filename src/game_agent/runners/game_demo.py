@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import secrets
 import uuid
 
 from ..integration import ActionIntent, GameSession
@@ -37,10 +38,11 @@ class DemoModel:
         return 0.0
 
 
-def run_demo(game: str, data_dir: str, *, model=None):
+def run_demo(game: str, data_dir: str, *, model=None, persona_seed=None):
     from ..cognition.npc import NPC
     from ..adapters import SpatialAdapter
-    from ..scenarios.werewolf import DEFAULT_ROLES, WerewolfAdapter, WerewolfWorld
+    from ..scenarios.werewolf import (
+        DEFAULT_ROLES, WerewolfAdapter, WerewolfWorld, random_personas)
     from ..world.runtime import World
     from ..world.entities import Location
 
@@ -51,16 +53,22 @@ def run_demo(game: str, data_dir: str, *, model=None):
     if any(directory.iterdir()):
         raise ValueError('示例目录必须为空，已有数据不会被覆盖')
     directory.chmod(0o700)
+    if persona_seed is not None and (isinstance(persona_seed, bool)
+                                      or not isinstance(persona_seed, int)):
+        raise ValueError('人格随机种子须为整数')
     model = model if model is not None else DemoModel()
     instance_id = f'{game}-{uuid.uuid4().hex}'
-    actors, spatial = {}, None
+    actors, spatial, personas, seed = {}, None, None, None
     try:
         if game == 'werewolf':
             roles = dict(DEFAULT_ROLES)
+            seed = persona_seed if persona_seed is not None else secrets.randbits(31)
+            personas = random_personas(roles, seed)
             for name in roles:
-                actors[name] = NPC.create(name, {'social': .5}, model, data_dir=str(directory))
+                actors[name] = NPC.create(name, dict(personas[name]), model,
+                                          data_dir=str(directory))
             adapter = WerewolfAdapter(WerewolfWorld(instance_id, roles))
-            events = GameSession(adapter, actors).run(max_steps=200)
+            events = GameSession(adapter, actors).run(max_steps=500)
             winner = adapter.world.winner
         else:
             spatial = World('空间接入示例', [Location('广场'), Location('工坊', 1, 0)],
@@ -82,7 +90,9 @@ def run_demo(game: str, data_dir: str, *, model=None):
         private_path.write_text(json.dumps(adapter.snapshot(), ensure_ascii=False, indent=2), encoding='utf-8')
         private_path.chmod(0o600)
         summary = {'game': game, 'instance_id': instance_id, 'finished': adapter.finished,
-                   'winner': winner, 'public_events': [e.content for e in events if e.channel == 'public']}
+                   'winner': winner, 'persona_seed': seed,
+                   'personas': personas,
+                   'public_events': [e.content for e in events if e.channel == 'public']}
         (directory / 'public-result.json').write_text(
             json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')
         return summary

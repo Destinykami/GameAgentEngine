@@ -28,6 +28,22 @@ body[data-phase="night"] {
   background: radial-gradient(circle at 50% 0%, #172c48 0%, #0d1b2c 48%, #080f1a 100%);
 }
 
+body[data-phase="wolf_talk"] {
+  background: radial-gradient(circle at 50% 0%, #101c3a 0%, #0a1224 50%, #060912 100%);
+}
+
+body[data-phase="wolf_vote"] {
+  background: radial-gradient(circle at 50% 0%, #3a1b1b 0%, #241010 50%, #120707 100%);
+}
+
+body[data-phase="seer"] {
+  background: radial-gradient(circle at 50% 0%, #12283a 0%, #0b1926 52%, #060d13 100%);
+}
+
+body[data-phase="witch"] {
+  background: radial-gradient(circle at 50% 0%, #2a173a 0%, #1a0f26 52%, #0c0613 100%);
+}
+
 body[data-phase="speech"] {
   background: radial-gradient(circle at 50% 0%, #1d3a2c 0%, var(--felt) 45%, var(--felt-deep) 100%);
 }
@@ -201,6 +217,12 @@ button, input { font: inherit; }
 .ww-vote {
   color: var(--gold);
   font-size: 11px;
+}
+
+.ww-persona {
+  color: var(--muted);
+  font-size: 9px;
+  letter-spacing: 0.02em;
 }
 
 .ww-votes {
