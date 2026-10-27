@@ -39,6 +39,7 @@ def test_dynamic_model_schema_and_invalid_output_have_no_space_fallback():
     assert 'vote' in captured['user'] and '"move"' not in captured['user']
     assert '"now": 1' in captured['user']
     assert captured['options']['_stats_tag'] == 'decide_game'
+    assert captured['options']['temperature'] == 0.2
     for response in ({'action': 'attack'}, {'action': 'vote', 'arguments': {'target': 'X'}},
                      {'action': 'vote', 'arguments': [], 'world': 'secret'}):
         send, calls = _replies(response, response)
@@ -91,3 +92,17 @@ def test_transport_or_json_error_is_not_semantically_retried():
     with pytest.raises(ValueError, match='JSON 解析失败'):
         decide_game(send, _context())
     assert len(calls) == 1
+
+
+def test_speech_prompt_uses_persona_and_antirepeat_guidance():
+    request = DecisionRequest('g', 'r', 'A', '1', 'speech', 1, '找出狼人', '公开局势',
+        (ActionSpec('speak', parameters=(ParameterSpec('text'),)),))
+    context = SimpleNamespace(request=request,
+        persona_traits={'social': 0.9, 'goal_oriented': 0.2}, memories=())
+    send, calls = _replies({'action': 'speak', 'arguments': {'text': '我有不同看法'}})
+    result = decide_game(send, context)
+    assert result.action == 'speak'
+    assert calls[0][2]['temperature'] == 0.7
+    user = calls[0][1]
+    assert '外向' in user and '不急着推票' in user
+    assert '不要复述' in user and '至少一个' in user
