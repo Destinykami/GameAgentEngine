@@ -83,10 +83,15 @@ def test_private_views_and_native_legal_actions_have_no_space_dependency():
     adapter.resolve()
     assert [r.actor_id for r in adapter.requests()] == ['F']
     assert 'A 说：先刀 B' in world.view_for('F')
+    f_talk = adapter.requests()[0]
+    adapter.submit(choose(f_talk, action='say', arguments={'text': '同意'}))
+    adapter.resolve()
     before = world.snapshot()
     vote = adapter.requests()[0]
+    choices = vote.actions[0].parameters[0].choices
+    assert 'A' in choices and 'F' in choices  # 自刀/刀队友都合法
     with pytest.raises(ValueError):
-        adapter.submit(choose(vote, action='kill', arguments={'target': 'F'}))
+        adapter.submit(choose(vote, action='kill', arguments={'target': 'absent'}))
     assert world.snapshot() == before
     with pytest.raises(ValueError):
         world.request_for('C')
@@ -108,6 +113,17 @@ def test_wolf_chat_then_vote_orders_night_and_witch_sees_target():
                for e in events)
     assert any(e.event_type == 'witch_result' and e.recipients == ('C',)
                and '没有使用药水' in e.content for e in events)
+
+
+def test_wolf_can_self_kill_and_reduce_wolf_count():
+    adapter = WerewolfAdapter(WerewolfWorld('g', ROLES))
+    events = play_night(adapter, wolf_target='A', seer_target='F')
+    assert 'A' not in adapter.world.alive
+    assert 'F' in adapter.world.alive
+    assert adapter.world.winner is None
+    assert adapter.world.phase == 'speech'
+    assert any(e.event_type == 'elimination' and e.participants == ('A',)
+               for e in events)
 
 
 def test_witch_view_contains_wolf_target_and_can_save():

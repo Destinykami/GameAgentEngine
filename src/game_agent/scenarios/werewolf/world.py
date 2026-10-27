@@ -19,7 +19,7 @@ RULES = ('简化狼人杀：夜间狼人先密谈、再投票选出袭击目标�
          '白天按座次发言，然后同时投票或弃票。'
          '女巫有解药和毒药各一次，同夜只能用一种；女巫会看到狼人投票选定的目标，再决定是否用解药。'
          '猎人被狼人或投票淘汰时可开枪带走一名存活者，被毒杀不能开枪。'
-         '投票平票无人淘汰，狼人目标平票按座次。淘汰不公布身份，无遗言。'
+         '狼人目标可以是任意存活席位，包括自己和队友（自刀）；投票平票无人淘汰，狼人目标平票按座次。淘汰不公布身份，无遗言。'
          '狼人清零好人胜，狼人达到好人人数狼人胜。允许策略性谎报身份和查验，'
          '公开声明不等于主持人反馈；自己的真实身份和技能反馈不可在私人记忆中改写。')
 
@@ -94,9 +94,9 @@ class WerewolfWorld:
                                (ParameterSpec('text', max_length=1000),)),)
         targets = tuple(a for a in self.living() if a != actor)
         if self.phase == 'wolf_vote':
-            wolf_targets = tuple(a for a in targets if self._roles[a] != 'wolf')
-            return (ActionSpec('kill', '狼人投票选择本夜袭击目标',
-                               (ParameterSpec('target', choices=wolf_targets),)),)
+            # 允许自刀/刀队友：目标可以是任意存活席位，包括自己。
+            return (ActionSpec('kill', '狼人投票选择本夜袭击目标（可自刀）',
+                               (ParameterSpec('target', choices=self.living()),)),)
         if self.phase == 'seer':
             return (ActionSpec('inspect', '查验一名存活玩家的阵营',
                                (ParameterSpec('target', choices=targets),)),)
@@ -168,7 +168,7 @@ class WerewolfWorld:
             if role == 'wolf':
                 private += '狼人队友：' + '、'.join(
                     a for a in self.actors if a != actor and self._roles[a] == 'wolf')
-                private += '夜间先与队友交流，再投票选择目标。'
+                private += '夜间先与队友交流，再投票选择目标；可以自刀。'
             elif role == 'seer':
                 private += '每晚可查验一名存活玩家的阵营。'
             elif role == 'witch':
@@ -430,7 +430,6 @@ class WerewolfWorld:
                 or world.wolf_speaker_index < 0
                 or world.wolf_target is not None and
                 (world.wolf_target not in world.actors or
-                 world._roles[world.wolf_target] == 'wolf' or
                  world.wolf_target not in world.alive)
                 or world.witch_seen_target is not None and
                 world.witch_seen_target not in world.actors):
