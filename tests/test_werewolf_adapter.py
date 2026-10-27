@@ -90,6 +90,9 @@ def test_private_views_and_native_legal_actions_have_no_space_dependency():
     vote = adapter.requests()[0]
     choices = vote.actions[0].parameters[0].choices
     assert 'A' in choices and 'F' in choices  # 自刀/刀队友都合法
+    assert '自刀' not in vote.instructions
+    assert all('自刀' not in a.description for a in vote.actions)
+    assert '自刀' not in world.view_for('A')
     with pytest.raises(ValueError):
         adapter.submit(choose(vote, action='kill', arguments={'target': 'absent'}))
     assert world.snapshot() == before

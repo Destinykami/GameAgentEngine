@@ -19,7 +19,7 @@ RULES = ('简化狼人杀：夜间狼人先密谈、再投票选出袭击目标�
          '白天按座次发言，然后同时投票或弃票。'
          '女巫有解药和毒药各一次，同夜只能用一种；女巫会看到狼人投票选定的目标，再决定是否用解药。'
          '猎人被狼人或投票淘汰时可开枪带走一名存活者，被毒杀不能开枪。'
-         '狼人目标可以是任意存活席位，包括自己和队友（自刀）；投票平票无人淘汰，狼人目标平票按座次。淘汰不公布身份，无遗言。'
+         '狼人投票目标可以是任意存活席位；投票平票无人淘汰，狼人目标平票按座次。淘汰不公布身份，无遗言。'
          '狼人清零好人胜，狼人达到好人人数狼人胜。允许策略性谎报身份和查验，'
          '公开声明不等于主持人反馈；自己的真实身份和技能反馈不可在私人记忆中改写。')
 
@@ -95,7 +95,7 @@ class WerewolfWorld:
         targets = tuple(a for a in self.living() if a != actor)
         if self.phase == 'wolf_vote':
             # 允许自刀/刀队友：目标可以是任意存活席位，包括自己。
-            return (ActionSpec('kill', '狼人投票选择本夜袭击目标（可自刀）',
+            return (ActionSpec('kill', '狼人投票选择本夜袭击目标',
                                (ParameterSpec('target', choices=self.living()),)),)
         if self.phase == 'seer':
             return (ActionSpec('inspect', '查验一名存活玩家的阵营',
@@ -168,7 +168,7 @@ class WerewolfWorld:
             if role == 'wolf':
                 private += '狼人队友：' + '、'.join(
                     a for a in self.actors if a != actor and self._roles[a] == 'wolf')
-                private += '夜间先与队友交流，再投票选择目标；可以自刀。'
+                private += '夜间先与队友交流，再投票选择目标。'
             elif role == 'seer':
                 private += '每晚可查验一名存活玩家的阵营。'
             elif role == 'witch':
