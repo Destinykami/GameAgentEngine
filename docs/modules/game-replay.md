@@ -103,10 +103,10 @@
 
 2026-10-26 验收结果：
 
-- Python 离线全集 **583 项通过、6 项真实端点测试跳过**；覆盖狼人密谈/投票（含自刀）、女巫看见目标、猎人、10 人默认配置和随机人格。
+- Python 离线全集 **584 项通过、6 项真实端点测试跳过**；覆盖狼人密谈/投票（含自刀）、女巫看见目标、猎人、10 人默认配置、随机人格和发言去同质化提示。
 - 前端 **14 项测试通过**（原有 10 项 + 狼人杀 4 项）；`npm run build` 通过并同时产出 `index.html` / `werewolf.html`。
-- 独立 Chromium 检查：加载 42 步真实模型样本，10 个席位；公共日志不含私密事件；`?god` 显示 10 个身份、随机人格和女巫/狼人密谈反馈；分两次追加直播行可依次从 1 步增到 2 步，done 后隐藏 LIVE；无 console/page 错误。
-- 真实模型运行 `examples/werewolf_visual.py --real-model --god --persona-seed 42` 完成一局（10 人、好人胜、42 步），公共与上帝文件分离，样本写入 `visualization/public/`。
+- 独立 Chromium 检查：加载 50 步真实模型样本，10 个席位；公共日志不含私密事件；`?god` 显示 10 个身份、随机人格和女巫/狼人密谈反馈；分两次追加直播行可依次从 1 步增到 2 步，done 后隐藏 LIVE；无 console/page 错误。
+- 真实模型运行 `examples/werewolf_visual.py --real-model --god --persona-seed 42` 完成一局（10 人、好人胜、50 步），公共与上帝文件分离，样本写入 `visualization/public/`。
 - 未运行仓库既有 `npm run e2e` 全量套件；未做真实多人实时观战或公开部署权限验证。
 
 ## 非目标

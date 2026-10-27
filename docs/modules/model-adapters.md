@@ -38,7 +38,7 @@ models/config.py 集中原 LLM/embedding 默认值和每实例 EndpointConfig。
 仓库外编辑安装导入和独立 wheel 的公开入口、默认值按需加载、离线聊天及 embedding 检查通过；打包产物含全部 9 个聊天子包文件，不含旧 llm_http.py 或 persona_agent。git diff --check 通过。
 # 多游戏决策扩展（2026-10-25，已实现）
 
-按 [多游戏接入](game-integration.md) 为 RealLLM 增加可选 decide_game，使用游戏提供的动作定义与参数，复用现有 JSON/传输/统计。不向旧 LLMClient 增加抽象方法，旧 decide_action 保留原契约。参数与玩法需分别校验。
+按 [多游戏接入](game-integration.md) 为 RealLLM 增加可选 decide_game，使用游戏提供的动作定义与参数，复用现有 JSON/传输/统计。不向旧 LLMClient 增加抽象方法，旧 decide_action 保留原契约。参数与玩法需分别校验。通用决策包包含 `persona_guidance`、`phase_guidance`；`speech`/`wolf_talk` 温度 0.7，其他动作 0.2，重试 0.0，用于降低同质化发言。
 
 离线任务与导入边界 84 项通过；动态 vote 参数、非法目标、未知字段及无空间动作回退通过，未运行真实模型。
 
