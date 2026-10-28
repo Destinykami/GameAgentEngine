@@ -1,467 +1,227 @@
-# game_agent — 千人千面游戏 NPC 框架
+# GameAgentEngine
 
-> 重构设计入口：**[docs/README.md](docs/README.md)**，包含按当前代码核对的系统总览、模块蓝图划分、重构路线与设计模板。
->
-> 当前源码采用 **[src/game_agent](src/game_agent/)**，按认知、记忆、世界、模型和评测探针分组；[源码布局](docs/source-layout.md) 说明安装与导入契约，仅支持 `game_agent` 包路径。原 [OVERVIEW.md](OVERVIEW.md) 保留重构前的机制说明与历史状态。
+**面向多游戏的记忆增强 NPC Agent 引擎**
 
-基于 [Generative Agents: Interactive Simulacra of Human Behavior](https://arxiv.org/abs/2304.03442)
-的思路, 构建能随玩家互动历史**动态变化面孔**的游戏 NPC。
+让同一个 NPC 保持稳定人格，并根据不同玩家的交互历史形成关系、信念与行动。
 
-核心设计 (详见配套 blog): **自我** 与 **面** 解耦。
+GameAgentEngine 参考 [Generative Agents](https://arxiv.org/abs/2304.03442) 的记忆、反思与规划思路，将 **NPC 认知核心**与**游戏自己的世界、规则和合法动作**分开。目前提供空间交互与隐藏信息回合制两类接入样例：稻妻城多智能体仿真、简化狼人杀。
 
+[系统架构](#系统架构) · [核心能力](#核心能力) · [快速开始](#快速开始) · [示例与可视化](#示例与可视化) · [开发文档](#开发文档)
+
+## 系统架构
+
+![GameAgentEngine 架构：游戏接入、NPC 认知与独立分层记忆、上下文与行动输出](docs/assets/gameagent-architecture.png)
+
+[查看高清原图](docs/assets/gameagent-architecture.png) · [可编辑 SVG](docs/assets/gameagent-architecture.svg) · [架构与模块边界](docs/architecture.md)
+
+每个游戏通过适配器提供角色的个人视角、阶段目标与合法动作。NPC 根据人格和获准记忆返回结构化行动，游戏校验并结算，再将结果定向投递给对应 NPC。
+
+- **游戏拥有规则与真相**：自己的 World、权威状态、信息可见性、推进顺序和胜负结算。
+- **引擎提供可复用认知**：人格、记忆、关系、模型决策，以及可按场景启用的对话、反思与规划。
+- **NPC 拥有自己的记忆**：每个 NPC 独立存储；游戏公共日志不会自动成为所有 NPC 的知识。
+
+## 核心能力
+
+| 能力 | 当前实现 |
+|---|---|
+| 个性化 NPC | 稳定人格与动态关系分开建模；面向玩家或其他 NPC 维护独立关系流、关系反思与信任判断 |
+| 分层长期记忆 | 每 NPC 独立主库与原文档案；常用记忆优先、重要记忆按需读取，原文持续保留以备追溯 |
+| 组合历史查询 | 按参与者、发言者、地点、时间、事件类型与事件锚点组合筛选，支持全文检索、计数与稳定分页 |
+| 证据约束认知 | 自我/关系反思、身份信念、证据引用、语义去重、矛盾强度判别、置信度衰减及失效过滤 |
+| 空间规划与行动 | 日计划、一次子任务分解、事件反应与重规划；局部感知、人格/信任调制的效用决策及自主行动 |
+| 推理成本治理 | 空间场景按玩家距离调度 full / compressed / idle，结合决策门控、缓存与有界证据候选控制开销 |
+| 持久化与恢复 | 原文先归档、派生失败补处理、幂等事件投递、NPC 两库检查点及世界/适配器状态保存 |
+| 仿真与回放 | Phaser 像素风空间回放、狼人杀席位与票型展示、直播跟随，以及公共/上帝视角分离 |
+
+### 人格与关系
+
+```text
+NPC 的自我
+  稳定人格 + 自我反思 + 自己获知的世界记忆
+
+NPC 面向某个对象的关系
+  关系观察 + 关系反思 + 信任判断
+
+当前游戏角色
+  本局身份 + 阵营/目标 + 当前阶段 + 获准个人视角
 ```
-NPC 的自我 (所有玩家共享, 稳定)
-  Persona  +  自我反思  +  世界记忆 (player_id=None)
 
-NPC 对玩家 p 的面 (每玩家独立成流, 动态)
-  对 p 的关系记忆  +  对 p 的关系反思  +  对 p 的信任状态
+长期人格与本局身份分开；“共享流”指当前 NPC 内部的共享记忆，不是所有 NPC 共用的数据库。普通对话读取当前对象的关系流与该 NPC 的共享流；游戏决策按实例与时间上界读取个人档案。
 
-行为 a_t = π(自我, 对p的记忆, 对p的关系反思, 当前计划, 当前情境, 玩家p)
-```
+### 分层记忆与检索
 
-同一个 NPC: 帮过它的玩家被亲近, 骗过它的玩家被警惕, 互不污染。
-
-## 多游戏接入
-
-每个游戏拥有自己的 World、合法动作、可见性和结算，通过适配层接入同一套 NPC。已提供空间 World 的 `SpatialAdapter` 和独立阶段式简化狼人杀 `WerewolfAdapter`；旧稻妻入口保留。
-
-狼人杀默认 10 人局：3 狼 + 预言家 + 女巫 + 猎人 + 4 村民。夜间狼人先密谈、再投票选目标，目标集合包含所有存活席位；自刀是狼人密谈策略，但不在提示词中提示；女巫能看到狼人选定目标再决定是否用解药；猎人被狼人或投票淘汰时可开枪，被毒杀不能开枪。每个 NPC 默认随机生成 `social`/`goal_oriented` 人格，可用种子复现。规则细节见 [接入设计](docs/modules/game-integration.md#独立阶段样例)。
-
-```bash
-# 默认离线，不连接真实服务；自动新建运行目录
-.venv/bin/python examples/game_adapters.py --game werewolf
-.venv/bin/python examples/game_adapters.py --game spatial
-```
-
-接口位于 `game_agent.integration`，NPC 使用 `decide_game` 与 `receive_game_event`。每 NPC 原文按游戏实例隔离，私密身份和技能反馈定向投递。新增游戏无须继承空间 World，详见 [接入设计与用法](docs/modules/game-integration.md)。狼人杀为简化样例，离线验证不代表真实模型策略质量。主持人快照与公共输出分开，成套恢复须配对保存 NPC 两库。
-
-狼人杀另有独立网页回放（座位、昼夜、发言、票型、淘汰、直播跟随和本地上帝视角）：
-
-```bash
-.venv/bin/python examples/werewolf_visual.py --real-model --god
-cd visualization && npm run dev
-# http://localhost:5173/werewolf.html        公共视角
-# http://localhost:5173/werewolf.html?god    本地上帝视角
-# http://localhost:5173/werewolf.html?live   直播跟随
-```
-
-公共时间线不含真实身份或私密事件；上帝文件单独生成，`?god` 仅用于本地演示/调试。设计见 [对局回放](docs/modules/game-replay.md)。
-
-## 模块映射 (论文 → 本框架)
-
-| 论文模块 | 文件 | 为千人千面扩展了什么 |
+| 逻辑层 | 内容 | 默认读取方式 |
 |---|---|---|
-| Memory Stream + Retrieval | `src/game_agent/memory/store.py` | 每条记忆带 `player_id`; 检索三维评分 (recency/importance/relevance) 之外, 对当前玩家记忆加权 |
-| Reflection | `src/game_agent/cognition/reflection/` | 自我、关系与身份反思；生成编排、证据写入和冲突处理分开，设计见 [反思蓝图](docs/modules/reflection.md) |
-| Planning | `src/game_agent/cognition/planning/` | 日计划及一次子任务分解、反应后重规划；时间规则、计划记忆与当前状态分开，见 [规划蓝图](docs/modules/planning.md) |
-| Reacting | `src/game_agent/cognition/reacting/` | 评分、关系信任、纯效用策略和缓存职责分开，保留人格权重与信任调制，见 [事件反应蓝图](docs/modules/reaction.md) |
-| Dialogue | `src/game_agent/cognition/dialogue/` | 常用记忆优先，明确回忆时检索当前关系及共享流的重要记忆与原文，见 [对话蓝图](docs/modules/dialogue.md) |
-| NPC 编排与成本闸门 | `src/game_agent/cognition/npc/` | 组件组装与调用顺序；运行状态、观察、固化、完整反应缓存和元数据持久化分开，见 [NPC 蓝图](docs/modules/npc-runtime.md) |
-| 记忆卫生链 | `src/game_agent/memory/store.py` / `src/game_agent/cognition/reflection/` | 观察去重、级联切断、语义去重、LLM 冲突失效、降权遗忘、夜间情节固化 (episode) |
-| NPC↔NPC 社交层 | `src/game_agent/world/runtime.py` / `src/game_agent/cognition/npc/` | 记忆流从 per-player 泛化到 per-entity; NPC 互相感知、关系反思、信任; 谣言按传播跳数折扣 |
-| **游戏世界层** | `src/game_agent/world/runtime.py` | 多 NPC + 多玩家空间共存、空间感知、**距离自动调度档位**、世界事件、自治模拟、动作效果钩子、行为链事件、结构化视觉事件、独立持久化 |
-| 评测与可视化 | `evals/` / `visualization/` | 三组消融实验; Phaser 像素风时间线回放器 (含直播跟随) |
+| L1 常用层 | 近期观察、计划、关系及身份概况；结合 NPC 人格组成背景 | 有界加载，帮助理解眼前情境 |
+| L2 重要层 | 重要观察、反思、情节与身份信念 | 预选有限候选，再按时效、绝对重要性、相关性、置信度和传闻跳数重排 |
+| L3 原文档案 | 对话原话、观察、动作及事件来源 | FTS5 全文索引、结构化事件查询、原文 ID 与有限邻文展开 |
 
-## LLM / 向量层
+L1/L2 是逻辑层，主要由主库提供；每个 NPC 实际使用两个 SQLite 文件。合并派生记忆、降低重要性或使旧信念失效，都不会删除已归档的原文。
 
-- 通用游戏路径使用可选 `decide_game(context) -> ActionIntent`，`RealLLM` 已实现；也可注入仅实现这一能力的模型，不要求实现下面的全部旧空间认知方法。
+当前有两条上下文路径：
 
-- `game_agent.models.llm.LLMClient`: 抽象接口, **十二个方法** `complete / score_importance /
-  reflection_questions / reflection_insights / generate_plan / decompose_activity /
-  score_event / judge_trust / judge_conflict / perceive_action / decide_action /
-  consolidate_observations`。实现者只应使用传入的记忆内容 (非全知原则)。
-- `game_agent.models.llm_http.RealLLM`: 唯一实现, 通过 OpenAI 兼容接口 (`/v1/chat/completions`)
-  接入 SGLang 部署的 `Qwen3.8-27B-Coder/BF16`。要换别的 OpenAI 兼容端点,
-  改 `base_url` / `model` 即可。
-- `game_agent.models.embeddings.Embedder`: 可插拔向量接口, 两个实现:
-  - `HashEmbedder` (默认回退): 词袋哈希, 余弦相似度反映**词面重叠**, 确定性、
-    零依赖。中文按单字、英文按词分词。
-  - `game_agent.models.embeddings_http.RealEmbedder`: 接 OpenAI 兼容 `/v1/embeddings`, 默认指向
-    SGLang 部署的 `Alibaba-NLP/gte-Qwen2-1.5B-instruct` @ `10.121.39.10:30006`
-    (1536 维, 语义相似度 —— 换说法的同义句也能高相似)。
-  - `make_embedder()`: 优先真实端点, 不可达自动回退 HashEmbedder。示例默认用它。
+- **普通对话 `NPC.speak`**：优先使用常用记忆；规则识别到回忆、原话或约定类意图时，才检索重要层与原文。记忆内容共用 3000 字符预算，候选读取不自动强化记忆。
+- **通用游戏 `NPC.decide_game`**：使用个人视角、人格及本局最近事件；默认历史窗口为 16 条、6000 字符，不自动检索远期历史。日程和关系反思由游戏选择启用。
 
-## 运行
+通用事件查询接口已经提供；将任意自然语言历史问题自动拆解为查询步骤的规划器仍是后续工作。详见 [分层记忆](docs/modules/tiered-memory.md) 与 [事件查询](docs/modules/memory-events.md)。
 
-Python >= 3.10，运行时仅使用标准库。先从项目根目录安装开发包：
+## 快速开始
+
+需要 **Python 3.10+**。引擎运行时仅依赖 Python 标准库；开发测试使用 pytest，网页可视化另需 Node.js 与 npm。
+
+在仓库根目录执行：
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 python -m pip install -e '.[dev]'
-# 已有 .venv 时也可使用：
-uv pip install --python .venv/bin/python -e '.[dev]'
 
-# 当前真实模型 API 不可达，以离线测试验收：
-python -m pytest tests/ -q
-# 统一验收（需本地 npm 依赖、uv 和已缓存的 Python 构建依赖）：
-python tools/check_project.py
-# 追加浏览器检查（需已安装 Chromium）：
-python tools/check_project.py --e2e
+# 默认使用离线演示模型，不连接 LLM 服务
+python examples/game_adapters.py --game werewolf --persona-seed 42
+python examples/game_adapters.py --game spatial
 ```
 
-下方真实模拟和在线评测需要 LLM 端点可达（默认 10.121.39.10:30005），当前暂不运行。
+Windows 激活虚拟环境时使用 `.venv\Scripts\activate`。
+
+两个命令都会创建新的临时运行目录，并在结束后输出路径；其中包含 NPC 数据、公共结果和适配器私有快照。也可用 `--data-dir <空目录>` 指定位置。离线演示用于验证接入和运行链路，其固定决策不代表模型的博弈能力。
+
+## 示例与可视化
+
+### 狼人杀：隐藏信息与阶段决策
+
+默认 10 人局：**3 狼 + 预言家 + 女巫 + 猎人 + 4 村民**。支持狼人夜间密谈与目标投票、预言家查验、女巫用药、猎人开枪、白天发言与投票结算。人格可通过种子复现；身份与技能反馈仅投递给获准接收者。
+
+生成一局离线回放并打开网页：
 
 ```bash
-# 端到端 demo: 真实语言模型驱动同一个 Klaus 对 Aria 与 Bram 的千人千面
-python examples/demo_real.py
-
-# 单 NPC 完整游戏分钟 (规划/观察/对话/反应/重规划)
-python examples/game_loop.py
-python examples/persistence.py          # 两次会话的跨进程往返
-python examples/forgetting.py           # ~8 天时间跳跃后的分层降权
-
-# 世界层: 脚本驱动旅行者 / 全自治多智能体
-python examples/world_demo.py           # 稻妻城·眼狩令, 5 NPC + 旅行者
-python examples/world_auto_sim.py       # 10 天 × 8 步, 所有实体都由 LLM 决策
-
-# 在线探针需显式开启；当前真实 API 不可达，暂不执行
-pytest tests/test_probes.py --online -q
-
-# 评测 (需真实 LLM; 方法与结果见 evals/README.md)
-python evals/memory_consistency.py --smoke
-python evals/decision_ablation.py --smoke
-python evals/scheduling_efficiency.py --smoke
-
-# 可视化回放器
-cd visualization && npm install && npm run dev
+python examples/werewolf_visual.py --god --persona-seed 42
+cd visualization
+npm ci
+npm run dev
 ```
 
-## 反思质量 (级联切断 + 语义去重)
+| 页面 | 用途 |
+|---|---|
+| `http://localhost:5173/werewolf.html` | 公共视角：席位、阶段、发言、票型、淘汰与结局 |
+| `http://localhost:5173/werewolf.html?god` | 本地上帝视角：额外加载身份与私密事件 |
+| `http://localhost:5173/werewolf.html?live` | 跟随运行器输出的直播文件 |
 
-两个曾导致"57 条记忆里 51 条反思"失控的机制, 已修:
+公共时间线与私密文件分开；`--god` 显式将上帝文件放进前端 public 目录，仅供本地演示和调试。需要真实模型时，在配置好客户端后给运行器加 `--real-model`。规则与回放格式见 [游戏接入](docs/modules/game-integration.md) 和 [对局回放](docs/modules/game-replay.md)。
 
-1. **级联切断**: 反思找证据时限定 `types=["observation"]` —— 反思只能由真实
-   观察支撑, 不能拿别的反思当证据 (否则一代代复述放大自己)。
-2. **语义去重**: `ReflectionWriter.save` 保存前, 新洞察与同一条流已有反思做
-   余弦比对, `>= 0.92` 视为同一条认知的复述, 跳过不入库。阈值来自
-   gte-Qwen2 实测: 措辞不同的重复稳定落 0.85~0.94, 不同面向的独立洞察
-   多 <= ~0.90; E6 从 0.95 下调到 0.92 (0.95 在真实数据几乎不生效)。
+### 稻妻城：空间交互与自主行动
 
-效果: 2 条观察 → 4 条互不重复的反思 (两两相似度最高 0.92), 证据全指向观察。
-用 `python tools/inspect_npc.py data/<name>.db` 可审查证据链与相似度。
+`world_auto_sim` 以稻妻城为舞台，包含 **5 个 NPC、1 个玩家 Agent、6 个区域**，支持空间感知、自主行动、对话、事件反应、距离认知调度及场景效果。
 
-## 接入 LLM (RealLLM)
+```bash
+# 需要已配置且可访问的真实模型服务；不是离线快速开始
+python examples/world_auto_sim.py
 
-`src/game_agent/models/llm_http.py` 的 `RealLLM` 通过 OpenAI 兼容接口接入
-SGLang 部署的 `Qwen3.8-27B-Coder/BF16`:
-
-```python
-from game_agent import NPC, RealLLM, HashEmbedder
-npc = NPC("Klaus", {"social": 0.4, "goal_oriented": 0.8},
-          llm=RealLLM(),                # 默认 http://10.121.39.10:30005
-          embedder=HashEmbedder())
+# 将本次结果放入前端静态目录，供 ?timeline=timeline.json 读取
+cp data/auto_sim/timeline.json visualization/public/timeline.json
 ```
 
-要点:
-- **思考型模型**: 用 SGLang 的 `chat_template_kwargs={"enable_thinking": ...}`
-  按调用开关思考。对话/打分默认关思考 (快), 结构化 JSON 任务 (反思/规划) 恒关
-  思考 —— 思考 token 会挤爆 `max_tokens` 导致 JSON 截断。`enable_thinking=True`
-  可让对话开思考。
-- **结构化输出**: 反思问题/洞察、日计划、活动分解都要求模型返回严格 JSON,
-  `_extract_json` 容忍 markdown 围栏与前后杂字, 解析失败自动重试一次。
-- **非全知**: 对话只使用当前对象与共享流的背景/证据；无历史命中也可正常交流，对具体往事不得编造。
-- **无依赖**: 用标准库 `urllib` 发请求, 不引入 openai/requests。
+运行器会重建该示例的数据目录并输出时间线、直播文件与检查点；需要继续既有世界时使用恢复接口。前端首页默认展示离线样本，`http://localhost:5173/?timeline=timeline.json` 加载上面复制的结果，`http://localhost:5173/?live` 跟随直播。更多操作见 [可视化说明](visualization/README.md)。
 
-## 持久化 (NPC 落库)
+### 其他示例
 
-默认 NPC 是**内存态**的 (进程退出即失忆)。要持久化, 用 `NPC.create` /
-`NPC.load`。每个 NPC 独立保存两份 SQLite 文件：`data/<name>.db` 保存派生记忆与元数据，`data/<name>.archive.db` 保存原文、检索索引及待处理状态。不同 NPC 不共用原文库。
+| 入口 | 内容 |
+|---|---|
+| [`examples/demo_real.py`](examples/demo_real.py) | 同一 NPC 面向不同玩家的关系差异 |
+| [`examples/game_loop.py`](examples/game_loop.py) | 单 NPC 的规划、观察、对话与事件反应 |
+| [`examples/persistence.py`](examples/persistence.py) | 跨会话持久化与加载 |
+| [`examples/forgetting.py`](examples/forgetting.py) | 时间推进后的记忆降权 |
+| [`examples/world_demo.py`](examples/world_demo.py) | 脚本驱动的空间世界 |
+| [`examples/replay.py`](examples/replay.py) | 终端时间线回放 |
 
-```python
-from game_agent import NPC, RealLLM, make_embedder
+除默认离线的游戏适配与狼人杀回放外，认知示例通常需要真实模型。具体依赖见各入口。
 
-# 创建或加载 (不存在则新建并落库, 已存在则等价于 load)
-isabella = NPC.create("Isabella", {"social": 0.8, "goal_oriented": 0.3},
-                      llm=RealLLM(), embedder=make_embedder(), data_dir="data")
-isabella.observe("Aria 帮 Isabella 整理了菜单", now=10.0, player_id="Aria")
-isabella.save()
+## 模型接入与 NPC 使用
 
-# 之后任何时候 (新进程也行) 加载, 记忆流 + 信任状态 + 游戏时钟全部恢复
-isabella2 = NPC.load("data/Isabella.db", llm=RealLLM(), embedder=make_embedder())
-isabella2.trust_toward("Aria")   # +1.00, 与上次一致
-```
-
-- 持久化的内容: 全部记忆流 (观察/反思/计划)、信任状态 (由记忆派生)、游戏时钟。
-- `save()` 只写元数据 (名称/人格/时钟), 记忆流落库即持久, 无需额外同步。
-- 原文先落库，后续感知、评分、嵌入或生成失败仍保留，使用 `npc.retry_pending_memories(limit=20)` 显式补处理；原文落库失败会明确抛出 `ArchiveWriteError`。
-- 向量缓存有界且不入库，加载后按需重建；更换真实嵌入模型可能改变排序。
-- 手动复制 NPC 存档须包含两个文件；暂停写入时可分别调用 `store.backup(main_path)` 和 `store.backup_archive(archive_path)`，完整世界优先使用检查点接口。
-- 同一 .db 同一时刻只应被一个进程打开 (未做并发写锁)。
-
-`python examples/persistence.py` 演示两次游戏会话的跨进程往返。
-
-## 分层记忆（2026-10-25）
-
-- **L1 常用层**：名称/人格、当前关系与共享流最近 24 游戏小时的有限记录，以及至多两条有效高阶概况；上下文共同限制为 3000 字符。
-- **L2 重要层**：重要观察与反思/情节/身份信念；最多预选 128 条后按原 importance/10 评分重排。
-- **L3 原文档案**：每 NPC 独立追加保存。真实重复事件各有原文，主库观察仍可合并；普通低重要性旧事也可通过原文索引找到。
-
-对话上下文阶段，普通闲聊不查询远期档案、不做历史向量检索；明确回忆或约定类问题才查询历史，候选读取不刷新访问水位。NPC.speak 的关系反思门控仍可能触发模型调用，但问题原料已限制为最近 100 条同关系有效观察，取证先混选最多 128 条近期/重要候选再重排；原文均保留，触发水位仍按观察总数维护。提示词区分背景与可提及证据；检索命中不表示需要主动复述。首版路由为确定性词语规则，档案检索为关键词/时间及有限邻文展开，不保证任意无词面重叠的历史语义召回。自我/身份反思、全局去重与冲突检查仍沿用原策略，不据此宣称整个认知流程恒定成本。
+`RealLLM` 使用 OpenAI 兼容的 `/v1/chat/completions`，`RealEmbedder` 使用 `/v1/embeddings`。地址、模型名和密钥通过构造参数传入；代码默认值保留原实验部署配置，接入自己的服务时应显式覆盖。
 
 ```python
-# 从当前 NPC 自己的档案查找；仍隔离其他玩家的私有关系流。
-hits = isabella2.store.search_archive(
-    "菜单", player_id="Aria", include_shared=True,
-    before=isabella2.game_time, limit=4,
+import os
+
+from game_agent import NPC, HashEmbedder, RealLLM
+
+llm = RealLLM(
+    base_url="http://localhost:8000",  # 服务根地址，客户端会追加 /v1/chat/completions
+    model="your-chat-model",
+    api_key=os.environ.get("MODEL_API_KEY", ""),
 )
-# 精确读取同一关系可见的原文；旧库导入项明确标为 legacy_snapshot。
-if hits:
-    original = isabella2.store.read_archive(hits[0]["id"], player_id="Aria",
-                                          include_shared=True)
+
+npc = NPC.create(
+    "Isabella",
+    {"social": 0.8, "goal_oriented": 0.3},
+    llm=llm,
+    embedder=HashEmbedder(),
+    data_dir="data/npcs",
+)
+try:
+    npc.observe("Aria 帮我整理了菜单。", now=10.0, player_id="Aria")
+    print(npc.speak("Aria", "今天生意怎么样？", now=10.5))
+    npc.save()
+finally:
+    npc.store.close()
 ```
 
-旧库无法恢复过去已经丢失的原话，只导入剩余记录快照。已有档案缺失或主库/档案错配时拒绝加载。新检查点同时保存各 NPC 两库；旧版检查点仍可恢复为旧记录快照。设计、测试与未验证范围见 [分层记忆](docs/modules/tiered-memory.md)。演示运行器仍按新运行重建指定目录，续跑使用保存/检查点恢复入口。
+`HashEmbedder` 是离线词袋哈希，只反映词面重叠。需要语义向量时，可替换为配置好的 `RealEmbedder`；`make_embedder()` 会尝试原默认向量端点，不可达时回退。模型接口、JSON 修复与调用统计见 [模型接入设计](docs/modules/model-adapters.md)。
 
-## 游戏世界层 (多 NPC 真实世界)
+示例脚本中的 `--real-model` 使用 `RealLLM()` 默认构造，不提供端点命令行参数；自定义服务可像上例构造客户端，再通过运行器的 `model` 参数或稻妻运行器的 `llm_factory` 注入。
 
-在单个 NPC 之上加了一层**世界层** (`src/game_agent/world/runtime.py`)，把"脚本手喂单个 NPC"升级为
-**多 NPC + 多玩家在空间世界里自动感知、距离调度认知**：
+### 持久化与恢复
 
-- **空间与实体**：`Location`(有坐标区域) / `Entity` / `Player` / `World`。距离用
-  欧氏度量 `distance(a, b)`。
-- **多 NPC 共存**：`World.add_npc(name, persona, llm, embedder, data_dir, location)`
-  复用 `NPC.create`，每 NPC 独立 db，各自独立记忆流与面，跨 NPC 不污染。
-  `add_player` 登记玩家实体。
-- **空间感知**：`World.perceive(npc, now)` 让 NPC 感知视距内的玩家，自动生成
-  自然语言观察喂 `npc.observe()`（替代手写），粒度随档位：full=富细节、
-  compressed=稀疏、idle=无。重复感知同一在场走既有观察去重，不灌水。
-- **距离调度**：`World.tier_of(npc)` 按最近玩家距离自动推导档位——同区域
-  (≤full_radius) → full、视距内 (≤perception_radius) → compressed、远离/无玩家 →
-  idle。`schedule_tiers` 给所有 NPC 自动设档。**这就是 blog「问题一」的落地：
-  认知开销随距离自动降档，不再手动 `set_tier`。**
-- **世界事件**：`World.world_event(desc, now, at, radius)` 共享事件（眼狩令生效/
-  执行官搜捕），范围内 NPC 作为世界观察（不带 player_id）半径感知；`at=None`
-  全图事件影响所有 NPC。
-- **模拟驱动**：`World.step(now)` 是"世界推进"循环——时钟→距离调度→空间感知→
-  按档自我反思→遗忘清扫→自动落库；`World.step_autonomous(now)` 则是**全自治**循环：
-  所有存活实体先基于同一时刻感知各自决策，再统一执行，然后重感知/反思。
-- **动作与规则可注入**：引擎只负责动作空间与物理规则（移动/伤害/历史/视觉事件），
-  具体世界行为经 `add_action_effect(action, fn)` 钩子注入；`add_chain_rule(action,
-  threshold, desc)` 让"同一 actor 对同一 target 连续 N 次同类动作"触发世界事件，
-  是脚本注入之外的第二条事件来源。
-- **结构化视觉事件**：`VisualEvent` 是渲染层的单一事实源（`move/conversation/
-  attack/help/hide/flee/wait/world_event`），中文描述由 `describe()` 派生，
-  前端不再解析事件串。
-- **独立持久化**：世界状态单独存 `world.db`（实体位置+时钟+NPC 注册表），与每
-  NPC 的独立 `<name>.db` 主库和 `<name>.archive.db` 原文库分离。`World.load(llm, embedder)`
-  跨进程恢复整个世界（含各 NPC 记忆流与面）。
-
-```python
-from game_agent import World, Location, RealLLM, make_embedder
-w = World("稻妻城", [Location("主城", 0, 0), Location("治疗堂", 1, 0)],
-          path="data/inazuma/world.db")
-w.add_npc("桃音", {"social": 0.8, "goal_oriented": 0.3},
-          llm=RealLLM(), embedder=make_embedder(), data_dir="data/inazuma",
-          location="治疗堂")
-w.add_player("旅行者", "主城")
-w.world_event("雷电将军颁布眼狩令", now=7.0)
-w.step(8.0)                        # 距离调度 + 感知 + 反思 + 落库
-w.npc("桃音").trust_toward("旅行者")  # 千人千面
+```text
+data/npcs/
+├── Isabella.db          # 派生记忆、证据关联与 NPC 元数据
+└── Isabella.archive.db  # 完整原文、全文/事件索引与补处理状态
 ```
 
-`python examples/world_demo.py` 演示稻妻城·眼狩令真实世界（5 NPC + 旅行者，
-距离调度、千人千面、世界事件）。
+- `NPC(...)` 默认是内存态；`NPC.create(...)` 创建或加载持久化 NPC，`NPC.load(...)` 显式加载已有主库及配对档案。
+- 原文先归档；后续评分、嵌入或生成失败仍保留，可用 `npc.retry_pending_memories(limit=20)` 显式补处理。
+- 备份 NPC 时需保存两个文件；完整空间世界使用 `World.save_checkpoint(...)`，通过 `World.from_checkpoint(...)` 恢复到新运行目录。
+- 游戏适配器的私有快照与 NPC 档案需成套保存；实时写入不承诺跨库原子事务。详见 [持久化设计](docs/modules/persistence.md)。
 
-## NPC↔NPC 社交层 + 谣言传播 (P1)
+## 接入新游戏
 
-千人千面不只对玩家生效：记忆流从 per-player 泛化到 **per-entity**，NPC 之间也能
-互相感知、形成关系反思与信任（`player_id` 现在语义是"关于哪个实体的面"，
-`None` 仍是共享流）。
+新游戏无须继承空间 `World`，按以下边界实现适配器：
 
-- **社交在场感知**：`World(social_perception=True)` 让 NPC 感知视距内其他 NPC 的
-  出现，按档位生成观察（full=富细节 / compressed=仅在场 / idle=无）。过渡驱动：
-  只对新进入视距的对象产生观察，重复在场不灌水。
-- **双向独立**：A 对 B 的信任与 B 对 A 的信任是两条独立的流，互不污染。
-- **谣言传播**：`World(rumor_spread=True)` 下，对话会被范围内第三方听到（hop=1），
-  持有传闻的 NPC 会继续转述（hop+1）。传闻记忆带 `hearsay` / `hop` 标记，检索分数按
-  `0.8^hop` 折扣；`HEARSAY_MAX_HOP=3`，超过三跳不再转述。信任判断里传闻显式标注
-  跳数，避免"听来的一句话"与亲眼所见同权。
-- **内生事件**：行为链计数达到阈值时经 `world_event` 触发世界事件（如执行官连续
-  搜捕失败→署内问责），来源从脚本变为行为。
+1. 管理自己的权威状态、阶段、规则和结算。
+2. 为当前行动者构造 `DecisionRequest`，包含个人视角、阶段目标及动态 `ActionSpec` / `ParameterSpec`。
+3. 接收 `ActionIntent`，校验参数、请求与状态版本，并在执行前复核实际玩法规则。
+4. 将结果转换成带稳定 ID、接收者与频道的 `GameEvent`，交给 `GameSession` 协调投递与后续决策。
 
-这些开关**缺省全关**，不改变原行为；回归测试在
-[`tests/test_social_layer.py`](tests/test_social_layer.py) 与
-[`tests/test_rumors.py`](tests/test_rumors.py)。
+核心协议位于 [`game_agent.integration`](src/game_agent/integration/)。可参考 [`SpatialAdapter`](src/game_agent/adapters/spatial.py) 与 [`WerewolfAdapter`](src/game_agent/scenarios/werewolf/adapter.py)，完整接口见 [多游戏接入设计](docs/modules/game-integration.md)。
 
-## 记忆固化 + 身份层信念 (P2)
+## 验证与评测
 
-- **夜间固化**：`World(consolidation=True)` 在每晚 `consolidate_hour`（默认 23:00）
-  把当天的原始观察按流压缩成情节摘要 `episode`，源观察标 `consolidated`（仍 valid、
-  可检索，但退出冲突扫描）。摘要置信度取源观察最低值，幂等（同日重跑不重复压缩）。
-  这让冲突扫描从"反思 × 全部后续观察"的二次复杂度降为线性于信念层大小。
-- **身份层信念**：`World(use_identity_beliefs=True)` 让自我反思产出**跨玩家泛化**的
-  身份信念（`type=identity`，写共享流），并在 `decide_agent` 的决策上下文里注入，
-  对所有玩家生效。开关缺省关，测试见
-  [`tests/test_consolidation.py`](tests/test_consolidation.py)。
+```bash
+# 默认离线测试；真实端点探针需显式启用
+python -m pytest tests/ -q
 
-## 自治世界与结构化视觉事件
-
-`examples/world_auto_sim.py` 把"脚本驱动旅行者"升级为**全自治**：旅行者、5 个 NPC
-（桃音/刚郎/小梅/执行官/雷电将军）各自有 `goal`，每步「感知（非全知）→
-`decide_action` → 执行」。剧本只给初始世界和时间推进，走位/台词/动作/结局都由
-交互涌现；旅行者可以用证据说服将军，也可以战斗，结局不预设。
-
-一步的流程（`World.step_autonomous`）：
-
-```
-距离调度 → 早晨日计划 (每人一次) → 夜间固化 (可选)
-  → 所有存活实体基于同一时刻感知决策 (idle 可规则等待, 零 LLM)
-  → 统一 execute_action (原子性: 认知事件成功才提交物理状态)
-  → 重大状态变化触发 replan → 重感知/反思 → flush 社交交互 → 落库
+# 前端测试与构建（先完成 npm ci）
+cd visualization
+npm test
+npm run build
 ```
 
-每次动作产出 `VisualEvent`，由 `examples/replay.py` 在终端回放，也是
-`visualization/` 的唯一数据源。产物在 `data/auto_sim/`（`timeline.json` +
-`world.db` + 每 NPC 独立 db）。
+统一验收入口为 `python tools/check_project.py`，包含 Python、前端与独立 wheel 安装检查，需要本地 npm 依赖、uv 及已缓存的 Python 构建依赖。追加浏览器验收使用 `--e2e`，需已安装 Chromium。
 
-## 可视化回放器
+评测包含记忆一致性四臂消融、人格/关系决策消融，以及认知调度的调用量与延迟对照。方法、历史结果和版本口径见 [`evals/README.md`](evals/README.md)：其中历史数字尚未按新的绝对 `importance / 10` 评分公式重跑，不作为当前版本效果结论。
 
-[`visualization/`](visualization/README.md) 是基于 **Phaser + Vite + TypeScript** 的
-稻妻城像素风**只读**回放器：消费引擎产出的结构化 `visual_events`，支持播放/暂停/
-逐步/调速、时间轴拖拽寻址、对话气泡、伤害数字、点击实体详情卡、活动动画投影；
-既能加载跑完的 `timeline.json`，也能用 `?live` 轮询 `live.jsonl` 边跑边看。
-回放器不反向修改世界状态，也不根据动画帧重新触发 Agent 决策。
+当前已提供长期原文保留与有界上下文读取；任意自然语言历史查询、十万轮负载和大规模模型策略质量仍需单独验证。离线测试验证契约、隔离与恢复，不等同于真实生成质量评测。
 
-## 评测 (evals/)
+## 开发文档
 
-三组实验，方法学与结果表见 [`evals/README.md`](evals/README.md)，设计记录见
-[EvalPlan.md](EvalPlan.md)：
+| 文档 | 内容 |
+|---|---|
+| [设计文档入口](docs/README.md) | 模块设计、实现状态与验证记录 |
+| [系统总览](docs/architecture.md) | 模块职责、调用方向与状态归属 |
+| [源码布局](docs/source-layout.md) | src 布局、正式包入口与安装规则 |
+| [多游戏接入](docs/modules/game-integration.md) | 请求、动作、定向事件与会话协议 |
+| [分层记忆](docs/modules/tiered-memory.md) / [事件查询](docs/modules/memory-events.md) | 原文档案、检索路径与组合查询 |
+| [NPC 编排](docs/modules/npc-runtime.md) / [反思](docs/modules/reflection.md) / [规划](docs/modules/planning.md) | 认知组件与触发逻辑 |
+| [实验与评测](evals/README.md) | 基线、指标、消融设计与历史结果 |
+| [可视化](visualization/README.md) / [狼人杀回放](docs/modules/game-replay.md) | 空间与对局展示、直播跟随 |
 
-1. **记忆一致性四臂消融** (`memory_consistency.py`)：baseline / 证据约束 /
-   启发式衰减 / 完整链。指标：证据支撑率 (EGR)、过期记忆召回率、认知冲突率。
-2. **决策消融三方法** (`decision_ablation.py`)：固定优先级 / 无关系权重效用 /
-   完整人格×关系效用，在 3 人格×3 信任档×6 事件矩阵上对拍期望响应表。
-3. **认知调度效率** (`scheduling_efficiency.py`)：all_full / tiered / tiered_capped，
-   在稻妻自治世界上测每步 LLM 调用/token、P50/P95 延迟、决策一致性、N=5→40 扩展性。
-
-## 六个探针 (集成测试)
-
-`src/game_agent/evaluation/probes.py` 把"它真的千人千面了吗"变成对真实 LLM 的集成回归。每个探针混合
-**确定性架构断言** (信任度差异、特质稳定, 不依赖 LLM 措辞) 与 **宽松真实 LLM
-断言** (对话不同、非全知不编造、计划目标导向, 对措辞鲁棒)。需 LLM 可达,
-默认不探测端点，显式 `--online` 后不可达则 skip。当前 **453 个离线测试已通过，6 个在线探针默认跳过**；以下 6 个探针保留，因真实 API 不可达，本轮未执行：
-
-1. **一致性探针** — 对两个玩家信任度不同, 且同一问话回答不同。
-2. **非全知探针** — 没观察过的玩家, 不应自信编造其背叛。判定用 **LLM 裁判**
-   (`RealLLM.ask`) 而非关键词: 中文否定式 (没偷过/偷没偷/没什么印象/没留意过)
-   关键词判不了, 交给 LLM 判"是否自信断言具体事实"。
-3. **持久性探针** — 被背叛后, 对背叛者的信任仍低于对帮助者 (相对断言)。
-4. **漂移探针** — 人格特质随时间稳定, 生成的计划仍由 persona 驱动。
-   已知限制: "计划目标导向"目前用关键词表判定, 对 LLM 措辞敏感 (如"整理物资/
-   制定突发预案"是目标导向但不含预设词), 偶发假阴性。
-5. **第一人称探针** — 记忆流是第三人称叙述, NPC 开口时不该用自己的名字称呼
-   自己 (防"梳理和 Isabella 的协作流程"式自指 bug)。对话 prompt 里显式把
-   记忆中的 NPC 名字映射为"我"。
-6. **世界隔离探针** — 同一玩家对不同 NPC 的面独立: 帮过的 NPC 信任为正、骗过的
-   为负, 且该 NPC 的记忆流不含另一个 NPC 的交互 (跨 NPC 不污染)。验证世界层的
-   多 NPC 千人千面。
-
-## 遗忘 / 衰减 (部分衰减降权, 不删除)
-
-记忆不是只增不减的, 但也不会被抹掉。`src/game_agent/memory/store.py` 的 `decay_and_forget` 按时间
-**下调 importance** (降权), 渐近到 `MIN_IMPORTANCE`(1.5) 为止 —— 记忆**保留**
-(valid 恒 1), 只是检索权重降低, 老记忆自然跌出前排, 被回忆又能升回:
-
-```
-importance *= 0.5 ** (age / half_life)      # 渐近降到 MIN_IMPORTANCE, 不删除
-age   = now − max(timestamp, last_accessed)  # 被回忆过 → 衰减更慢
-```
-
-- **分层半衰期** (按游戏内小时): 原始观察 48h (~2 天) 最先降权, 反思与情节摘要
-  168h (~1 周), 身份信念 336h (~2 周), 计划 24h (隔夜即降权)。
-- **保护**: 被有效反思引用为证据的观察不降权 —— 已固化为高阶认知, 降了会削弱
-  反思的证据链。保护集在每次清扫前按当前有效反思快照计算。
-- **回忆强化**: `last_accessed` 被检索/merge 时刷新, 近期被用到的记忆衰减更慢。
-- **触发**: NPC 游戏时钟每推进 6h 自动清扫 (纯本地计算, 零 LLM 成本), 也可
-  `npc.forget(now)` 手动触发。
-- **与信任的关系 (显式设计)**: 信任是**持久的关系认知**, `judge_trust` 只看
-  关系记忆的**内容**、刻意不看 importance。遗忘只降权不删除, 久远的帮助/
-  背叛仍是认知 —— 故**信任度不随遗忘淡化**, 帮过的人不会被"时间冲淡"。
-  (若想要"关系会淡"的效果, 需把降权后的权重一并喂给 `judge_trust`, 当前
-  刻意不做。)
-
-`python examples/forgetting.py` 演示 ~8 天时间跳跃后的分层降权 (importance
-前后对比, 受保护帮助不变、杂事触底但保留)。
-
-## 观察去重 (事件重放不灌水)
-
-`npc.observe()` 入库前, 用 embedder 与**同一条流**（同玩家/同实体）的近期观察做
-语义比对 (`OBS_DEDUP_THRESHOLD = 0.92`, 与反思去重同阈值, 观察更公式化、
-近义重复更多)。近义则**合并**而非跳过:
-
-- 不新增记录, 返回已有观察的 id (反思证据引用不断)。
-- 刷新 `last_accessed` —— 事件反复发生 = 记忆强化, 衰减锚点后移, 抗遗忘。
-- importance 最多每 6h 强化 +1 (上限 10; `MERGE_REINFORCE_INTERVAL`) ——
-  反复发生的事件更突出, 但不会因每步在场被顶满。
-
-效果: 事件重放不再灌水 —— 信任度不被重复计分, 重要性累积不被反复抬高,
-检索 top_k 不被重复记忆占满。限定同一条流: 跨玩家/跨实体的相似文本是不同关系,
-不合并。
-
-## 反应决策 (LLM 判断事件价值)
-
-反应决策不再查关键词死表。`ReactionDecider` 把事件价值判断交给 LLM
-(`LLMClient.score_event` → `RealLLM` 严格 JSON, 关思考): 给定事件 + 人格 +
-当前计划, 判出 `(社交价值, 目标价值, 打断代价)` 各 0-10。
-
-- **能反应任意事件**: 没枚举过的 (失火求援/商业提案/看护病猫) 也能被正确权衡,
-  不再一律落 `DEFAULT_VALUE`。且会参考当前计划 —— 派对邀请对正在备派对的人
-  目标价值高。
-- **成本闸门**: 事件价值按 `(事件, 计划)` 缓存, 同一情境不重复调 LLM; 加上
-  `npc.react` 的决策缓存 (精确键 + 上限), 反应路径的 LLM 开销可控。
-- **信任仍独立调制**: 事件价值是"事"的分量, 信任度(记忆派生)单独调制
-  `w_social`, 二者相乘 —— 同一派对, 对信任者接受、对背叛者拒绝。
-
-## 信任度 (LLM 判断, 取代词表)
-
-`ReactionDecider.relationship_trust` 不再数关键词, 改为让 LLM 基于该玩家
-的全部关系记忆 (观察 + 反思) 判断信任度 `-1..1` (`LLMClient.judge_trust`)。
-
-- **理解花样措辞**: "搭把手"=帮、"接济"=帮、"放鸽子/拿钱跑路"=背叛, 这些词表
-  漏判的说法 LLM 都能判对 (实测 +0.2/+0.5/-1.0)。且是**程度判断** (搭把手 +0.2
-  < 修咖啡机 +0.5), 比词表二值 ±1 更细腻。
-- **成本闸门 (签名缓存)**: 信任是高频读取 (`react` 建缓存键就要用), 不能每次
-  调 LLM。按玩家缓存, 失效键 = 关系记忆签名 `(条数, 最新时间戳)` —— 只有该
-  玩家的关系记忆真正变化 (新增观察/反思、被遗忘) 才重判, 否则命中缓存零成本。
-
-## 冲突失效 (LLM 判矛盾强度, 取代词表)
-
-`ReflectionEngine.check_conflicts` 不再数"信任词 vs 背叛词", 改为让 LLM 判
-**矛盾强度 0-10** (`LLMClient.judge_conflict`): 对每条反思 × 每条**更晚**的观察,
-判"这条新观察与旧反思矛盾吗、多强"。
-
-- **语义矛盾**: 强背叛推翻强信任 = 高分 → 反思失效; 轻微帮助削弱轻微警惕 =
-  中分 → 置信度衰减。只查更晚的观察 (时间上只有新证据能推翻旧信念)。
-- **成本闸门**: 判断按 `(反思内容, 观察内容)` 缓存, 重复检查同一对零 LLM 成本;
-  且 `check_conflicts` 由 `reflect_relationship` 触发, 后者已被"有新观察才反思"门控。
-
-## 当前状态
-
-- **核心机制已落地**：反思去重、观察去重、遗忘降权、LLM 反应决策、LLM 信任度、
-  LLM 冲突失效、持久化、夜间固化 (episode)、身份层信念。
-- **游戏世界层已落地**：多 NPC 空间共存、空间感知、距离调度档位、世界事件、
-  模拟/自治双循环、动作效果钩子、行为链事件、结构化视觉事件、独立持久化。
-- **NPC↔NPC 社交层 + 谣言已落地** (NextPlan P1)：per-entity 面、社交感知、
-  传闻按跳数折扣、内生事件；相关开关缺省关闭。
-- **记忆固化 + 身份信念已落地** (NextPlan P2)：episode 吸收旧观察、冲突扫描
-  从二次降为线性、跨玩家身份信念可注入决策。
-- **评测与可视化**：三组消融实验的结果已回填 [`evals/README.md`](evals/README.md)；
-  Phaser 回放器 M0–M5 已实现并 E2E 验证（含真实旧格式回放与直播跟随）。
-- **信任度不随遗忘淡化是显式设计**：信任是持久的关系认知, `judge_trust` 只看
-  关系记忆内容、刻意不看 importance (帮过的人不会因久远被时间冲淡)。回归测试
-  `test_trust_does_not_fade_with_forgetting` 锁定该行为。
-- **距离调度已落地**：blog「问题一」的"距离/注意力 → 档位"自动调度由世界层
-  `tier_of`/`schedule_tiers` 实现 (近处 full、远处 compressed/idle), 不再手动
-  `set_tier`。
-
-后续可扩展（见 [NextPlan.md](NextPlan.md)）：**P3 关系阶段 + 修复 + 称呼**、
-**P4 idle 低成本自治**；以及 [AutoSimPlan.md](AutoSimPlan.md) 的阶段 3（涌现：
-NPC 互相求助、结盟对抗）、多玩家对抗、更多区域与 NPC。
-
-
-## 可靠性加固（2026-10-25）
-
-共享观察去重严格限定共享流；关系信任按实际证据更新，反应缓存按实际信任、完整计划和人格区分。SQLite 与绝对 importance/10 保持不变。
-
-实时 `World.save()` 部分失败会抛出 `game_agent.world.SaveError`，包含阶段、NPC 名称和原始异常；该接口不保证跨库原子性。运行器正常结束发布 `data_dir/checkpoints`，使用 `World.from_checkpoint(root, new_data_dir, llm, embedder, configure=...)` 可从完整代恢复至新目录。场景回调需要重新绑定，示例与边界见 [检查点设计](docs/modules/persistence.md)。
-
-直播坏行会显示提示并原位重试；文件更换为新运行时保留现有回放并提示重新加载。完整实施与各模块验收见 [加固计划](docs/reliability-plan.md)。
+修改模块时遵循 [`AGENTS.md`](AGENTS.md)：**先更新设计，再实现和验证，最后按模块提交 Git**。根目录的 `OVERVIEW.md`、`WorldPlan.md` 等保留历史设计，当前实现以 `docs/` 下对应模块记录与源码为准。

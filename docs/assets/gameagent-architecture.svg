@@ -1,0 +1,211 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2048" height="1440" viewBox="0 0 2048 1440" role="img" aria-labelledby="title desc">
+<title id="title">GameAgentEngine 通用游戏 NPC 引擎架构</title>
+<desc id="desc">按当前实现绘制的三栏架构：游戏接入与会话运行、每个 NPC 的认知与独立分层记忆、上下文检索与动作输出。区分旧对话按需回忆和通用游戏近期窗口两条路径。</desc>
+<defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#080e18"/><stop offset="1" stop-color="#101b31"/></linearGradient>
+<marker id="arr-orange" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1 L8 5 L1 9" fill="none" stroke="#edaa72" stroke-width="1.5"/></marker>
+<marker id="arr-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1 L8 5 L1 9" fill="none" stroke="#66cdb7" stroke-width="1.5"/></marker>
+<marker id="arr-blue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1 L8 5 L1 9" fill="none" stroke="#8eaff0" stroke-width="1.5"/></marker>
+<marker id="arr-purple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1 L8 5 L1 9" fill="none" stroke="#b49ce7" stroke-width="1.5"/></marker>
+<marker id="arr-sub" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M1 1 L8 5 L1 9" fill="none" stroke="#aebdd2" stroke-width="1.5"/></marker>
+</defs>
+<rect x="0" y="0" width="2048" height="1440" rx="0" fill="url(#bg)" stroke="none" stroke-width="1.2" />
+<g font-family="PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif">
+<text x="48" y="43" font-size="17" fill="#d6c68a" font-weight="600" letter-spacing="1.8">GAMEAGENTENGINE  /  SYSTEM ARCHITECTURE</text>
+<text x="48" y="105" font-size="48" fill="#e9effb" font-weight="650" >通用游戏 NPC 引擎架构</text>
+<text x="50" y="145" font-size="22" fill="#aebdd2" font-weight="400" >游戏规则与认知核心解耦 · 每 NPC 独立存储 · 原文可追溯 · 局部视角与受约束行动</text>
+<rect x="1440" y="40" width="10" height="10" rx="3" fill="#edaa72" stroke="none" stroke-width="1.2" />
+<text x="1458" y="50" font-size="17" fill="#aebdd2" font-weight="400" >游戏运行</text>
+<rect x="1580" y="40" width="10" height="10" rx="3" fill="#66cdb7" stroke="none" stroke-width="1.2" />
+<text x="1598" y="50" font-size="17" fill="#aebdd2" font-weight="400" >记忆存储</text>
+<rect x="1720" y="40" width="10" height="10" rx="3" fill="#8eaff0" stroke="none" stroke-width="1.2" />
+<text x="1738" y="50" font-size="17" fill="#aebdd2" font-weight="400" >决策输出</text>
+<rect x="1860" y="40" width="10" height="10" rx="3" fill="#b49ce7" stroke="none" stroke-width="1.2" />
+<text x="1878" y="50" font-size="17" fill="#aebdd2" font-weight="400" >认知演化</text>
+<rect x="48" y="182" width="368" height="54" rx="27" fill="#111b2d" stroke="#edaa72" stroke-width="1.2" />
+<text x="70" y="216" font-size="17" fill="#edaa72" font-weight="600" >01</text>
+<text x="110" y="217" font-size="23" fill="#e9effb" font-weight="550" >游戏事件</text>
+<path d="M419 209 H440" fill="none" stroke="#edaa72" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-orange)"/>
+<rect x="444" y="182" width="368" height="54" rx="27" fill="#111b2d" stroke="#edaa72" stroke-width="1.2" />
+<text x="466" y="216" font-size="17" fill="#edaa72" font-weight="600" >02</text>
+<text x="506" y="217" font-size="23" fill="#e9effb" font-weight="550" >会话协调</text>
+<path d="M815 209 H836" fill="none" stroke="#edaa72" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-orange)"/>
+<rect x="840" y="182" width="368" height="54" rx="27" fill="#111b2d" stroke="#66cdb7" stroke-width="1.2" />
+<text x="862" y="216" font-size="17" fill="#66cdb7" font-weight="600" >03</text>
+<text x="902" y="217" font-size="23" fill="#e9effb" font-weight="550" >人格与记忆</text>
+<path d="M1211 209 H1232" fill="none" stroke="#66cdb7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-green)"/>
+<rect x="1236" y="182" width="368" height="54" rx="27" fill="#111b2d" stroke="#8eaff0" stroke-width="1.2" />
+<text x="1258" y="216" font-size="17" fill="#8eaff0" font-weight="600" >04</text>
+<text x="1298" y="217" font-size="23" fill="#e9effb" font-weight="550" >上下文与模型</text>
+<path d="M1607 209 H1628" fill="none" stroke="#8eaff0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-blue)"/>
+<rect x="1632" y="182" width="368" height="54" rx="27" fill="#111b2d" stroke="#8eaff0" stroke-width="1.2" />
+<text x="1654" y="216" font-size="17" fill="#8eaff0" font-weight="600" >05</text>
+<text x="1694" y="217" font-size="23" fill="#e9effb" font-weight="550" >合法行动与结算</text>
+<text x="2000" y="266" font-size="18" fill="#aebdd2" font-weight="400" text-anchor="end">结算结果 → 新事件 → 定向投递 → 下一轮</text>
+<rect x="48" y="284" width="438" height="1004" rx="20" fill="#1c191b" stroke="#edaa72" stroke-width="1.3" />
+<rect x="68" y="305" width="34" height="34" rx="8" fill="#edaa72" stroke="none" stroke-width="1.2" />
+<text x="85" y="329" font-size="20" fill="#101725" font-weight="700" text-anchor="middle">01</text>
+<text x="116" y="332" font-size="27" fill="#e9effb" font-weight="600" >游戏接入与会话运行</text>
+<text x="70" y="360" font-size="15" fill="#aebdd2" font-weight="500" letter-spacing="1.4">GAME ADAPTERS &amp; SESSION</text>
+<rect x="514" y="284" width="930" height="1004" rx="20" fill="#102325" stroke="#66cdb7" stroke-width="1.3" />
+<rect x="534" y="305" width="34" height="34" rx="8" fill="#66cdb7" stroke="none" stroke-width="1.2" />
+<text x="551" y="329" font-size="20" fill="#101725" font-weight="700" text-anchor="middle">02</text>
+<text x="582" y="332" font-size="27" fill="#e9effb" font-weight="600" >NPC 认知与分层记忆</text>
+<text x="536" y="360" font-size="15" fill="#aebdd2" font-weight="500" letter-spacing="1.4">COGNITION &amp; PER-NPC MEMORY</text>
+<rect x="1472" y="284" width="528" height="1004" rx="20" fill="#121e33" stroke="#8eaff0" stroke-width="1.3" />
+<rect x="1492" y="305" width="34" height="34" rx="8" fill="#8eaff0" stroke="none" stroke-width="1.2" />
+<text x="1509" y="329" font-size="20" fill="#101725" font-weight="700" text-anchor="middle">03</text>
+<text x="1540" y="332" font-size="27" fill="#e9effb" font-weight="600" >上下文、决策与执行</text>
+<text x="1494" y="360" font-size="15" fill="#aebdd2" font-weight="500" letter-spacing="1.4">CONTEXT, DECISION &amp; RESPONSE</text>
+<rect x="72" y="386" width="390" height="128" rx="10" fill="#241c1b" stroke="#edaa72" stroke-width="1.1" />
+<rect x="73" y="398" width="4" height="104" rx="2" fill="#edaa72" stroke="none" stroke-width="1.2" />
+<text x="92" y="418" font-size="23" fill="#e9effb" font-weight="600" >游戏专属 World</text>
+<rect x="92" y="438" width="170" height="49" rx="8" fill="#322421" stroke="#89634d" stroke-width="1.2" />
+<rect x="274" y="438" width="168" height="49" rx="8" fill="#322421" stroke="#89634d" stroke-width="1.2" />
+<text x="177" y="469" font-size="19" fill="#e9effb" font-weight="400" text-anchor="middle">稻妻 · 空间仿真</text>
+<text x="358" y="469" font-size="18" fill="#e9effb" font-weight="400" text-anchor="middle">狼人杀 · 阶段博弈</text>
+<path d="M267 515 V537" fill="none" stroke="#edaa72" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-orange)"/>
+<rect x="72" y="542" width="390" height="100" rx="10" fill="#241c1b" stroke="#edaa72" stroke-width="1.1" />
+<rect x="73" y="554" width="4" height="76" rx="2" fill="#edaa72" stroke="none" stroke-width="1.2" />
+<text x="92" y="574" font-size="23" fill="#e9effb" font-weight="600" >GameAdapter</text>
+<text x="92" y="603" font-size="19" fill="#aebdd2" font-weight="400" >生成个人视角与合法动作</text>
+<text x="92" y="629" font-size="19" fill="#aebdd2" font-weight="400" >拥有规则、可见性、阶段与裁决</text>
+<path d="M267 643 V665" fill="none" stroke="#edaa72" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-orange)"/>
+<rect x="72" y="670" width="390" height="118" rx="10" fill="#241c1b" stroke="#edaa72" stroke-width="1.1" />
+<rect x="73" y="682" width="4" height="94" rx="2" fill="#edaa72" stroke="none" stroke-width="1.2" />
+<text x="92" y="702" font-size="23" fill="#e9effb" font-weight="600" >GameSession</text>
+<text x="92" y="731" font-size="19" fill="#aebdd2" font-weight="400" >投递 → 请求决策 → 提交 → 结算</text>
+<text x="92" y="757" font-size="19" fill="#aebdd2" font-weight="400" >DecisionRequest / ActionIntent</text>
+<text x="92" y="783" font-size="19" fill="#aebdd2" font-weight="400" >绑定角色、请求、实例与状态版本</text>
+<path d="M267 789 V811" fill="none" stroke="#edaa72" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-orange)"/>
+<rect x="72" y="816" width="390" height="118" rx="10" fill="#241c1b" stroke="#edaa72" stroke-width="1.1" />
+<rect x="73" y="828" width="4" height="94" rx="2" fill="#edaa72" stroke="none" stroke-width="1.2" />
+<text x="92" y="848" font-size="23" fill="#e9effb" font-weight="600" >GameEvent · 定向投递</text>
+<text x="92" y="877" font-size="19" fill="#aebdd2" font-weight="400" >接收者 + 频道 + 稳定事件 ID</text>
+<text x="92" y="903" font-size="19" fill="#aebdd2" font-weight="400" >所有接收者落库成功后再确认</text>
+<text x="92" y="929" font-size="19" fill="#aebdd2" font-weight="400" >失败保留待投递；重投幂等去重</text>
+<rect x="72" y="976" width="390" height="110" rx="10" fill="#241c1b" stroke="#edaa72" stroke-width="1.1" />
+<rect x="73" y="988" width="4" height="86" rx="2" fill="#edaa72" stroke="none" stroke-width="1.2" />
+<text x="92" y="1008" font-size="23" fill="#e9effb" font-weight="600" >场景能力与认知调度</text>
+<text x="92" y="1037" font-size="19" fill="#aebdd2" font-weight="400" >空间场景：距离驱动认知档位</text>
+<text x="92" y="1063" font-size="19" fill="#aebdd2" font-weight="400" >full / compressed / idle</text>
+<text x="94" y="1144" font-size="20" fill="#edaa72" font-weight="550" >世界掌握全局真相与结算；</text>
+<text x="94" y="1176" font-size="20" fill="#aebdd2" font-weight="400" >NPC 只接收被授权的信息。</text>
+<text x="94" y="1234" font-size="18" fill="#73859f" font-weight="400" >新游戏通过适配器接入认知核心</text>
+<rect x="538" y="386" width="350" height="82" rx="10" fill="#112a2b" stroke="#66cdb7" stroke-width="1.1" />
+<rect x="539" y="398" width="4" height="58" rx="2" fill="#66cdb7" stroke="none" stroke-width="1.2" />
+<text x="558" y="418" font-size="23" fill="#e9effb" font-weight="600" >稳定人格 · Persona</text>
+<text x="558" y="447" font-size="19" fill="#aebdd2" font-weight="400" >social / goal_oriented</text>
+<rect x="908" y="386" width="512" height="82" rx="10" fill="#112a2b" stroke="#66cdb7" stroke-width="1.1" />
+<rect x="909" y="398" width="4" height="58" rx="2" fill="#66cdb7" stroke="none" stroke-width="1.2" />
+<text x="928" y="418" font-size="23" fill="#e9effb" font-weight="600" >运行状态与关系</text>
+<text x="928" y="447" font-size="19" fill="#aebdd2" font-weight="400" >时钟 · 信任 · 计划 · 认知档位</text>
+<rect x="538" y="498" width="280" height="108" rx="10" fill="#112a2b" stroke="#66cdb7" stroke-width="1.1" />
+<rect x="539" y="510" width="4" height="84" rx="2" fill="#66cdb7" stroke="none" stroke-width="1.2" />
+<text x="558" y="530" font-size="22" fill="#e9effb" font-weight="600" >对话与自主行动</text>
+<text x="558" y="559" font-size="19" fill="#aebdd2" font-weight="400" >当前话题 / 局部感知</text>
+<text x="558" y="585" font-size="19" fill="#aebdd2" font-weight="400" >按入口组装决策上下文</text>
+<rect x="838" y="498" width="280" height="108" rx="10" fill="#112a2b" stroke="#66cdb7" stroke-width="1.1" />
+<rect x="839" y="510" width="4" height="84" rx="2" fill="#66cdb7" stroke="none" stroke-width="1.2" />
+<text x="858" y="530" font-size="22" fill="#e9effb" font-weight="600" >规划与事件反应</text>
+<text x="858" y="559" font-size="19" fill="#aebdd2" font-weight="400" >日计划 / 子任务 / 重规划</text>
+<text x="858" y="585" font-size="19" fill="#aebdd2" font-weight="400" >空间场景效用决策</text>
+<rect x="1138" y="498" width="282" height="108" rx="10" fill="#231e38" stroke="#b49ce7" stroke-width="1.1" />
+<rect x="1139" y="510" width="4" height="84" rx="2" fill="#b49ce7" stroke="none" stroke-width="1.2" />
+<text x="1158" y="530" font-size="22" fill="#e9effb" font-weight="600" >证据约束反思</text>
+<text x="1158" y="559" font-size="19" fill="#aebdd2" font-weight="400" >自我 / 关系 / 身份信念</text>
+<text x="1158" y="585" font-size="19" fill="#aebdd2" font-weight="400" >由入口与配置决定启用</text>
+<rect x="538" y="646" width="882" height="188" rx="14" fill="#112d2d" stroke="#66cdb7" stroke-width="1.2" />
+<text x="560" y="680" font-size="24" fill="#e9effb" font-weight="600" >L3 原文档案库</text>
+<text x="1398" y="680" font-size="19" fill="#66cdb7" font-weight="500" text-anchor="end">&lt;npc&gt;.archive.db</text>
+<rect x="558" y="698" width="270" height="112" rx="10" fill="#112a2b" stroke="#66cdb7" stroke-width="1.1" />
+<rect x="559" y="710" width="4" height="88" rx="2" fill="#66cdb7" stroke="none" stroke-width="1.2" />
+<text x="578" y="730" font-size="21" fill="#e9effb" font-weight="600" >原文与来源</text>
+<text x="578" y="759" font-size="19" fill="#aebdd2" font-weight="400" >追加保留 · 原文 ID</text>
+<text x="578" y="785" font-size="19" fill="#aebdd2" font-weight="400" >发言 / 观察 / 传闻区分</text>
+<rect x="844" y="698" width="270" height="112" rx="10" fill="#112a2b" stroke="#66cdb7" stroke-width="1.1" />
+<rect x="845" y="710" width="4" height="88" rx="2" fill="#66cdb7" stroke="none" stroke-width="1.2" />
+<text x="864" y="730" font-size="21" fill="#e9effb" font-weight="600" >FTS5 全文索引</text>
+<text x="864" y="759" font-size="19" fill="#aebdd2" font-weight="400" >片段定位 · 原文偏移</text>
+<text x="864" y="785" font-size="19" fill="#aebdd2" font-weight="400" >BM25 / 同会话邻文</text>
+<rect x="1130" y="698" width="270" height="112" rx="10" fill="#112a2b" stroke="#66cdb7" stroke-width="1.1" />
+<rect x="1131" y="710" width="4" height="88" rx="2" fill="#66cdb7" stroke="none" stroke-width="1.2" />
+<text x="1150" y="730" font-size="21" fill="#e9effb" font-weight="600" >通用事件索引</text>
+<text x="1150" y="759" font-size="19" fill="#aebdd2" font-weight="400" >参与者 / 地点 / 时间</text>
+<text x="1150" y="785" font-size="19" fill="#aebdd2" font-weight="400" >锚点 / 计数 / 稳定分页</text>
+<path d="M977 835 V867" fill="none" stroke="#66cdb7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-green)"/>
+<rect x="722" y="838" width="510" height="28" rx="0" fill="#102325" stroke="none" stroke-width="1.2" />
+<text x="977" y="858" font-size="18" fill="#66cdb7" font-weight="400" text-anchor="middle">观察 / 对话派生（通用游戏事件仅归档）</text>
+<path d="M977 864 V885" fill="none" stroke="#66cdb7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-green)"/>
+<rect x="538" y="890" width="882" height="172" rx="14" fill="#112d2d" stroke="#66cdb7" stroke-width="1.2" />
+<text x="560" y="925" font-size="24" fill="#e9effb" font-weight="600" >派生记忆主库</text>
+<text x="1398" y="925" font-size="19" fill="#66cdb7" font-weight="500" text-anchor="end">&lt;npc&gt;.db</text>
+<rect x="558" y="944" width="403" height="96" rx="10" fill="#112a2b" stroke="#66cdb7" stroke-width="1.1" />
+<rect x="559" y="956" width="4" height="72" rx="2" fill="#66cdb7" stroke="none" stroke-width="1.2" />
+<text x="578" y="976" font-size="21" fill="#e9effb" font-weight="600" >L1 常用层 · 有界视图</text>
+<text x="578" y="1005" font-size="19" fill="#aebdd2" font-weight="400" >近期观察 / 计划 / 关系概况</text>
+<text x="578" y="1031" font-size="19" fill="#aebdd2" font-weight="400" >当前关系 + NPC 自己的共享流</text>
+<rect x="977" y="944" width="423" height="96" rx="10" fill="#112a2b" stroke="#66cdb7" stroke-width="1.1" />
+<rect x="978" y="956" width="4" height="72" rx="2" fill="#66cdb7" stroke="none" stroke-width="1.2" />
+<text x="997" y="976" font-size="21" fill="#e9effb" font-weight="600" >L2 重要层 · 候选重排</text>
+<text x="997" y="1005" font-size="19" fill="#aebdd2" font-weight="400" >时效 + 绝对重要性 + 语义相关性</text>
+<text x="997" y="1031" font-size="19" fill="#aebdd2" font-weight="400" >叠加置信度与传闻跳数折扣</text>
+<rect x="538" y="1100" width="882" height="146" rx="14" fill="#211e35" stroke="#b49ce7" stroke-width="1.2" />
+<text x="560" y="1135" font-size="23" fill="#b49ce7" font-weight="600" >认知演化与写入可靠性</text>
+<text x="560" y="1170" font-size="20" fill="#e9effb" font-weight="400" >观察证据 → 反思 / 身份信念 → 矛盾判别 → 置信度衰减或失效</text>
+<text x="560" y="1201" font-size="19" fill="#aebdd2" font-weight="400" >关系反思：最近 100 条原料 / 最多 128 个候选；派生失败可限批补处理</text>
+<text x="560" y="1230" font-size="18" fill="#aebdd2" font-weight="400" >派生合并与信念失效保留原文；L1 / L2 是逻辑层，并非额外物理数据库</text>
+<path d="M1290 1099 V1076 H1279 V1064" fill="none" stroke="#b49ce7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-purple)"/>
+<rect x="1520" y="386" width="456" height="90" rx="10" fill="#16233a" stroke="#8eaff0" stroke-width="1.1" />
+<rect x="1521" y="398" width="4" height="66" rx="2" fill="#8eaff0" stroke="none" stroke-width="1.2" />
+<text x="1540" y="418" font-size="23" fill="#e9effb" font-weight="600" >Scope · 可见范围</text>
+<text x="1540" y="447" font-size="19" fill="#aebdd2" font-weight="400" >NPC 自有数据 / 关系流 / 实例 / 时间上界</text>
+<path d="M1748 477 V489 H1500 V719" fill="none" stroke="#8eaff0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>
+<path d="M1500 558 H1516" fill="none" stroke="#8eaff0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-blue)"/>
+<path d="M1500 719 H1516" fill="none" stroke="#8eaff0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-blue)"/>
+<rect x="1520" y="504" width="456" height="128" rx="10" fill="#16233a" stroke="#8eaff0" stroke-width="1.1" />
+<rect x="1521" y="516" width="4" height="104" rx="2" fill="#8eaff0" stroke="none" stroke-width="1.2" />
+<text x="1540" y="536" font-size="22" fill="#e9effb" font-weight="600" >A  对话入口 · speak</text>
+<text x="1540" y="565" font-size="19" fill="#aebdd2" font-weight="400" >L1 常用；回忆意图触发 L2 + 原文</text>
+<text x="1540" y="591" font-size="19" fill="#aebdd2" font-weight="400" >总预算 3000 字符 · 候选不自动强化</text>
+<text x="1540" y="617" font-size="19" fill="#aebdd2" font-weight="400" >当前关系 + NPC 自己的共享流</text>
+<rect x="1520" y="666" width="456" height="112" rx="10" fill="#16233a" stroke="#8eaff0" stroke-width="1.1" />
+<rect x="1521" y="678" width="4" height="88" rx="2" fill="#8eaff0" stroke="none" stroke-width="1.2" />
+<text x="1540" y="698" font-size="22" fill="#e9effb" font-weight="600" >B  通用游戏 · decide_game</text>
+<text x="1540" y="727" font-size="19" fill="#aebdd2" font-weight="400" >本局最近 16 条 · 6000 字符历史预算</text>
+<text x="1540" y="753" font-size="19" fill="#aebdd2" font-weight="400" >默认读取近期事件，不自动检索远期</text>
+<path d="M1977 558 H1988 V799 H1748 V814" fill="none" stroke="#8eaff0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-blue)"/>
+<path d="M1977 719 H1988" fill="none" stroke="#8eaff0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>
+<rect x="1520" y="820" width="456" height="108" rx="10" fill="#16233a" stroke="#8eaff0" stroke-width="1.1" />
+<rect x="1521" y="832" width="4" height="84" rx="2" fill="#8eaff0" stroke="none" stroke-width="1.2" />
+<text x="1540" y="852" font-size="23" fill="#e9effb" font-weight="600" >模型能力适配</text>
+<text x="1540" y="881" font-size="19" fill="#aebdd2" font-weight="400" >LLM 生成 / 可选 Embedding</text>
+<text x="1540" y="907" font-size="19" fill="#aebdd2" font-weight="400" >JSON 修复 · 非法动作校验反馈重试</text>
+<path d="M1748 929 V951" fill="none" stroke="#8eaff0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-blue)"/>
+<rect x="1520" y="956" width="456" height="90" rx="10" fill="#16233a" stroke="#8eaff0" stroke-width="1.1" />
+<rect x="1521" y="968" width="4" height="66" rx="2" fill="#8eaff0" stroke="none" stroke-width="1.2" />
+<text x="1540" y="988" font-size="22" fill="#e9effb" font-weight="600" >ActionIntent · 结构化行动</text>
+<text x="1540" y="1017" font-size="19" fill="#aebdd2" font-weight="400" >动作 + 参数；私人策略不进入公共事件</text>
+<path d="M1748 1047 V1069" fill="none" stroke="#8eaff0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-blue)"/>
+<rect x="1520" y="1074" width="456" height="112" rx="10" fill="#16233a" stroke="#8eaff0" stroke-width="1.1" />
+<rect x="1521" y="1086" width="4" height="88" rx="2" fill="#8eaff0" stroke="none" stroke-width="1.2" />
+<text x="1540" y="1106" font-size="22" fill="#e9effb" font-weight="600" >校验 → 执行 → 世界结算</text>
+<text x="1540" y="1135" font-size="19" fill="#aebdd2" font-weight="400" >结构 / 参数 / 请求与状态版本</text>
+<text x="1540" y="1161" font-size="19" fill="#aebdd2" font-weight="400" >游戏复核规则；结果形成新事件</text>
+<text x="1748" y="1235" font-size="18" fill="#aebdd2" font-weight="400" text-anchor="middle">行动回到适配器，由游戏推进下一轮</text>
+<path d="M462 589 H500 V257 H1460 V431 H1516" fill="none" stroke="#edaa72" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-orange)"/>
+<rect x="644" y="242" width="410" height="26" rx="0" fill="#090f1d" stroke="none" stroke-width="1.2" />
+<text x="849" y="262" font-size="18" fill="#edaa72" font-weight="400" text-anchor="middle">个人视角 + 动态合法动作 + 本局目标</text>
+<path d="M462 875 H500 V663 H534" fill="none" stroke="#66cdb7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-green)"/>
+<text x="500" y="638" font-size="17" fill="#66cdb7" font-weight="400" text-anchor="middle">原文</text>
+<path d="M1420 1005 H1456 V570 H1516" fill="none" stroke="#66cdb7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-green)"/>
+<path d="M1420 740 H1448 V754 H1516" fill="none" stroke="#66cdb7" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8" marker-end="url(#arr-green)"/>
+<rect x="48" y="1318" width="1952" height="76" rx="13" fill="#121c2e" stroke="#35445d" stroke-width="1.2" />
+<text x="72" y="1348" font-size="21" fill="#e9effb" font-weight="550" >持久化与恢复</text>
+<text x="72" y="1378" font-size="18" fill="#aebdd2" font-weight="400" >每 NPC 两库检查点 + 世界 / 适配器快照</text>
+<text x="720" y="1348" font-size="21" fill="#e9effb" font-weight="550" >事件回放与展示</text>
+<text x="720" y="1378" font-size="18" fill="#aebdd2" font-weight="400" >Phaser 空间回放 / 狼人杀公共与上帝视角</text>
+<text x="1380" y="1348" font-size="21" fill="#e9effb" font-weight="550" >验证与成本观测</text>
+<text x="1380" y="1378" font-size="18" fill="#aebdd2" font-weight="400" >离线边界测试 / 决策轨迹 / 调用与延迟统计</text>
+<text x="48" y="1424" font-size="16" fill="#73859f" font-weight="400" >CURRENT IMPLEMENTATION  ·  2026.10  ·  原文长期保存；上下文有界；各入口按自身策略使用记忆</text>
+<text x="2000" y="1424" font-size="16" fill="#73859f" font-weight="400" text-anchor="end">GameAgentEngine</text>
+</g></svg>
