@@ -44,12 +44,28 @@ class _CachedBatchEmbedder(Embedder):
         if batch:
             yield batch
 
+    def _embed_single(self, text: str) -> None:
+        """单段超长时逐步缩短前缀；缓存仍以原截断文本为键。"""
+        limit = len(text)
+        while limit > 0:
+            try:
+                vectors = self._base.embed([text[:limit]])
+            except RuntimeError:
+                limit //= 2
+                continue
+            if len(vectors) != 1:
+                raise ValueError('embedding 返回数量与输入不一致')
+            self._cache[text] = vectors[0]
+            return
+        raise RuntimeError(f'embedding 单段重试失败: {text[:64]!r}')
+
     def _embed_chunk(self, texts: list[str]) -> None:
         try:
             vectors = self._base.embed(texts)
         except RuntimeError:
             if len(texts) == 1:
-                raise
+                self._embed_single(texts[0])
+                return
             middle = len(texts) // 2
             self._embed_chunk(texts[:middle])
             self._embed_chunk(texts[middle:])

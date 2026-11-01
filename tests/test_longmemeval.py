@@ -177,3 +177,22 @@ def test_cli_resume_skips_completed_questions(tmp_path):
     assert len({row['question_id'] for row in rows}) == 2
     summary = json.loads((out / 'summary.json').read_text(encoding='utf-8'))
     assert summary['questions'] == 2
+
+
+def test_cached_embedder_shortens_single_text_when_endpoint_rejects():
+    class ShortLimitEmbedder(HashEmbedder):
+        def __init__(self):
+            super().__init__()
+            self.last_input = 0
+
+        def embed(self, texts):
+            self.last_input = len(texts[0])
+            if any(len(t) > 100 for t in texts):
+                raise RuntimeError('input too long')
+            return super().embed(texts)
+
+    embedder = ShortLimitEmbedder()
+    text = 'word ' * 2000
+    cached = _CachedBatchEmbedder(embedder, [text])
+    assert cached.embed([text])[0]
+    assert embedder.last_input <= 100
