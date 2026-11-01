@@ -149,6 +149,8 @@ python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_oracle.jso
 
 产物：`data/eval/longmemeval/<时间戳>/summary.json` 与 `per_question.jsonl`；不把结果写回仓库文档，除非单独确认结果结论。
 
+长跑检查点：CLI 每完成一题就追加写入 `per_question.jsonl`（flush），全部结束后再写 `summary.json`。传 `--resume` 时读取已有行、按 `question_id` 跳过已完成题目，只跑剩余题并在结束时用已有 + 新结果重算 summary。这样 500 题中途失败后可用同一 `--out` 继续，不丢前序结果。S500 正在按此方式运行。
+
 ## 验收
 
 - fixture 加载、日期解析、切分与字段校验；
@@ -171,7 +173,7 @@ python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_oracle.jso
 
 2026-11-01 验证：
 
-- Python 离线全集 **599 项通过、6 项真实端点测试跳过**；LongMemEval 专项 10 项，覆盖 fixture、日期、turn/session 指标、后端映射、CLI 和 stratified 采样。
+- Python 离线全集 **600 项通过、6 项真实端点测试跳过**；LongMemEval 专项 11 项，覆盖 fixture、日期、turn/session 指标、后端映射、CLI、stratified 采样、排序模式与 `--resume`。
 - fixture smoke：2 题，HashEmbedder，产物 `summary.json` / `per_question.jsonl` 正常。
 - oracle smoke：`--limit 6 --sample stratified`，覆盖 6 个 question_type；HashEmbedder 与 RealEmbedder 均完成，RealEmbedder 结果仅用于流程验证。
 - oracle 只含证据会话，session recall 在 oracle 上接近 1 是数据口径，不代表带干扰项的真实召回；完整 S/M 未在本次运行（数据不入库，按需下载）。

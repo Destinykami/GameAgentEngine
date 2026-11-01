@@ -31,7 +31,7 @@ python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_oracle.jso
     --limit 20 --top-k 50 --embedder real --sample stratified
 ```
 
-输出到 `data/eval/longmemeval/<时间戳>/summary.json` 与 `per_question.jsonl`。
+输出到 `data/eval/longmemeval/<时间戳>/summary.json` 与 `per_question.jsonl`；长跑加 `--resume` 跳过已完成题目。
 
 ## 指标
 
