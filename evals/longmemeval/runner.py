@@ -10,7 +10,7 @@ from .metrics import DEFAULT_KS, evaluate_question, summarize
 
 def evaluate(questions: Sequence[Question], backend: MemoryBackend, *,
              top_k: int = 50, ks: Sequence[int] = DEFAULT_KS,
-             progress=None) -> dict[str, Any]:
+             progress=None, on_result=None) -> dict[str, Any]:
     per_question = []
     for index, question in enumerate(questions, start=1):
         retrieved = backend.retrieve(question, top_k)
@@ -28,6 +28,8 @@ def evaluate(questions: Sequence[Question], backend: MemoryBackend, *,
             for turn in retrieved
         ]
         per_question.append(row)
+        if on_result is not None:
+            on_result(row)
         if progress is not None:
             progress(index, len(questions), question, row)
     return {

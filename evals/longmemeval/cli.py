@@ -12,7 +12,7 @@ from game_agent.models.embeddings import HashEmbedder
 
 from .backend import RETRIEVAL_MODES, GameAgentMemoryBackend
 from .dataset import load_questions
-from .metrics import DEFAULT_KS
+from .metrics import DEFAULT_KS, summarize
 from .runner import evaluate
 
 HERE = Path(__file__).resolve().parent
@@ -37,6 +37,8 @@ def _args(argv=None):
                         help='limit 截断方式；stratified 按 question_type 轮转，适合 smoke')
     parser.add_argument('--out', default=None,
                         help='产物目录；默认 data/eval/longmemeval/<时间戳>')
+    parser.add_argument('--resume', action='store_true',
+                        help='跳过 per_question.jsonl 中已完成的 question_id')
     return parser.parse_args(argv)
 
 
@@ -86,29 +88,41 @@ def main(argv=None) -> int:
     questions = _select(questions, args.limit, args.sample)
     if not questions:
         raise SystemExit('没有可评测问题')
+    out = args.out or run_dir('longmemeval')
+    os.makedirs(out, exist_ok=True)
+    rows_path = os.path.join(out, 'per_question.jsonl')
+    existing = []
+    if args.resume and os.path.exists(rows_path):
+        with open(rows_path, encoding='utf-8') as stream:
+            existing = [json.loads(line) for line in stream if line.strip()]
+    done = {row['question_id'] for row in existing}
+    questions = [q for q in questions if q.question_id not in done]
     embedder = _embedder(args.embedder)
     backend = GameAgentMemoryBackend(embedder, retrieval=args.retrieval)
+
     def progress(index, total, question, row):
         print(f'[{index}/{total}] {question.question_id} {question.question_type} '
               f'turn_all@5={row["turn"]["recall_all@5"]}', file=sys.stderr, flush=True)
 
-    result = evaluate(questions, backend, top_k=args.top_k, ks=ks, progress=progress)
-    out = args.out or run_dir('longmemeval')
-    os.makedirs(out, exist_ok=True)
+    with open(rows_path, 'a' if args.resume else 'w', encoding='utf-8') as sink:
+        def save(row):
+            sink.write(json.dumps(row, ensure_ascii=False) + '\n')
+            sink.flush()
+
+        result = evaluate(questions, backend, top_k=args.top_k, ks=ks,
+                          progress=progress, on_result=save)
+    combined = existing + result['per_question']
     summary = {
         'data': str(Path(args.data).resolve()),
         'embedder': type(embedder).__name__,
         'top_k': args.top_k,
         'retrieval': args.retrieval,
         'ks': list(ks),
-        **result['summary'],
+        **summarize(combined, ks),
     }
     with open(os.path.join(out, 'summary.json'), 'w', encoding='utf-8') as stream:
         json.dump(summary, stream, ensure_ascii=False, indent=2, default=str)
-    with open(os.path.join(out, 'per_question.jsonl'), 'w', encoding='utf-8') as stream:
-        for row in result['per_question']:
-            stream.write(json.dumps(row, ensure_ascii=False) + '\n')
-    print(f'LongMemEval: {len(questions)} questions, embedder={type(embedder).__name__}, '
+    print(f'LongMemEval: {len(combined)} questions, embedder={type(embedder).__name__}, '
           f'top_k={args.top_k}, retrieval={args.retrieval}, ks={ks}')
     _print_section('Turn-level', summary['turn'], ks)
     _print_section('Session-level', summary['session'], ks)

@@ -164,3 +164,16 @@ def test_backend_retrieval_modes_keep_ranking_contract():
     session = GameAgentMemoryBackend(retrieval='session').retrieve(question, 5)
     ids = [turn.session_id for turn in session]
     assert ids == sorted(ids, key=lambda sid: ids.index(sid))
+
+
+def test_cli_resume_skips_completed_questions(tmp_path):
+    out = tmp_path / 'resume'
+    args = ['--data', str(FIXTURE), '--top-k', '5', '--out', str(out)]
+    assert main([*args, '--limit', '1']) == 0
+    assert main([*args, '--limit', '2', '--resume']) == 0
+    rows = [json.loads(line) for line in
+            (out / 'per_question.jsonl').read_text(encoding='utf-8').splitlines()]
+    assert len(rows) == 2
+    assert len({row['question_id'] for row in rows}) == 2
+    summary = json.loads((out / 'summary.json').read_text(encoding='utf-8'))
+    assert summary['questions'] == 2
