@@ -96,6 +96,15 @@ class MemoryBackend(Protocol):
 
 **不经过 `NPC.observe`**：避免观察去重、重要性打分、反思阈值、关系流过滤污染召回口径。LongMemEval 的 turn 是原文证据，必须逐条保留。
 
+S split 每题约 400–600 个 turn（约 49 万字符），逐 turn 请求真实嵌入不可行；且存在 76k 字符的超长 filler turn，直接整批请求会触发 embedding 端点 400。后端在写入前对全部 turn 文本做**批量预编码**，用 `CachedBatchEmbedder` 包住原 embedder：
+
+- 每段文本截断到 6000 字符再编码，`MemoryStore` 仍保存完整原文；
+- 按累计 8000 字符、最多 16 段分组，避免超长 batch；
+- 端点仍返回 400 时递归二分 batch，单段仍失败才抛出；
+- 缓存截断文本到向量，`MemoryStore.add` 的逐条调用命中缓存；查询文本走 fallback。
+
+该优化只存在于评测适配器，不改核心写入逻辑。
+
 日期解析支持 `%Y/%m/%d (%a) %H:%M` 等常见格式，统一转成 UTC 小时；解析失败按题目 id 报错，不静默猜测。时间用于 `MemoryStore` 的 recency 分，不改变检索公式。
 
 ## 指标
@@ -152,8 +161,16 @@ python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_oracle.jso
 
 2026-11-01 验证：
 
-- Python 离线全集 **591 项通过、6 项真实端点测试跳过**；LongMemEval 专项 7 项，覆盖 fixture、日期、turn/session 指标、后端映射、CLI 和 stratified 采样。
+- Python 离线全集 **593 项通过、6 项真实端点测试跳过**；LongMemEval 专项 9 项，覆盖 fixture、日期、turn/session 指标、后端映射、CLI 和 stratified 采样。
 - fixture smoke：2 题，HashEmbedder，产物 `summary.json` / `per_question.jsonl` 正常。
 - oracle smoke：`--limit 6 --sample stratified`，覆盖 6 个 question_type；HashEmbedder 与 RealEmbedder 均完成，RealEmbedder 结果仅用于流程验证。
 - oracle 只含证据会话，session recall 在 oracle 上接近 1 是数据口径，不代表带干扰项的真实召回；完整 S/M 未在本次运行（数据不入库，按需下载）。
+- **LongMemEval-S 20 题分层样本**（`--limit 20 --sample stratified --embedder real --top-k 50`）：20 题全部完成，覆盖 6 个 question_type。结果：
+
+| 层级 | recall_all@5 | recall_all@10 | recall_all@50 | recall_any@5 | recall_any@10 | recall_any@50 | ndcg_any@5 | ndcg_any@10 | ndcg_any@50 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| turn | 0.050 | 0.050 | 0.350 | 0.400 | 0.400 | 0.750 | 0.203 | 0.208 | 0.288 |
+| session | 0.400 | 0.400 | 0.400 | 0.650 | 0.750 | 0.750 | 0.438 | 0.455 | 0.460 |
+
+这是当前记忆层的**20 题基线样本**，不是完整 500 题分数，也不含 QA 回答评分。turn recall_all 偏低说明当前 recency/importance/relevance 等权排序对 LongMemEval 的长历史证据不理想；session recall 明显高于 turn recall，说明会话级定位比精确证据 turn 容易。
 - 未实现 QA 回答/LLM 裁判，未修改核心记忆检索公式。
