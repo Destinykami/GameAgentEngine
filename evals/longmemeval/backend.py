@@ -114,10 +114,11 @@ class GameAgentMemoryBackend:
                 by_id[memory_id] = RetrievedTurn(
                     session.session_id, index, turn.role, turn.content,
                     turn.has_answer, session.at, 0.0)
-            if self.retrieval == 'memory':
-                rows = store.retrieve(question.question, now=question.at,
-                                      top_k=top_k, mark_accessed=False,
-                                      min_relevance=0.0)
+            if self.retrieval in ('memory', 'relevance'):
+                rows = store.retrieve(
+                    question.question, now=question.at, top_k=top_k,
+                    mark_accessed=False, min_relevance=0.0,
+                    weights=None if self.retrieval == 'memory' else (0.0, 0.0, 1.0))
                 out = []
                 for row in rows:
                     turn = by_id.get(row['id'])
@@ -126,16 +127,12 @@ class GameAgentMemoryBackend:
                             turn.session_id, turn.turn_index, turn.role, turn.content,
                             turn.has_answer, turn.at, float(row.get('score', 0.0))))
                 return tuple(out)
-            # 消融模式：候选集合是全部 turn；只重排，不改变核心写入/打分。
+            # session 聚合：取全部 turn，按 session 内最大 relevance 排序后展开。
             qvec = cached.embed([question.question])[0]
-            vectors = cached.embed([turn.content for turn in by_id.values()])
+            vectors = cached.embed([f'[{turn.role}] {turn.content}'
+                                    for turn in by_id.values()])
             scored = [(cosine_similarity(vector, qvec), turn)
                       for vector, turn in zip(vectors, by_id.values())]
-            if self.retrieval == 'relevance':
-                scored.sort(key=lambda item: item[0], reverse=True)
-                return tuple(RetrievedTurn(t.session_id, t.turn_index, t.role, t.content,
-                                           t.has_answer, t.at, score)
-                             for score, t in scored[:top_k])
             # session：先按 session 内最大 relevance 排 session，再排 session 内 turn。
             sessions: dict[str, list[tuple[float, RetrievedTurn]]] = {}
             order: dict[str, int] = {}

@@ -26,6 +26,7 @@ importance/10 (不归一化)。这是有意取舍: importance 是 1-10 的绝对
 
 from __future__ import annotations
 
+import math
 from typing import Any, Iterable, Sequence
 from collections import OrderedDict
 from dataclasses import asdict
@@ -352,7 +353,8 @@ class MemoryStore:
                  shared: bool = False,
                  include_shared: bool = False,
                  hearsay_only: bool = False,
-                 candidate_limit: int | None = None) -> list[dict]:
+                 candidate_limit: int | None = None,
+                 weights: tuple[float, float, float] | None = None) -> list[dict]:
         """三维检索。
 
         - query: 查询文本 (应已含玩家身份, 使 relevance 偏向该玩家)。
@@ -380,7 +382,17 @@ class MemoryStore:
           灌水 (M7)。默认 0.0 不过滤, 行为与旧版一致。
         - candidate_limit: 关系取证的可选 SQL 候选上限，最多 128；
           近期/重要混选后再编码，不支持共享或传闻专用范围。None 保持原全量路径。
+        - weights: 可选的 (recency, importance, relevance) 权重；None 保持原
+          等权默认。允许 0；负数、NaN/inf 或长度不为 3 会拒绝。只影响排序，
+          不改变归一化、折扣、候选范围或访问水位。
         """
+        if weights is not None:
+            if len(weights) != 3:
+                raise ValueError('weights 必须是三个数')
+            if any(isinstance(w, bool) or not isinstance(w, (int, float))
+                   or not math.isfinite(w) or w < 0 for w in weights):
+                raise ValueError('weights 必须是非负有限数')
+            weights = tuple(float(w) for w in weights)
         if candidate_limit is None:
             q_vec = self._embedder.embed([query])[0]
             cands = self.all_valid(player_id=player_id, types=types, shared=shared,
@@ -398,7 +410,8 @@ class MemoryStore:
             cands, relevance, now, top_k=top_k, include_player=include_player,
             min_score=min_score, min_relevance=min_relevance,
             recency_decay=RECENCY_DECAY,
-            weights=(ALPHA_RECENCY, ALPHA_IMPORTANCE, ALPHA_RELEVANCE),
+            weights=(weights if weights is not None
+                     else (ALPHA_RECENCY, ALPHA_IMPORTANCE, ALPHA_RELEVANCE)),
             hearsay_decay=HEARSAY_DECAY)
         results = []
         for score, c in ranked:

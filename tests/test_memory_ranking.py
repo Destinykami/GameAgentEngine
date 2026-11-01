@@ -31,3 +31,36 @@ def test_equal_scores_keep_candidate_order_when_truncated():
     ranked = rank_memories(records, [0.7, 0.7, 0.7], 10.0, top_k=2)
     assert [rec.id for _, rec in ranked] == [0, 1]
     assert [rec.last_accessed for rec in records] == [None, None, None]
+
+
+def test_store_retrieve_can_use_relevance_only_weights():
+    from game_agent.memory import MemoryStore
+    from game_agent.models.embeddings import HashEmbedder
+
+    store = MemoryStore(HashEmbedder())
+    try:
+        store.add(MemoryRecord('red bicycle', 0.0, importance=1.0))
+        store.add(MemoryRecord('blue car', 1000.0, importance=10.0))
+        default = store.retrieve('red bicycle', now=1001.0, top_k=2,
+                                 mark_accessed=False)
+        relevant = store.retrieve('red bicycle', now=1001.0, top_k=2,
+                                  mark_accessed=False, weights=(0.0, 0.0, 1.0))
+        assert [row['content'] for row in default] == ['blue car', 'red bicycle']
+        assert [row['content'] for row in relevant] == ['red bicycle', 'blue car']
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('weights', [(1.0, 2.0), (-1.0, 0.0, 1.0),
+                                    (float('nan'), 0.0, 1.0),
+                                    (True, 0.0, 1.0)])
+def test_store_retrieve_rejects_invalid_weights(weights):
+    from game_agent.memory import MemoryStore
+    from game_agent.models.embeddings import HashEmbedder
+
+    store = MemoryStore(HashEmbedder())
+    try:
+        with pytest.raises(ValueError):
+            store.retrieve('x', now=0.0, weights=weights)
+    finally:
+        store.close()
