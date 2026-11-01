@@ -150,3 +150,17 @@ def test_cached_embedder_clips_and_splits_rejected_batches():
     assert cached.embed(['x' * 10000])[0]
     assert cached.embed(['short'])[0]
     assert embedder.calls[0] == 2  # 先尝试整批，失败后二分
+
+
+def test_backend_retrieval_modes_keep_ranking_contract():
+    question = load_questions(FIXTURE)[0]
+    for mode in ('memory', 'relevance', 'session'):
+        turns = GameAgentMemoryBackend(retrieval=mode).retrieve(question, top_k=3)
+        assert len(turns) == 3
+        assert all(turn.score >= 0.0 for turn in turns)
+    relevance = GameAgentMemoryBackend(retrieval='relevance').retrieve(question, 5)
+    assert [turn.score for turn in relevance] == sorted(
+        [turn.score for turn in relevance], reverse=True)
+    session = GameAgentMemoryBackend(retrieval='session').retrieve(question, 5)
+    ids = [turn.session_id for turn in session]
+    assert ids == sorted(ids, key=lambda sid: ids.index(sid))

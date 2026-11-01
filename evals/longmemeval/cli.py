@@ -10,7 +10,7 @@ from pathlib import Path
 from evals.paths import run_dir
 from game_agent.models.embeddings import HashEmbedder
 
-from .backend import GameAgentMemoryBackend
+from .backend import RETRIEVAL_MODES, GameAgentMemoryBackend
 from .dataset import load_questions
 from .metrics import DEFAULT_KS
 from .runner import evaluate
@@ -31,6 +31,8 @@ def _args(argv=None):
                         help='hash=离线确定性；real=make_embedder（可能回退）')
     parser.add_argument('--question-type', default=None,
                         help='只跑指定 question_type')
+    parser.add_argument('--retrieval', choices=RETRIEVAL_MODES, default='memory',
+                        help='memory=现有排序；relevance=只按语义；session=先聚合 session')
     parser.add_argument('--sample', choices=('first', 'stratified'), default='first',
                         help='limit 截断方式；stratified 按 question_type 轮转，适合 smoke')
     parser.add_argument('--out', default=None,
@@ -85,7 +87,7 @@ def main(argv=None) -> int:
     if not questions:
         raise SystemExit('没有可评测问题')
     embedder = _embedder(args.embedder)
-    backend = GameAgentMemoryBackend(embedder)
+    backend = GameAgentMemoryBackend(embedder, retrieval=args.retrieval)
     def progress(index, total, question, row):
         print(f'[{index}/{total}] {question.question_id} {question.question_type} '
               f'turn_all@5={row["turn"]["recall_all@5"]}', file=sys.stderr, flush=True)
@@ -97,6 +99,7 @@ def main(argv=None) -> int:
         'data': str(Path(args.data).resolve()),
         'embedder': type(embedder).__name__,
         'top_k': args.top_k,
+        'retrieval': args.retrieval,
         'ks': list(ks),
         **result['summary'],
     }
@@ -106,7 +109,7 @@ def main(argv=None) -> int:
         for row in result['per_question']:
             stream.write(json.dumps(row, ensure_ascii=False) + '\n')
     print(f'LongMemEval: {len(questions)} questions, embedder={type(embedder).__name__}, '
-          f'top_k={args.top_k}, ks={ks}')
+          f'top_k={args.top_k}, retrieval={args.retrieval}, ks={ks}')
     _print_section('Turn-level', summary['turn'], ks)
     _print_section('Session-level', summary['session'], ks)
     print('\nBy question_type')

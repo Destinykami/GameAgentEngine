@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from game_agent.memory import MemoryRecord, MemoryStore
-from game_agent.models.embeddings import Embedder, HashEmbedder
+from game_agent.models.embeddings import Embedder, HashEmbedder, cosine_similarity
 
 from .dataset import Question, RetrievedTurn
 
@@ -71,6 +71,9 @@ class _CachedBatchEmbedder(Embedder):
         return [self._cache[text] for text in clipped]
 
 
+RETRIEVAL_MODES = ('memory', 'relevance', 'session')
+
+
 class MemoryBackend(Protocol):
     def retrieve(self, question: Question, top_k: int) -> tuple[RetrievedTurn, ...]: ...
 
@@ -82,9 +85,13 @@ class GameAgentMemoryBackend:
     重要性打分、反思阈值和关系流过滤都会改变召回口径。
     """
 
-    def __init__(self, embedder: Embedder | None = None, *, batch_size: int = 64) -> None:
+    def __init__(self, embedder: Embedder | None = None, *, batch_size: int = 64,
+                 retrieval: str = 'memory') -> None:
+        if retrieval not in RETRIEVAL_MODES:
+            raise ValueError(f'未知 retrieval: {retrieval}')
         self.embedder = embedder or HashEmbedder()
         self.batch_size = batch_size
+        self.retrieval = retrieval
 
     def retrieve(self, question: Question, top_k: int) -> tuple[RetrievedTurn, ...]:
         contents = [(session, index, turn, f'[{turn.role}] {turn.content}')
@@ -94,7 +101,7 @@ class GameAgentMemoryBackend:
                                       [item[3] for item in contents],
                                       batch_size=self.batch_size)
         store = MemoryStore(cached)
-        turns: dict[int, RetrievedTurn] = {}
+        by_id: dict[int, RetrievedTurn] = {}
         try:
             for session, index, turn, content in contents:
                 memory_id = store.add(MemoryRecord(
@@ -104,20 +111,45 @@ class GameAgentMemoryBackend:
                     type='observation',
                     player_id=None,
                 ))
-                turns[memory_id] = RetrievedTurn(
+                by_id[memory_id] = RetrievedTurn(
                     session.session_id, index, turn.role, turn.content,
                     turn.has_answer, session.at, 0.0)
-            rows = store.retrieve(question.question, now=question.at,
-                                  top_k=top_k, mark_accessed=False,
-                                  min_relevance=0.0)
-            out = []
-            for row in rows:
-                turn = turns.get(row['id'])
-                if turn is None:
-                    continue
-                out.append(RetrievedTurn(
-                    turn.session_id, turn.turn_index, turn.role, turn.content,
-                    turn.has_answer, turn.at, float(row.get('score', 0.0))))
-            return tuple(out)
+            if self.retrieval == 'memory':
+                rows = store.retrieve(question.question, now=question.at,
+                                      top_k=top_k, mark_accessed=False,
+                                      min_relevance=0.0)
+                out = []
+                for row in rows:
+                    turn = by_id.get(row['id'])
+                    if turn is not None:
+                        out.append(RetrievedTurn(
+                            turn.session_id, turn.turn_index, turn.role, turn.content,
+                            turn.has_answer, turn.at, float(row.get('score', 0.0))))
+                return tuple(out)
+            # 消融模式：候选集合是全部 turn；只重排，不改变核心写入/打分。
+            qvec = cached.embed([question.question])[0]
+            vectors = cached.embed([turn.content for turn in by_id.values()])
+            scored = [(cosine_similarity(vector, qvec), turn)
+                      for vector, turn in zip(vectors, by_id.values())]
+            if self.retrieval == 'relevance':
+                scored.sort(key=lambda item: item[0], reverse=True)
+                return tuple(RetrievedTurn(t.session_id, t.turn_index, t.role, t.content,
+                                           t.has_answer, t.at, score)
+                             for score, t in scored[:top_k])
+            # session：先按 session 内最大 relevance 排 session，再排 session 内 turn。
+            sessions: dict[str, list[tuple[float, RetrievedTurn]]] = {}
+            order: dict[str, int] = {}
+            for score, turn in scored:
+                sessions.setdefault(turn.session_id, []).append((score, turn))
+                order.setdefault(turn.session_id, len(order))
+            ranked = sorted(sessions, key=lambda sid: (
+                -max(score for score, _ in sessions[sid]), order[sid]))
+            flat = []
+            for sid in ranked:
+                flat.extend(sorted(sessions[sid], key=lambda item: item[0], reverse=True))
+            return tuple(RetrievedTurn(t.session_id, t.turn_index, t.role, t.content,
+                                       t.has_answer, t.at, score)
+                         for score, t in flat[:top_k])
+
         finally:
             store.close()
