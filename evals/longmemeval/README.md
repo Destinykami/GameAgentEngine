@@ -39,4 +39,14 @@ python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_oracle.jso
 - session 级 `recall_all@k`、`recall_any@k`、`ndcg_any@k`
 - 默认 `k=5,10,50`；按 `question_type` 分组
 
-字段口径对齐官方 `src/retrieval/eval_utils.py`。hash 嵌入只验证流程，不代表真实语义召回质量。`oracle` 只含证据会话，session recall 接近 1 不代表带干扰项的真实效果；完整 S/M 需下载后显式运行。
+字段口径对齐官方 `src/retrieval/eval_utils.py`。hash 嵌入只验证流程，不代表真实语义召回质量。
+
+## 排序消融
+
+`--retrieval memory|relevance|session` 只改变评测侧重排，不修改核心检索：
+
+```bash
+python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_s_cleaned.json     --limit 20 --top-k 50 --embedder real --sample stratified --retrieval relevance
+```
+
+S20 结果：relevance-only 明显优于现有 memory 排序（session recall_all@10 0.400 → 0.900），session 聚合没有超过 relevance。详见设计文档。`oracle` 只含证据会话，session recall 接近 1 不代表带干扰项的真实效果；完整 S/M 需下载后显式运行。
