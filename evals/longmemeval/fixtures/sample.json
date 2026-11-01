@@ -1,0 +1,46 @@
+[
+  {
+    "question_id": "sample-single-user",
+    "question_type": "single-session-user",
+    "question": "What is the name of my dog?",
+    "answer": "Mochi",
+    "question_date": "2023/04/10 (Mon) 12:00",
+    "haystack_session_ids": ["s1", "s2"],
+    "haystack_dates": ["2023/04/01 (Sat) 10:00", "2023/04/03 (Mon) 09:30"],
+    "haystack_sessions": [
+      [
+        {"role": "user", "content": "I adopted a dog named Mochi last weekend.", "has_answer": true},
+        {"role": "assistant", "content": "That is wonderful. Mochi is a lovely name."}
+      ],
+      [
+        {"role": "user", "content": "I also bought a blue bicycle for commuting."},
+        {"role": "assistant", "content": "A bicycle is a practical choice for short trips."}
+      ]
+    ],
+    "answer_session_ids": ["s1"]
+  },
+  {
+    "question_id": "sample-multi-session",
+    "question_type": "multi-session",
+    "question": "How many kilometers did I run in total on Saturday and Sunday?",
+    "answer": "12 kilometers",
+    "question_date": "2023/04/10 (Mon) 18:00",
+    "haystack_session_ids": ["s3", "s4", "s5"],
+    "haystack_dates": ["2023/04/08 (Sat) 08:00", "2023/04/09 (Sun) 08:00", "2023/04/09 (Sun) 19:00"],
+    "haystack_sessions": [
+      [
+        {"role": "user", "content": "I ran 5 kilometers on Saturday morning.", "has_answer": true},
+        {"role": "assistant", "content": "Five kilometers is a solid run."}
+      ],
+      [
+        {"role": "user", "content": "I ran 7 kilometers on Sunday morning.", "has_answer": true},
+        {"role": "assistant", "content": "Seven kilometers makes a good weekend total."}
+      ],
+      [
+        {"role": "user", "content": "I had pasta for dinner on Sunday."},
+        {"role": "assistant", "content": "Pasta is a reasonable recovery meal."}
+      ]
+    ],
+    "answer_session_ids": ["s3", "s4"]
+  }
+]

@@ -11,3 +11,6 @@ __pycache__/
 *.db
 # 直播增量文件 (运行中实时可视化的运行时产物, 引擎每步 append)
 live.jsonl
+
+# LongMemEval downloaded splits (not committed)
+evals/longmemeval/data/
