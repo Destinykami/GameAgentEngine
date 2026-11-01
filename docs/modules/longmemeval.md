@@ -172,12 +172,12 @@ python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_oracle.jso
 
 实现位于 `evals/longmemeval/`：`dataset.py`、`backend.py`、`metrics.py`、`runner.py`、`cli.py`、`download.py`、`fixtures/sample.json`；没有修改 `src/`。`MemoryBackend` 协议允许替换检索实现，默认 `GameAgentMemoryBackend` 只使用 `MemoryStore.add/retrieve`。
 
-2026-11-01 验证：
+2026-11-02 验证：
 
 - Python 离线全集 **601 项通过、6 项真实端点测试跳过**；LongMemEval 专项 12 项，覆盖 fixture、日期、turn/session 指标、后端映射、CLI、stratified 采样、排序模式、`--resume` 与单段超长重试。
 - fixture smoke：2 题，HashEmbedder，产物 `summary.json` / `per_question.jsonl` 正常。
 - oracle smoke：`--limit 6 --sample stratified`，覆盖 6 个 question_type；HashEmbedder 与 RealEmbedder 均完成，RealEmbedder 结果仅用于流程验证。
-- oracle 只含证据会话，session recall 在 oracle 上接近 1 是数据口径，不代表带干扰项的真实召回；完整 S/M 未在本次运行（数据不入库，按需下载）。
+- oracle 只含证据会话，session recall 在 oracle 上接近 1 是数据口径，不代表带干扰项的真实召回；S 已完整运行，M 未运行（数据不入库，按需下载）。
 - **LongMemEval-S 20 题分层样本**（`--limit 20 --sample stratified --embedder real --top-k 50`）：20 题全部完成，覆盖 6 个 question_type。结果：
 
 | 层级 | recall_all@5 | recall_all@10 | recall_all@50 | recall_any@5 | recall_any@10 | recall_any@50 | ndcg_any@5 | ndcg_any@10 | ndcg_any@50 |
@@ -205,4 +205,40 @@ python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_oracle.jso
 - 按题型，relevance 下 knowledge-update / single-session-preference 的 session recall_all@5 达到 1.000；single-session-assistant 0.667、single-session-user 0.667、temporal-reasoning 0.333、multi-session 0.250；multi-session session@10 为 0.750，temporal @10 为 1.000，仍是最主要短板。
 - 这些是 S20 分层样本结果；默认核心权重未改，是否切换默认需要完整 500 题和近期事件回归后再定。
 
-- 未实现 QA 回答/LLM 裁判，未修改核心记忆检索公式。
+## S500 完整结果
+
+2026-11-02 跑完 LongMemEval-S 全部 500 题，RealEmbedder、top-k=50，两组各 500 条有效结果（question_id 无重复、retrieved 均非空）。中途在单段超长 turn 上两次 400，已用逐题落盘 + `--resume` 从第 58 题续跑，前序结果未丢失。
+
+Turn 级：
+
+| 模式 | recall_all@5 | recall_all@10 | recall_all@50 | recall_any@5 | recall_any@10 | recall_any@50 | ndcg@5 | ndcg@10 | ndcg@50 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| memory（默认等权） | 0.128 | 0.170 | 0.352 | 0.408 | 0.464 | 0.708 | 0.232 | 0.248 | 0.296 |
+| relevance（核心 `(0,0,1)`） | **0.510** | **0.644** | **0.844** | **0.808** | **0.890** | **0.952** | **0.579** | **0.616** | **0.646** |
+
+Session 级：
+
+| 模式 | recall_all@5 | recall_all@10 | recall_all@50 | recall_any@5 | recall_any@10 | recall_any@50 | ndcg@5 | ndcg@10 | ndcg@50 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| memory（默认等权） | 0.266 | 0.350 | 0.374 | 0.646 | 0.746 | 0.760 | 0.385 | 0.419 | 0.425 |
+| relevance（核心 `(0,0,1)`） | **0.800** | **0.892** | **0.964** | **0.944** | **0.972** | **0.988** | **0.846** | **0.868** | **0.879** |
+
+按题型 session `recall_all@5`：
+
+| 题型 | 题数 | memory | relevance |
+|---|---:|---:|---:|
+| knowledge-update | 78 | 0.295 | 0.949 |
+| multi-session | 133 | 0.068 | 0.699 |
+| single-session-assistant | 56 | 0.411 | 0.893 |
+| single-session-preference | 30 | 0.467 | 0.967 |
+| single-session-user | 70 | 0.357 | 0.943 |
+| temporal-reasoning | 133 | 0.293 | 0.662 |
+
+结论：
+
+- 完整 500 题复现了 S20 的方向，而且差距更大：session `recall_all@10` 从 **0.350** 提升到 **0.892**，turn `recall_all@5` 从 **0.128** 提升到 **0.510**。
+- multi-session 仍是最弱项（session@5 0.699），temporal-reasoning 次之（0.662）；两者 session@50 分别为 0.962 / 0.932，说明主要问题在排序，不是完全找不到证据。
+- 默认权重仍未切换。完整 500 题证明 relevance 优先值得作为候选默认策略，但还需回归近期事件优先级、狼人杀和世界模拟后再决定。
+- 这是检索指标，不是 LongMemEval QA 准确率；没有运行回答模型或 LLM 裁判。
+
+- 未实现 QA 回答/LLM 裁判；默认核心检索权重未切换。

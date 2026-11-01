@@ -27,7 +27,7 @@ LongMemEval-S20 显示当前 recency / importance / relevance 等权排序对长
 - 用 S20 重跑核心 relevance，与评测侧重排结果对照；若一致，说明消融结论可落到核心可选参数。
 - 不把权重参数默认改成 relevance；是否切换默认需要另行评估近期事件优先级和完整 500 题。
 
-实施状态（2026-11-02）：`MemoryStore.retrieve` 已增加可选 `weights`，默认 `None` 保持原等权行为；`LongMemEval` 的 `relevance` 模式用 `(0,0,1)` 调用核心检索。新增 5 个离线用例覆盖默认/显式 relevance 排序和非法权重；全量 **599 项通过、6 项跳过**。S20 上 relevance 权重将 session `recall_all@10` 从 0.400 提升到 0.950，默认权重未切换。
+实施状态（2026-11-02）：`MemoryStore.retrieve` 已增加可选 `weights`，默认 `None` 保持原等权行为；`LongMemEval` 的 `relevance` 模式用 `(0,0,1)` 调用核心检索。新增 5 个离线用例覆盖默认/显式 relevance 排序和非法权重；全量 **599 项通过、6 项跳过**。S500 完整结果中 relevance 权重将 session `recall_all@10` 从 0.350 提升到 0.892，turn `recall_all@5` 从 0.128 提升到 0.510；默认权重仍未切换。
 
 ## 2026-10-25 修正：观察去重的流边界
 
