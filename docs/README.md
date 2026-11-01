@@ -25,13 +25,13 @@
 
 2026-10-26 通用决策健壮性：真实模型狼人杀首次运行出现非法 target 中断，已为 `decide_game` 增加语义校验失败后回喂错误重试一次。最新离线全集 **573 项通过、6 项真实端点测试跳过**；新增 4 项重试专项用例，真实模型狼人杀复跑完成。
 
-2026-11-01 LongMemEval 召回评测：[LongMemEval 记忆召回评测](modules/longmemeval.md) 已实现，作为 `evals/longmemeval/` 独立模块接入；数据集不入库，首版只做 turn/session 检索指标，不改核心记忆语义。最新离线全集 **594 项通过、6 项跳过**。
+2026-11-01 LongMemEval 召回评测：[LongMemEval 记忆召回评测](modules/longmemeval.md) 已实现，作为 `evals/longmemeval/` 独立模块接入；数据集不入库，首版只做 turn/session 检索指标，不改核心记忆语义。最新离线全集 **599 项通过、6 项跳过**。
 
 2026-10-26 狼人杀回放：[通用对局回放与狼人杀界面](modules/game-replay.md) 已实现。新增公共时间线/直播/上帝文件运行器与独立 `werewolf.html`；公共文件不含身份或私密事件。最新 Python 离线全集 **584 项通过、6 项真实端点测试跳过**，前端 **14 项测试**、构建和独立 Chromium 检查通过。
 
 | 模块蓝图 | 状态 | 实现入口 |
 |---|---|---|
-| [LongMemEval 记忆召回评测](modules/longmemeval.md) | 已实现，594 项离线测试通过 | `evals/longmemeval/` |
+| [LongMemEval 记忆召回评测](modules/longmemeval.md) | 已实现，599 项离线测试通过 | `evals/longmemeval/` |
 | [多游戏接入协议](modules/game-integration.md) | 已实现，573 项离线测试通过 | integration/、adapters/、cognition/game.py、scenarios/werewolf/ |
 | [通用对局回放与狼人杀界面](modules/game-replay.md) | 已实现，584 项 Python + 14 项前端测试通过 | runners/werewolf_replay.py、visualization/src/werewolf/ |
 | [通用记忆事件与组合查询](modules/memory-events.md) | 已实现，522 项离线测试通过 | `src/game_agent/memory/events.py`、`event_repository.py`、`store.py` |

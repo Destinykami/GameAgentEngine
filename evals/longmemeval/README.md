@@ -49,4 +49,4 @@ python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_oracle.jso
 python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_s_cleaned.json     --limit 20 --top-k 50 --embedder real --sample stratified --retrieval relevance
 ```
 
-S20 结果：relevance-only 明显优于现有 memory 排序（session recall_all@10 0.400 → 0.900），session 聚合没有超过 relevance。详见设计文档。`oracle` 只含证据会话，session recall 接近 1 不代表带干扰项的真实效果；完整 S/M 需下载后显式运行。
+S20 结果：核心 relevance 权重明显优于现有 memory 排序（session recall_all@10 0.400 → 0.950），session 聚合没有超过 relevance。详见设计文档。`oracle` 只含证据会话，session recall 接近 1 不代表带干扰项的真实效果；完整 S/M 需下载后显式运行。

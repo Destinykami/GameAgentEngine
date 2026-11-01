@@ -18,8 +18,8 @@
 为了判断低 turn recall 是数据问题还是当前 recency/importance/relevance 等权排序的问题，评测后端提供 `--retrieval` 三种模式，全部只发生在 `evals/longmemeval/`：
 
 - `memory`：直接使用 `MemoryStore.retrieve` 的现有排序（基线）；
-- `relevance`：取回全部候选 turn，用同一个 embedder 重算 query-turn 余弦相似度，只按 relevance 排序；
-- `session`：按 session 聚合最大 relevance，先排 session，再排 session 内 turn，最后截 top-k；用于观察 session 级召回上限。
+- `relevance`：调用核心 `MemoryStore.retrieve(weights=(0, 0, 1))`，只按 relevance 排序；
+- `session`：评测侧按 session 聚合最大 relevance，先排 session，再排 session 内 turn，最后截 top-k；用于观察 session 级召回上限。
 
 三种模式共享同一批 turn、同一批预编码向量和同一 `MemoryStore` 写入，只改变候选排序，不修改核心检索公式。S20 上对比 `memory`、`relevance`、`session`，并保留 `--retrieval` 参数和 per-question 审计。
 
@@ -171,7 +171,7 @@ python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_oracle.jso
 
 2026-11-01 验证：
 
-- Python 离线全集 **594 项通过、6 项真实端点测试跳过**；LongMemEval 专项 10 项，覆盖 fixture、日期、turn/session 指标、后端映射、CLI 和 stratified 采样。
+- Python 离线全集 **599 项通过、6 项真实端点测试跳过**；LongMemEval 专项 10 项，覆盖 fixture、日期、turn/session 指标、后端映射、CLI 和 stratified 采样。
 - fixture smoke：2 题，HashEmbedder，产物 `summary.json` / `per_question.jsonl` 正常。
 - oracle smoke：`--limit 6 --sample stratified`，覆盖 6 个 question_type；HashEmbedder 与 RealEmbedder 均完成，RealEmbedder 结果仅用于流程验证。
 - oracle 只含证据会话，session recall 在 oracle 上接近 1 是数据口径，不代表带干扰项的真实召回；完整 S/M 未在本次运行（数据不入库，按需下载）。
@@ -191,14 +191,15 @@ python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_oracle.jso
 | 模式 | turn recall_all@5 | turn recall_all@10 | turn recall_all@50 | session recall_all@5 | session recall_all@10 | session recall_all@50 | session ndcg@5 | session ndcg@10 | session ndcg@50 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | memory（现有排序） | 0.050 | 0.050 | 0.350 | 0.400 | 0.400 | 0.400 | 0.438 | 0.455 | 0.460 |
-| relevance（只按语义） | **0.250** | **0.400** | **0.750** | **0.650** | **0.900** | **0.950** | **0.721** | **0.786** | **0.804** |
-| session（session 聚合） | 0.200 | 0.200 | 0.700 | 0.650 | 0.700 | 0.700 | 0.721 | 0.729 | 0.729 |
+| relevance（核心 `weights=(0,0,1)`） | **0.350** | **0.500** | **0.750** | **0.650** | **0.950** | **0.950** | **0.757** | **0.826** | **0.830** |
+| session（session 聚合） | 0.150 | 0.200 | 0.650 | 0.600 | 0.650 | 0.650 | 0.732 | 0.751 | 0.751 |
 
 结论：
 
-- relevance-only 显著优于现有等权排序：turn recall_all@5 从 0.050 到 0.250，session recall_all@10 从 0.400 到 0.900。
-- session 聚合没有超过 relevance；它把 top turn 预算集中到少数 session，session@10 反而下降（0.900 → 0.700）。当前样本下不需要先聚合 session。
-- 按题型，relevance 下 knowledge-update / single-session-assistant / single-session-preference 的 session recall_all@5 都达到 1.000；multi-session 只有 0.250，temporal-reasoning session@5 为 0 但 @10 为 1.000，说明多会话与时间题仍是主要短板。
-- 这些是评测侧重排结果，**没有修改核心 MemoryStore 的检索公式**；是否把 relevance 优先策略落入核心需要单独设计。
+- relevance-only 显著优于现有等权排序：turn recall_all@5 从 0.050 到 0.350，session recall_all@10 从 0.400 到 0.950。
+- 这说明问题主要来自 recency/importance 等权，而不是评测指标；relevance 模式已经走核心 `MemoryStore.retrieve(weights=(0,0,1))`，不是评测侧伪重排。
+- session 聚合没有超过 relevance；它把 top turn 预算集中到少数 session，session@10 降到 0.650。当前样本下不需要先聚合 session。
+- 按题型，relevance 下 knowledge-update / single-session-preference 的 session recall_all@5 达到 1.000；single-session-assistant 0.667、single-session-user 0.667、temporal-reasoning 0.333、multi-session 0.250；multi-session session@10 为 0.750，temporal @10 为 1.000，仍是最主要短板。
+- 这些是 S20 分层样本结果；默认核心权重未改，是否切换默认需要完整 500 题和近期事件回归后再定。
 
 - 未实现 QA 回答/LLM 裁判，未修改核心记忆检索公式。

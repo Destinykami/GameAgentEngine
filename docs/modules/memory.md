@@ -10,6 +10,25 @@
 
 存储侧已实现 recent_relationship_observations、retrieve(candidate_limit=128) 及按类型 count，并新增关系时间/重要性索引。39 项专项离线测试通过，包含窗口、时间/关系/类型隔离、重要旧事、稳定排序、冷启动最多 128 条候选嵌入及原评分对照。反思调用与 NPC 水位已在各自模块接入并提交。
 
+## 2026-11-02 可配置检索权重
+
+LongMemEval-S20 显示当前 recency / importance / relevance 等权排序对长历史证据不利：评测侧重排 relevance-only 将 session recall_all@10 从 0.400 提升到 0.900。为避免评测侧与核心排序长期分叉，给 `MemoryStore.retrieve` 增加可选的 `weights` 参数。
+
+目标行为：
+
+- 新增 `weights: tuple[float, float, float] | None = None`；`None` 表示继续使用 `(ALPHA_RECENCY, ALPHA_IMPORTANCE, ALPHA_RELEVANCE)`，默认 NPC、对话、反思行为不变。
+- 显式传入时按 `(recency, importance, relevance)` 权重传给 `rank_memories`；允许 0 权重，拒绝负数、NaN、inf 或长度不为 3。
+- 只暴露权重，不改变 min-max 归一化、置信度乘数、传闻折扣、玩家加权、候选范围、访问水位或 SQLite 格式。
+- LongMemEval 适配器的 `relevance` 模式改为调用核心 `retrieve(weights=(0, 0, 1))`；`session` 聚合仍在评测侧。
+
+验证：
+
+- 现有记忆/反思/对话回归保持默认权重结果；新增默认与显式 relevance 的排序对照，以及非法权重测试。
+- 用 S20 重跑核心 relevance，与评测侧重排结果对照；若一致，说明消融结论可落到核心可选参数。
+- 不把权重参数默认改成 relevance；是否切换默认需要另行评估近期事件优先级和完整 500 题。
+
+实施状态（2026-11-02）：`MemoryStore.retrieve` 已增加可选 `weights`，默认 `None` 保持原等权行为；`LongMemEval` 的 `relevance` 模式用 `(0,0,1)` 调用核心检索。新增 5 个离线用例覆盖默认/显式 relevance 排序和非法权重；全量 **599 项通过、6 项跳过**。S20 上 relevance 权重将 session `recall_all@10` 从 0.400 提升到 0.950，默认权重未切换。
+
 ## 2026-10-25 修正：观察去重的流边界
 
 观察写入中的 `player_id=None` 表示共享流，查询 `all_valid(None)` 仍表示全部流。去重必须显式使用 `shared=True` 限定共享观察；非空对象仍限定其单一关系流。共享与关系流同文也分别创建记录，不互相修改来源、重要性或访问时间。同流继续按原窗口合并；不改变 SQLite 格式、查询公共接口或 importance/10。
