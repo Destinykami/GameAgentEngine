@@ -110,7 +110,8 @@ S split 每题约 400–600 个 turn（约 49 万字符），逐 turn 请求真�
 
 - 每段文本截断到 6000 字符再编码，`MemoryStore` 仍保存完整原文；
 - 按累计 8000 字符、最多 16 段分组，避免超长 batch；
-- 端点仍返回 400 时递归二分 batch，单段仍失败才抛出；
+- 端点仍返回 400 时递归二分 batch；单段仍 400 时把该段前缀逐步减半重试，直到端点接受；
+- 缓存仍以原截断文本为键，后续 `MemoryStore.add` 命中缩短后的向量；
 - 缓存截断文本到向量，`MemoryStore.add` 的逐条调用命中缓存；查询文本走 fallback。
 
 该优化只存在于评测适配器，不改核心写入逻辑。
@@ -173,7 +174,7 @@ python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_oracle.jso
 
 2026-11-01 验证：
 
-- Python 离线全集 **600 项通过、6 项真实端点测试跳过**；LongMemEval 专项 11 项，覆盖 fixture、日期、turn/session 指标、后端映射、CLI、stratified 采样、排序模式与 `--resume`。
+- Python 离线全集 **601 项通过、6 项真实端点测试跳过**；LongMemEval 专项 12 项，覆盖 fixture、日期、turn/session 指标、后端映射、CLI、stratified 采样、排序模式、`--resume` 与单段超长重试。
 - fixture smoke：2 题，HashEmbedder，产物 `summary.json` / `per_question.jsonl` 正常。
 - oracle smoke：`--limit 6 --sample stratified`，覆盖 6 个 question_type；HashEmbedder 与 RealEmbedder 均完成，RealEmbedder 结果仅用于流程验证。
 - oracle 只含证据会话，session recall 在 oracle 上接近 1 是数据口径，不代表带干扰项的真实召回；完整 S/M 未在本次运行（数据不入库，按需下载）。
