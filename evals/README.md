@@ -229,3 +229,16 @@ LLM 事件价值/裁判有噪声，数值只作方向性证据。
 
 **后续**：要恢复可信的 N=40 成本曲线，应下一步对**关系冲突检查**做增量/门控
 （不要每轮重扫 K 条观察），而不是继续压世界事件；改完需再跑一次调度全量。
+
+## LongMemEval 记忆召回（独立模块）
+
+`evals/longmemeval/` 是额外评测模块，不修改核心记忆语义：
+
+```bash
+python -m evals.longmemeval --limit 2 --top-k 50          # 内置小 fixture
+python -m evals.longmemeval.download --split oracle        # 显式下载 cleaned 数据
+python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_oracle.json \
+    --limit 6 --top-k 50 --embedder hash --sample stratified
+```
+
+数据使用 `xiaowu0162/longmemeval-cleaned`（MIT），完整文件不入库；只提交小 fixture。指标严格对齐官方检索口径：turn/session 的 `recall_all@k` 与 `ndcg_any@k`（k=5/10/50）。设计与边界见 [LongMemEval 设计](../docs/modules/longmemeval.md)。
