@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 
 from evals.paths import run_dir
@@ -85,7 +86,11 @@ def main(argv=None) -> int:
         raise SystemExit('没有可评测问题')
     embedder = _embedder(args.embedder)
     backend = GameAgentMemoryBackend(embedder)
-    result = evaluate(questions, backend, top_k=args.top_k, ks=ks)
+    def progress(index, total, question, row):
+        print(f'[{index}/{total}] {question.question_id} {question.question_type} '
+              f'turn_all@5={row["turn"]["recall_all@5"]}', file=sys.stderr, flush=True)
+
+    result = evaluate(questions, backend, top_k=args.top_k, ks=ks, progress=progress)
     out = args.out or run_dir('longmemeval')
     os.makedirs(out, exist_ok=True)
     summary = {

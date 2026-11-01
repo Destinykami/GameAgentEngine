@@ -6,11 +6,12 @@ import sys
 
 import pytest
 
-from evals.longmemeval.backend import GameAgentMemoryBackend
+from evals.longmemeval.backend import GameAgentMemoryBackend, _CachedBatchEmbedder
 from evals.longmemeval.cli import main
 from evals.longmemeval.dataset import (Question, RetrievedTurn, Session, Turn,
                                        load_questions, parse_time)
 from evals.longmemeval.metrics import evaluate_question
+from game_agent.models.embeddings import HashEmbedder
 
 FIXTURE = Path(__file__).resolve().parents[1] / 'evals' / 'longmemeval' / 'fixtures' / 'sample.json'
 
@@ -110,3 +111,42 @@ def test_dataset_and_metrics_import_without_engine():
             "import evals.longmemeval.metrics; "
             "assert 'game_agent' not in sys.modules")
     subprocess.run([sys.executable, '-c', code], cwd=root, check=True)
+
+
+def test_backend_precomputes_turn_embeddings_in_batches():
+    class CountingEmbedder(HashEmbedder):
+        def __init__(self):
+            super().__init__()
+            self.calls = []
+
+        def embed(self, texts):
+            self.calls.append(len(texts))
+            return super().embed(texts)
+
+    question = load_questions(FIXTURE)[0]
+    embedder = CountingEmbedder()
+    backend = GameAgentMemoryBackend(embedder, batch_size=2)
+    backend.retrieve(question, top_k=5)
+    assert embedder.calls == [2, 2, 1]  # 4 个 turn 两批 + 查询一次
+
+
+def test_cached_embedder_clips_and_splits_rejected_batches():
+    class FlakyEmbedder(HashEmbedder):
+        def __init__(self):
+            super().__init__()
+            self.calls = []
+            self.max_input = 0
+
+        def embed(self, texts):
+            self.calls.append(len(texts))
+            self.max_input = max(self.max_input, *(len(t) for t in texts))
+            if len(texts) > 1:
+                raise RuntimeError('batch too large')
+            return super().embed(texts)
+
+    embedder = FlakyEmbedder()
+    cached = _CachedBatchEmbedder(embedder, ['x' * 10000, 'short'], batch_size=4)
+    assert embedder.max_input <= 6000
+    assert cached.embed(['x' * 10000])[0]
+    assert cached.embed(['short'])[0]
+    assert embedder.calls[0] == 2  # 先尝试整批，失败后二分
