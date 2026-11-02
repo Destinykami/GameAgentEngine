@@ -174,7 +174,7 @@ python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_oracle.jso
 
 2026-11-02 验证：
 
-- Python 离线全集 **601 项通过、6 项真实端点测试跳过**；LongMemEval 专项 12 项，覆盖 fixture、日期、turn/session 指标、后端映射、CLI、stratified 采样、排序模式、`--resume` 与单段超长重试。
+- Python 离线全集 **606 项通过、6 项真实端点测试跳过**；LongMemEval 专项 17 项，覆盖 fixture、日期、turn/session 指标、后端映射、CLI、stratified 采样、排序模式、`--resume`、单段超长重试、reader 上下文、官方 judge 模板和 QA 聚合。
 - fixture smoke：2 题，HashEmbedder，产物 `summary.json` / `per_question.jsonl` 正常。
 - oracle smoke：`--limit 6 --sample stratified`，覆盖 6 个 question_type；HashEmbedder 与 RealEmbedder 均完成，RealEmbedder 结果仅用于流程验证。
 - oracle 只含证据会话，session recall 在 oracle 上接近 1 是数据口径，不代表带干扰项的真实召回；S 已完整运行，M 未运行（数据不入库，按需下载）。
@@ -204,6 +204,20 @@ python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_oracle.jso
 - session 聚合没有超过 relevance；它把 top turn 预算集中到少数 session，session@10 降到 0.650。当前样本下不需要先聚合 session。
 - 按题型，relevance 下 knowledge-update / single-session-preference 的 session recall_all@5 达到 1.000；single-session-assistant 0.667、single-session-user 0.667、temporal-reasoning 0.333、multi-session 0.250；multi-session session@10 为 0.750，temporal @10 为 1.000，仍是最主要短板。
 - 这些是 S20 分层样本结果；默认核心权重未改，是否切换默认需要完整 500 题和近期事件回归后再定。
+
+### S20 QA 小样本
+
+同一批 S20 relevance 检索结果，使用同一 RealLLM 做 reader 和 judge：
+
+| Reader 配置 | overall accuracy | task-averaged accuracy |
+|---|---:|---:|
+| 初版 top10 完整 session，40k 字符 | 0.300 | 0.306 |
+| 改为 top50 retrieved turn | 0.400 | 0.417 |
+| 增加按题型任务提示 | **0.600** | **0.611** |
+
+按题型（任务提示版）：single-session-assistant 1.000、single-session-preference 0.667、single-session-user 0.667、multi-session 0.500、knowledge-update 0.500、temporal-reasoning 0.333。样本只有 20 题，不能据此下结论；完整 S500 QA 正在运行。
+
+初版低分的主要原因是长会话把 40k reader 预算吃满，证据 turn 没进上下文；同时 preference/多会话/时间题直接回答“不知道”。当前 reader 按检索顺序取 top turn，并按题型要求给出建议、跨会话合并、用日期计算。judge 使用官方 `evaluate_qa.py` 的 YES/NO 模板。
 
 ## S500 完整结果
 
@@ -242,3 +256,16 @@ Session 级：
 - 这是检索指标，不是 LongMemEval QA 准确率；没有运行回答模型或 LLM 裁判。
 
 - 未实现 QA 回答/LLM 裁判；默认核心检索权重未切换。
+
+## Reader + LLM judge
+
+在召回评测之外增加 QA 准确率，单独作为 `qa.py`，不改变召回指标：
+
+- Reader：按检索顺序展开 top turns（默认 50），带 session 日期和 role，截断到 40k 字符；使用 `RealLLM.ask` 生成答案。preference 题要求基于用户偏好给出具体建议，multi-session 要求跨会话合并，temporal 要求用日期计算，不能因缺少逐字答案就拒绝。早期按 top session 完整展开会被长会话的无关前缀吃满预算，S20 上 reader 频繁回答不知道，已改为 turn-first。
+- Judge：按官方 `evaluate_qa.py` 的 question_type 模板做 YES/NO 判定；abstention 题（`question_id` 以 `_abs` 结尾）使用官方不可回答模板。
+- 指标：overall accuracy、task-averaged accuracy、按 question_type accuracy、abstention accuracy/count。
+- `--qa`：正常召回后直接跑 QA；`--qa-results PATH`：复用已有 `per_question.jsonl` 的检索结果，不重新写入/嵌入，适合在 S500 结果上补 QA。
+- `--qa-resume`：按 `question_id` 跳过 `qa.jsonl` 已完成题目。
+- 同一端点同时做 reader 和 judge 会产生自评偏差；该结果不能等同于官方 GPT-4o 裁判分数，文档和输出必须标注。
+
+Reader 输入只用检索到的 session，不注入未检索的全量历史；这测的是“检索 + 阅读”的端到端效果，而不是长上下文全量阅读。

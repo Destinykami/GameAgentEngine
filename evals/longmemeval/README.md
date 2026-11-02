@@ -50,3 +50,16 @@ python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_s_cleaned.
 ```
 
 S500 完整结果：核心 relevance 权重将 session recall_all@10 从 0.350 提升到 0.892，turn recall_all@5 从 0.128 提升到 0.510；session 聚合没有超过 relevance。详见设计文档。`oracle` 只含证据会话，session recall 接近 1 不代表带干扰项的真实效果；完整 S/M 需下载后显式运行。
+
+
+## Reader + LLM judge
+
+```bash
+# 复用已有召回结果，跑 S20 QA
+python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_s_cleaned.json \
+    --limit 20 --sample stratified \
+    --qa-results data/eval/longmemeval/s20-relevance/per_question.jsonl \
+    --qa-turns 50 --out data/eval/longmemeval/s20-qa
+```
+
+输出 `qa.jsonl` 与 `qa_summary.json`；`--qa-resume` 跳过已完成题目。reader 和 judge 使用同一端点时存在自评偏差，结果不等同于官方 GPT-4o 裁判分数。
