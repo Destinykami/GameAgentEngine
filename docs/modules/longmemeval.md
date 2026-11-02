@@ -215,9 +215,36 @@ python -m evals.longmemeval --data evals/longmemeval/data/longmemeval_oracle.jso
 | 改为 top50 retrieved turn | 0.400 | 0.417 |
 | 增加按题型任务提示 | **0.600** | **0.611** |
 
-按题型（任务提示版）：single-session-assistant 1.000、single-session-preference 0.667、single-session-user 0.667、multi-session 0.500、knowledge-update 0.500、temporal-reasoning 0.333。样本只有 20 题，不能据此下结论；完整 S500 QA 正在运行。
+按题型（任务提示版）：single-session-assistant 1.000、single-session-preference 0.667、single-session-user 0.667、multi-session 0.500、knowledge-update 0.500、temporal-reasoning 0.333。样本只有 20 题，不能据此下结论；完整 S500 QA 见下。
 
 初版低分的主要原因是长会话把 40k reader 预算吃满，证据 turn 没进上下文；同时 preference/多会话/时间题直接回答“不知道”。当前 reader 按检索顺序取 top turn，并按题型要求给出建议、跨会话合并、用日期计算。judge 使用官方 `evaluate_qa.py` 的 YES/NO 模板。
+
+## S500 Reader + LLM Judge
+
+用 S500 relevance 检索结果和 S500 memory 检索结果分别跑 reader + judge；reader 取 top50 turn、40k 字符，judge 用官方 YES/NO 模板。两组各 500 题完成。
+
+| 检索模式 | overall accuracy | task-averaged accuracy | abstention accuracy |
+|---|---:|---:|---:|
+| memory | 0.342 | 0.359 | 0.600 (n=30) |
+| relevance | **0.676** | **0.698** | 0.500 (n=30) |
+
+按题型 accuracy：
+
+| 题型 | 题数 | memory | relevance |
+|---|---:|---:|---:|
+| knowledge-update | 78 | 0.628 | **0.795** |
+| multi-session | 133 | 0.195 | **0.662** |
+| single-session-assistant | 56 | 0.375 | **0.786** |
+| single-session-preference | 30 | 0.233 | **0.567** |
+| single-session-user | 70 | 0.443 | **0.900** |
+| temporal-reasoning | 133 | 0.278 | **0.481** |
+
+相关性检索 + reader 的 overall 提升为 **+0.334**（配对 bootstrap 95% CI 0.284–0.384）。但 reader 仍是主要瓶颈：
+
+- relevance 下，若全部证据 session 进入 top10（446/500），QA 为 **0.722**；未进入（54/500）时只有 **0.296**。
+- 即使全部证据 session 已进 top10，temporal-reasoning 仍只有 **0.547**，single-session-preference 只有 **0.552**，说明这两类还受 reader 的时间推理/个性化生成限制。
+- abstention 仅 0.500（15/30），不可回答题有一半没有正确识别；这是安全性短板。
+- 同一 RealLLM 同时做 reader 和 judge，存在自评偏差；该分数不等同于官方 GPT-4o 裁判或人工评分。
 
 ## S500 完整结果
 
