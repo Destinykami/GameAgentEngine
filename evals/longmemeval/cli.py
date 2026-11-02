@@ -13,6 +13,7 @@ from game_agent.models.embeddings import HashEmbedder
 from .backend import RETRIEVAL_MODES, GameAgentMemoryBackend
 from .dataset import load_questions
 from .metrics import DEFAULT_KS, summarize
+from .qa import LLMJudge, LLMReader, run_qa, summarize_qa
 from .runner import evaluate
 
 HERE = Path(__file__).resolve().parent
@@ -39,6 +40,16 @@ def _args(argv=None):
                         help='产物目录；默认 data/eval/longmemeval/<时间戳>')
     parser.add_argument('--resume', action='store_true',
                         help='跳过 per_question.jsonl 中已完成的 question_id')
+    parser.add_argument('--qa', action='store_true',
+                        help='召回后运行 reader + LLM judge')
+    parser.add_argument('--qa-results', default=None,
+                        help='复用已有 per_question.jsonl，直接运行 QA')
+    parser.add_argument('--qa-resume', action='store_true',
+                        help='跳过 qa.jsonl 中已完成的 question_id')
+    parser.add_argument('--qa-turns', type=int, default=50,
+                        help='reader 使用的 top turn 数')
+    parser.add_argument('--qa-max-chars', type=int, default=40000,
+                        help='reader 历史字符预算')
     return parser.parse_args(argv)
 
 
@@ -61,6 +72,65 @@ def _select(questions, limit: int, sample: str):
             if buckets[kind] and len(chosen) < limit:
                 chosen.append(buckets[kind].pop(0))
     return chosen
+
+
+def _load_jsonl(path: str) -> list[dict]:
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding='utf-8') as stream:
+        return [json.loads(line) for line in stream if line.strip()]
+
+
+def _print_qa(summary: dict) -> None:
+    def fmt(value):
+        return '-' if value is None else f'{value:.4f}'
+    print(f"\nQA: questions={summary['questions']} "
+          f"accuracy={fmt(summary['accuracy'])} "
+          f"task_avg={fmt(summary['task_averaged_accuracy'])} "
+          f"abstention={fmt(summary['abstention_accuracy'])} "
+          f"(n={summary['abstention_questions']})")
+    for task, group in summary['by_type'].items():
+        print(f"  {task}: {fmt(group['accuracy'])} (n={group['questions']})")
+
+
+def _run_qa(args, questions, retrieved_by_id, out: str, *, retrieval: str | None) -> int:
+    os.makedirs(out, exist_ok=True)
+    qa_path = os.path.join(out, 'qa.jsonl')
+    existing = _load_jsonl(qa_path) if args.qa_resume else []
+    done = {row['question_id'] for row in existing}
+    questions = [q for q in questions if q.question_id in retrieved_by_id
+                 and q.question_id not in done]
+    from game_agent.models.llm_http import RealLLM
+    llm = RealLLM()
+    reader, judge = LLMReader(llm), LLMJudge(llm)
+    with open(qa_path, 'a' if args.qa_resume else 'w', encoding='utf-8') as sink:
+        def save(row):
+            sink.write(json.dumps(row, ensure_ascii=False) + '\n')
+            sink.flush()
+
+        def progress(index, total, question, row):
+            print(f'[qa {index}/{total}] {question.question_id} '
+                  f'{question.question_type} correct={row["correct"]}',
+                  file=sys.stderr, flush=True)
+
+        result = run_qa(questions, retrieved_by_id, reader, judge,
+                        top_turns=args.qa_turns, max_chars=args.qa_max_chars,
+                        progress=progress, on_result=save)
+    combined = existing + result['per_question']
+    summary = {
+        'data': str(Path(args.data).resolve()),
+        'reader': type(llm).__name__,
+        'judge': type(llm).__name__,
+        'qa_turns': args.qa_turns,
+        'qa_max_chars': args.qa_max_chars,
+        'retrieval': retrieval,
+        **summarize_qa(combined),
+    }
+    with open(os.path.join(out, 'qa_summary.json'), 'w', encoding='utf-8') as stream:
+        json.dump(summary, stream, ensure_ascii=False, indent=2)
+    _print_qa(summary)
+    print(f'QA 产物: {os.path.abspath(out)}')
+    return 0
 
 
 def _print_section(label: str, data: dict, ks) -> None:
@@ -88,6 +158,14 @@ def main(argv=None) -> int:
     questions = _select(questions, args.limit, args.sample)
     if not questions:
         raise SystemExit('没有可评测问题')
+    if args.qa_results:
+        rows = _load_jsonl(args.qa_results)
+        by_id = {row['question_id']: row.get('retrieved', ()) for row in rows}
+        questions = [q for q in questions if q.question_id in by_id]
+        if not questions:
+            raise SystemExit('qa-results 中没有匹配题目')
+        out = args.out or run_dir('longmemeval-qa')
+        return _run_qa(args, questions, by_id, out, retrieval=None)
     out = args.out or run_dir('longmemeval')
     os.makedirs(out, exist_ok=True)
     rows_path = os.path.join(out, 'per_question.jsonl')
@@ -132,6 +210,10 @@ def main(argv=None) -> int:
         _print_section('  turn', group['turn'], ks)
         _print_section('  session', group['session'], ks)
     print(f'\n产物: {os.path.abspath(out)}')
+    if args.qa:
+        by_id = {row['question_id']: row.get('retrieved', ())
+                 for row in combined}
+        return _run_qa(args, questions, by_id, out, retrieval=args.retrieval)
     return 0
 
 

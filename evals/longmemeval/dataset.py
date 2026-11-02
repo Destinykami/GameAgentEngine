@@ -21,6 +21,7 @@ class Session:
     session_id: str
     at: float
     turns: tuple[Turn, ...]
+    date: str = ''
 
 
 @dataclass(frozen=True)
@@ -117,7 +118,7 @@ def question_from_dict(row: dict[str, Any]) -> Question:
                               bool(raw.get('has_answer', False))))
         if not turns:
             raise ValueError(f'{qid}/{sid}: session 为空')
-        sessions.append(Session(sid, parse_time(date), tuple(turns)))
+        sessions.append(Session(sid, parse_time(date), tuple(turns), str(date)))
     answer_ids = _require(row, 'answer_session_ids')
     if not isinstance(answer_ids, list):
         raise ValueError(f'{qid}: answer_session_ids 必须是列表')
