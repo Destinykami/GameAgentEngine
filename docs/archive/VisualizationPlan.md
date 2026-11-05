@@ -1,6 +1,8 @@
 # 稻妻城自治世界可视化计划
 
-> 状态：**M0–M5 已实现并 E2E 验证**（见 [visualization/README.md](visualization/README.md)）；本文件保留为设计与契约记录。
+> 历史归档：本文保留早期设计、计划与验收口径，不代表当前实现；旧源码路径与行号仅用于追溯。当前设计见[文档入口](../README.md)，相关模块及原文件位置见[归档索引](README.md)。
+
+> 状态：**M0–M5 已实现并 E2E 验证**（见 [visualization/README.md](../../visualization/README.md)）；本文件保留为设计与契约记录。
 >
 > 目标：在不破坏现有 Python 世界模拟、非全知认知和自治决策时序的前提下，为 `world_auto_sim.py` 建立一个类似《星露谷物语》的像素风 2D 场景，并用 NPC 活动、移动动画和对话气泡把世界演出来。
 >
@@ -126,7 +128,7 @@ advance
 → save
 ```
 
-参考：[persona_agent/world.py](persona_agent/world.py)，尤其是 `step_autonomous()`。
+参考：`persona_agent/world.py`，尤其是 `step_autonomous()`。
 
 前端可以把一个 step 拆成数秒的动画，但那只是表现层插值。它不能在第一个角色移动后就让其他角色重新决策。
 

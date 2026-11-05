@@ -1,5 +1,7 @@
 # ReviewFixPlan — 审查问题修复实施计划
 
+> 历史归档：本文保留早期设计、计划与验收口径，不代表当前实现；旧源码路径与行号仅用于追溯。当前设计见[文档入口](../README.md)，相关模块及原文件位置见[归档索引](README.md)。
+
 > **来源**：2026-10-18 对 `Memory / 交互 / Agent 算法` 的独立代码审查（对话记录）。
 > **目标 HEAD**：`79291bc`（工作树干净）。
 > **状态**：**P0/P1/P2 已全部执行完成**（P2 后 246 离线 + 6 探针 = 252 passed），
@@ -60,52 +62,52 @@ PYTHONHASHSEED=24 .venv/bin/python -m pytest tests/ -q
 
 | ID | 问题 | 主要位置 | 对应审查项 |
 |---|---|---|---|
-| F0-1 | `HashEmbedder` 用随机加盐的 `hash()`，同文本跨进程不同向量；测试随机红 | [embeddings.py:64-66](persona_agent/embeddings.py#L64-L66) | P0-9 |
-| F1-1 | `NPC.speak` 不写对话记忆，只有世界层手工回流 | [npc.py:214-225](persona_agent/npc.py#L214-L225)、[dialogue.py:30-50](persona_agent/dialogue.py#L30-L50) | P0-1 |
-| F1-2 | `_save` 对 `player_id=None` 用"不过滤"，自我反思与所有玩家关系反思去重 | [reflection.py:320-341](persona_agent/reflection.py#L320-L341) | P0-2 |
-| F1-3 | 反思触发器累积所有观察，但 `reflect_self` 只读共享流；阈值空转/重复烧 LLM | [npc.py:131-132](persona_agent/npc.py#L131-L132)、[npc.py:152-158](persona_agent/npc.py#L152-L158) | P0-3 |
-| F1-4 | 对话检索不限当前玩家的面，A 的秘密可进入与 B 的对话 prompt | [dialogue.py:37-39](persona_agent/dialogue.py#L37-L39) | P0-5 |
-| F1-5 | 日计划/重规划 context 取全流观察，plan 存共享流；重规划中断观察泄漏玩家名 | [npc.py:269-286](persona_agent/npc.py#L269-L286)、[planning.py:96-143](persona_agent/planning.py#L96-L143) | P0-5 |
-| F2-1 | 在场观察每步 merge +1，importance 顶满 10（真实库可见） | [memory.py:441-467](persona_agent/memory.py#L441-L467)、[world.py:351-399](persona_agent/world.py#L351-L399) | P0-4 |
-| F3-1 | 死者仍驱动 `tier_of`/`perceive`；`step` 不跳过死 NPC | [world.py:885-907](persona_agent/world.py#L885-L907)、[world.py:975-980](persona_agent/world.py#L975-L980) | P0-6 |
-| F3-2 | `step()` 不消费 `_step_social`，社交队列跨步累积且关系反思永不跑 | [world.py:951-983](persona_agent/world.py#L951-L983) | P0-7 |
-| F3-3 | `execute_action` 不校验目标距离，可隔空 talk/attack/help/hide | [world.py:611-625](persona_agent/world.py#L611-L625) | P0-8 |
-| F3-4 | help/hide 先提交状态后做可失败认知事件；异常直接穿出 | [world.py:744-755](persona_agent/world.py#L744-L755) | P0-8 |
-| F3-5 | `step_autonomous` 无 per-agent 异常隔离；`decide_action` 只 catch `ValueError` | [world.py:446-484](persona_agent/world.py#L446-L484)、[llm_real.py:394-413](persona_agent/llm_real.py#L394-L413) | P0-8 |
+| F0-1 | `HashEmbedder` 用随机加盐的 `hash()`，同文本跨进程不同向量；测试随机红 | `persona_agent/embeddings.py#L64-L66` | P0-9 |
+| F1-1 | `NPC.speak` 不写对话记忆，只有世界层手工回流 | `persona_agent/npc.py#L214-L225`、`persona_agent/dialogue.py#L30-L50` | P0-1 |
+| F1-2 | `_save` 对 `player_id=None` 用"不过滤"，自我反思与所有玩家关系反思去重 | `persona_agent/reflection.py#L320-L341` | P0-2 |
+| F1-3 | 反思触发器累积所有观察，但 `reflect_self` 只读共享流；阈值空转/重复烧 LLM | `persona_agent/npc.py#L131-L132`、`persona_agent/npc.py#L152-L158` | P0-3 |
+| F1-4 | 对话检索不限当前玩家的面，A 的秘密可进入与 B 的对话 prompt | `persona_agent/dialogue.py#L37-L39` | P0-5 |
+| F1-5 | 日计划/重规划 context 取全流观察，plan 存共享流；重规划中断观察泄漏玩家名 | `persona_agent/npc.py#L269-L286`、`persona_agent/planning.py#L96-L143` | P0-5 |
+| F2-1 | 在场观察每步 merge +1，importance 顶满 10（真实库可见） | `persona_agent/memory.py#L441-L467`、`persona_agent/world.py#L351-L399` | P0-4 |
+| F3-1 | 死者仍驱动 `tier_of`/`perceive`；`step` 不跳过死 NPC | `persona_agent/world.py#L885-L907`、`persona_agent/world.py#L975-L980` | P0-6 |
+| F3-2 | `step()` 不消费 `_step_social`，社交队列跨步累积且关系反思永不跑 | `persona_agent/world.py#L951-L983` | P0-7 |
+| F3-3 | `execute_action` 不校验目标距离，可隔空 talk/attack/help/hide | `persona_agent/world.py#L611-L625` | P0-8 |
+| F3-4 | help/hide 先提交状态后做可失败认知事件；异常直接穿出 | `persona_agent/world.py#L744-L755` | P0-8 |
+| F3-5 | `step_autonomous` 无 per-agent 异常隔离；`decide_action` 只 catch `ValueError` | `persona_agent/world.py#L446-L484`、`persona_agent/llm_real.py#L394-L413` | P0-8 |
 
 ### P1（下一轮）
 
 | ID | 问题 | 主要位置 |
 |---|---|---|
-| F1-6 | 自治决策的 `memory_context` 取全流最近 5 条，仍可跨玩家泄漏 | [world.py:785-796](persona_agent/world.py#L785-L796) |
-| F2-2 | `observe` 在去重前调 `score_importance`，重复在场每次烧 LLM | [npc.py:112-125](persona_agent/npc.py#L112-L125) |
-| F2-3 | `world_event` 对同一事件按 NPC 逐个打分（N 次调用） | [world.py:938-941](persona_agent/world.py#L938-L941) |
-| F2-4 | `judge_trust` prompt 无上限，关系流越长 token 线性增长 | [reacting.py:69-78](persona_agent/reacting.py#L69-L78) |
-| F4-1 | 传闻转述无条件转发"最新一条"，与当前话题无关 | [world.py:499-537](persona_agent/world.py#L499-L537) |
-| F4-2 | 信任判断输入无 hearsay/hop；episode 固化后丢失传闻来源 | [reacting.py:76](persona_agent/reacting.py#L76)、[npc.py:202-207](persona_agent/npc.py#L202-L207) |
-| F4-3 | `episode`/`identity` 未配半衰期，落到默认 48h（与原始观察同速） | [memory.py:57-61](persona_agent/memory.py#L57-L61)、[memory.py:534](persona_agent/memory.py#L534) |
-| F4-4 | `reflect_identity` 只有测试调用，自治世界从不生成身份信念 | [npc.py:167-170](persona_agent/npc.py#L167-L170)、[world.py:478-481](persona_agent/world.py#L478-L481) |
-| F4-5 | 冲突检查只按玩家扫关系反思；共享自我/identity 反思从不失效 | [reflection.py:211-282](persona_agent/reflection.py#L211-L282) |
-| F5-1 | `add_npc` 不注册 LLM/persona，自治决策退化为 wait；`load` 不恢复 | [world.py:319-339](persona_agent/world.py#L319-L339)、[world.py:1086-1095](persona_agent/world.py#L1086-L1095) |
-| F5-2 | `react` 缓存用 `"接受" in cached` 反解析，婉拒可被缓存成接受 | [npc.py:239-251](persona_agent/npc.py#L239-L251) |
-| F5-3 | 浮点计划块通过 `_valid_block` 后 `f"{:02d}"` 崩溃；`make_daily_plan` 返回未校验块 | [planning.py:48-76](persona_agent/planning.py#L48-L76) |
-| F5-4 | `use_relationship=False` 时仍调 `judge_trust`，缓存键仍含 trust bucket，消融不干净 | [reacting.py:88](persona_agent/reacting.py#L88)、[npc.py:240-242](persona_agent/npc.py#L240-L242) |
+| F1-6 | 自治决策的 `memory_context` 取全流最近 5 条，仍可跨玩家泄漏 | `persona_agent/world.py#L785-L796` |
+| F2-2 | `observe` 在去重前调 `score_importance`，重复在场每次烧 LLM | `persona_agent/npc.py#L112-L125` |
+| F2-3 | `world_event` 对同一事件按 NPC 逐个打分（N 次调用） | `persona_agent/world.py#L938-L941` |
+| F2-4 | `judge_trust` prompt 无上限，关系流越长 token 线性增长 | `persona_agent/reacting.py#L69-L78` |
+| F4-1 | 传闻转述无条件转发"最新一条"，与当前话题无关 | `persona_agent/world.py#L499-L537` |
+| F4-2 | 信任判断输入无 hearsay/hop；episode 固化后丢失传闻来源 | `persona_agent/reacting.py#L76`、`persona_agent/npc.py#L202-L207` |
+| F4-3 | `episode`/`identity` 未配半衰期，落到默认 48h（与原始观察同速） | `persona_agent/memory.py#L57-L61`、`persona_agent/memory.py#L534` |
+| F4-4 | `reflect_identity` 只有测试调用，自治世界从不生成身份信念 | `persona_agent/npc.py#L167-L170`、`persona_agent/world.py#L478-L481` |
+| F4-5 | 冲突检查只按玩家扫关系反思；共享自我/identity 反思从不失效 | `persona_agent/reflection.py#L211-L282` |
+| F5-1 | `add_npc` 不注册 LLM/persona，自治决策退化为 wait；`load` 不恢复 | `persona_agent/world.py#L319-L339`、`persona_agent/world.py#L1086-L1095` |
+| F5-2 | `react` 缓存用 `"接受" in cached` 反解析，婉拒可被缓存成接受 | `persona_agent/npc.py#L239-L251` |
+| F5-3 | 浮点计划块通过 `_valid_block` 后 `f"{:02d}"` 崩溃；`make_daily_plan` 返回未校验块 | `persona_agent/planning.py#L48-L76` |
+| F5-4 | `use_relationship=False` 时仍调 `judge_trust`，缓存键仍含 trust bucket，消融不干净 | `persona_agent/reacting.py#L88`、`persona_agent/npc.py#L240-L242` |
 
 ### P2（择机 / 卫生）
 
 | ID | 问题 | 主要位置 |
 |---|---|---|
-| F6-1 | 检索 importance 未 Min-Max（与模块 docstring/论文不一致）；先改文档，行为调整待评测 | [memory.py:14-17](persona_agent/memory.py#L14-L17)、[memory.py:307](persona_agent/memory.py#L307) |
-| F6-2 | "语义缓存"实为精确字符串键；`_cache`/`_value_cache`/`_conflict_cache` 无上限 | [npc.py:239-247](persona_agent/npc.py#L239-L247)、[reacting.py:45](persona_agent/reacting.py#L45) |
-| F6-3 | 反思证据未在引擎层二次校验；自定义 LLM 可注入幻影 id | [reflection.py:336-341](persona_agent/reflection.py#L336-L341) |
-| F6-4 | `new_observations` 把 merge 当新增 | [world.py:976-978](persona_agent/world.py#L976-L978) |
-| F6-5 | 行为链在动作成功前计数；认知失败也推进链 | [world.py:623-624](persona_agent/world.py#L623-L624) |
-| F6-6 | `flee` 把视距内所有活实体当威胁 | [world.py:728-736](persona_agent/world.py#L728-L736) |
-| F6-7 | `NPC.load`/`World.load` 丢失瞬态：`_reflected_obs`/`_plan_blocks`/`_agent_llms`/`_last_plan_day` | [npc.py:349-372](persona_agent/npc.py#L349-L372)、[world.py:1086-1095](persona_agent/world.py#L1086-L1095) |
-| F6-8 | `_vec` 逐条网络嵌入；大世界冷启动 O(n) 次请求 | [memory.py:210-216](persona_agent/memory.py#L210-L216) |
-| F6-9 | `NPC.clear_cache` 不清 decider 缓存；`World.close` 不关 NPC 库；`all_invalid` 只读旧列 | [npc.py:312-313](persona_agent/npc.py#L312-L313)、[world.py:1097-1100](persona_agent/world.py#L1097-L1100) |
-| F6-10 | merge 方向：富观察可能被稀疏观察保留；亲见/传闻同内容合并保留先入库 hop | [memory.py:441-467](persona_agent/memory.py#L441-L467) |
-| F6-11 | 可选：玩家感知改过渡驱动（新出现/换区域才 observe），进一步省 LLM | [world.py:351-399](persona_agent/world.py#L351-L399) |
+| F6-1 | 检索 importance 未 Min-Max（与模块 docstring/论文不一致）；先改文档，行为调整待评测 | `persona_agent/memory.py#L14-L17`、`persona_agent/memory.py#L307` |
+| F6-2 | "语义缓存"实为精确字符串键；`_cache`/`_value_cache`/`_conflict_cache` 无上限 | `persona_agent/npc.py#L239-L247`、`persona_agent/reacting.py#L45` |
+| F6-3 | 反思证据未在引擎层二次校验；自定义 LLM 可注入幻影 id | `persona_agent/reflection.py#L336-L341` |
+| F6-4 | `new_observations` 把 merge 当新增 | `persona_agent/world.py#L976-L978` |
+| F6-5 | 行为链在动作成功前计数；认知失败也推进链 | `persona_agent/world.py#L623-L624` |
+| F6-6 | `flee` 把视距内所有活实体当威胁 | `persona_agent/world.py#L728-L736` |
+| F6-7 | `NPC.load`/`World.load` 丢失瞬态：`_reflected_obs`/`_plan_blocks`/`_agent_llms`/`_last_plan_day` | `persona_agent/npc.py#L349-L372`、`persona_agent/world.py#L1086-L1095` |
+| F6-8 | `_vec` 逐条网络嵌入；大世界冷启动 O(n) 次请求 | `persona_agent/memory.py#L210-L216` |
+| F6-9 | `NPC.clear_cache` 不清 decider 缓存；`World.close` 不关 NPC 库；`all_invalid` 只读旧列 | `persona_agent/npc.py#L312-L313`、`persona_agent/world.py#L1097-L1100` |
+| F6-10 | merge 方向：富观察可能被稀疏观察保留；亲见/传闻同内容合并保留先入库 hop | `persona_agent/memory.py#L441-L467` |
+| F6-11 | 可选：玩家感知改过渡驱动（新出现/换区域才 observe），进一步省 LLM | `persona_agent/world.py#L351-L399` |
 | F6-12 | 文档漂移：`llm_real` "6 个方法"、OVERVIEW "十一类"、NextPlan 139 测试、`"是是"`、NPC↔NPC 仍称"玩家" | 见各文件 |
 
 ---
@@ -718,7 +720,7 @@ importance = self.llm.score_importance(content, player_id)
 
 按价值排序，可合并成 1-2 个 commit：
 
-1. **F6-1**：把 [memory.py](persona_agent/memory.py) 顶部注释改成真实实现：
+1. **F6-1**：把 `persona_agent/memory.py` 顶部注释改成真实实现：
    importance 用绝对 `/10`，recency/relevance 用 Min-Max；说明这是有意的
    权重选择。若之后要做论文对齐，单独开评测任务，不在本次改行为。
 2. **F6-2**：把"语义缓存"改名为"决策缓存"（注释/docstring），

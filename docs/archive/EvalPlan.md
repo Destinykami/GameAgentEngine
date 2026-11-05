@@ -1,7 +1,9 @@
 # EvalPlan — 三实验评测体系实施计划
 
+> 历史归档：本文保留早期设计、计划与验收口径，不代表当前实现；旧源码路径与行号仅用于追溯。当前设计见[文档入口](../README.md)，相关模块及原文件位置见[归档索引](README.md)。
+
 > **状态：已完成**。三实验脚本、smoke/全量跑批与结果表均已落地，方法学与
-> 结果见 [evals/README.md](evals/README.md)；本文件保留为设计记录。
+> 结果见 [evals/README.md](../../evals/README.md)；本文件保留为设计记录。
 
 为 persona_agent 补上一套真实 LLM 的评测 harness，回答三个问题：
 

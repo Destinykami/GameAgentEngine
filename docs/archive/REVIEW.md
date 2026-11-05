@@ -1,5 +1,7 @@
 # 代码审查记录：记忆 / 反思 / 规划
 
+> 历史归档：本文保留早期设计、计划与验收口径，不代表当前实现；旧源码路径与行号仅用于追溯。当前设计见[文档入口](../README.md)，相关模块及原文件位置见[归档索引](README.md)。
+
 > 审查范围: memory.py / reflection.py / planning.py 及其上下游
 > (npc.py, world.py, llm_real.py, reacting.py, dialogue.py, tests)。
 > 严重度: H = 逻辑缺陷, M = 设计缺口/健壮性, L = 卫生/文档漂移。

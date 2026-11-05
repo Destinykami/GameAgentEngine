@@ -5,7 +5,7 @@
 - **稻妻城回放器**：基于 Phaser 的像素风自治世界回放，数据来自 `stub_timeline.json` / `timeline.json`。
 - **狼人杀对局回放**：独立 DOM/CSS 页面 `werewolf.html`，消费运行器写出的公共时间线；支持回放、直播跟随和本地上帝视角。
 
-稻妻实现 [`../VisualizationPlan.md`](../VisualizationPlan.md) 的 M0–M2 里程碑；狼人杀设计见 [`../docs/modules/game-replay.md`](../docs/modules/game-replay.md)。
+稻妻实现 [历史可视化计划](../docs/archive/VisualizationPlan.md) 的 M0–M2 里程碑；狼人杀设计见 [`../docs/modules/game-replay.md`](../docs/modules/game-replay.md)。
 
 当前职责与验证以 [回放设计](../docs/modules/visualization.md) 为准：Scene 只做组装，`scenes/assets.ts` 管素材与地图，`replay/` 分管投影、事件呈现、输入和直播。终端/静态 HTML 回放实现位于 `src/game_agent/runners/replay/`，原示例命令不变。
 

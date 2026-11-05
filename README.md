@@ -224,4 +224,4 @@ npm run build
 | [实验与评测](evals/README.md) | 基线、指标、消融设计与历史结果 |
 | [可视化](visualization/README.md) / [狼人杀回放](docs/modules/game-replay.md) | 空间与对局展示、直播跟随 |
 
-修改模块时遵循 [`AGENTS.md`](AGENTS.md)：**先更新设计，再实现和验证，最后按模块提交 Git**。根目录的 `OVERVIEW.md`、`WorldPlan.md` 等保留历史设计，当前实现以 `docs/` 下对应模块记录与源码为准。
+修改模块时遵循 [`AGENTS.md`](AGENTS.md)：**先更新设计，再实现和验证，最后按模块提交 Git**。早期总览、计划和审查记录已集中到[历史文档归档](docs/archive/README.md)，当前实现以 `docs/` 下对应模块记录与源码为准。

@@ -1,5 +1,7 @@
 # persona_agent 系统总览
 
+> 历史归档：本文保留早期设计、计划与验收口径，不代表当前实现；旧源码路径与行号仅用于追溯。当前设计见[文档入口](../README.md)，相关模块及原文件位置见[归档索引](README.md)。
+
 一个基于 [Generative Agents](https://arxiv.org/abs/2304.03442) 的**千人千面游戏
 NPC 框架**：纯 Python 标准库 + SQLite，真实 LLM（SGLang 部署的
 `Qwen3.8-27B-Coder/BF16`）驱动，同一个 NPC 对不同玩家动态变化面孔。核心包约
