@@ -23,11 +23,11 @@ def build_context(store: DialogueMemory, name: str,
     if history and top_k > 0:
         # 不拿本轮刚收到的提问证明过去；当前事实仍可出现在 working。
         cutoff = math.nextafter(now, -math.inf)
-        result = store.hybrid_retrieve(utterance,
+        result = store.hybrid_retrieve(utterance[:4000],
             EventScope(as_of=cutoff, player_id=player_id, include_shared=True),
             top_k=min(top_k, 8), candidate_k=32, neighbor_radius=1)
         recalled = [*result.hits, *result.neighbors]
-        diagnostics = result.diagnostics
+        diagnostics = dict(result.diagnostics, query_truncated=len(utterance) > 4000)
     # 主动追问优先给原文，普通对话只给近期背景；所有内容共同受预算约束。
     memories = fit_budget([*recalled, *working], limit=max(0, top_k) + 4)
     extra = {'memory_mode': 'recall' if history else 'background',

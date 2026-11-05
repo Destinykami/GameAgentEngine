@@ -16,7 +16,7 @@ class Capture:
         return '回答'
 
 
-@pytest.mark.parametrize('question', ['那件事怎么样了？', '我们第100次见面做了什么？', '今天天气怎么样？'])
+@pytest.mark.parametrize('question', ['那件事怎么样了？', '我们第100次见面做了什么？', '今天天气怎么样？', '长问题' * 1500])
 def test_information_requests_use_hybrid_even_without_recall_keyword(question):
     calls = []
     class Memory:
@@ -27,11 +27,12 @@ def test_information_requests_use_hybrid_even_without_recall_keyword(question):
             return HybridResult((), {'dense_complete': False, 'errors': ['partial']})
     model = Capture()
     DialogueManager(model, Memory(), {}, 'N').reply('P', question, 10**12)
-    assert calls[0][0] == question
+    assert calls[0][0] == question[:4000]
     assert calls[0][1].player_id == 'P' and calls[0][1].include_shared
     assert calls[0][1].as_of == math.nextafter(10**12, -math.inf)
     assert calls[0][2] == {'top_k': 8, 'candidate_k': 32, 'neighbor_radius': 1}
     assert model.context.extra['retrieval']['dense_complete'] is False
+    assert model.context.extra['retrieval']['query_truncated'] == (len(question) > 4000)
     assert model.context.question == question
 
 

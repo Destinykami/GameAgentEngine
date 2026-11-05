@@ -33,6 +33,8 @@
 
 对话使用显式当前对象+共享范围、now 之前的时间上界和无实例档案。替换 retrieve_important+search_archive 固定拼接为一个窄 hybrid_retrieve 端口；不为一次请求返回整库。模型仍接收原始用户问题，检索诊断放入 extra，不把改写或推断当作历史。可选 reranker 只返回有限候选的分数，不允许插入越界 ID；未配置时不产生额外模型请求。
 
+对话原句超过核心检索的 4000 字符上限时，仅取前 4000 字符作为检索词并记录 query_truncated，原问题仍完整交给生成端；不因新增检索器上限使既有长输入直接失败。不声称截断后的检索保留所有尾部约束，精确条件仍须使用结构化接口。
+
 ## 5. 评测边界
 
 LongMemEval 保留 memory/relevance/session 历史模式；新增 bm25/dense/hybrid 共用核心 hybrid_retrieve，按 turn 原文写档案，使用 source_id 映射回 turn，先来源归并再截 top-k。dense/hybrid 显式补全本题索引；任何失败或覆盖不全时报错，不能作为成功完整结果。per_question 记录检索诊断，CLI 支持三种模式。离线 fixture 对照验证管线；不把 HashEmbedder 数字解释为语义效果，不与历史真实 S500 直接比较。
@@ -51,4 +53,4 @@ LongMemEval 保留 memory/relevance/session 历史模式；新增 bm25/dense/hyb
 
 对话阶段：使用 hybrid_retrieve 窄端口替代原固定拼接。当前时间上界用 nextafter 严格排除同轮输入；明确寒暄保持背景模式，其余信息查询检索。核心命中先于邻文进入预算，降级/覆盖诊断放入 extra.retrieval；来源去重只在完整来源已入选或内容实际重复时省略背景，不因仅命中一个片段就丢弃更完整观察。背景视图新增 source_refs，原主库记录格式保持。
 
-对话、读取策略、模型、隐私、回流和档案专项 **52 项通过**。评测对照、全量与独立安装待后续阶段验证。`git diff --check` 通过。尚未新增真实效果或大规模性能结论。
+对话、读取策略、模型、隐私、回流和档案专项 **53 项通过**（含长输入兼容回归）。评测对照、全量与独立安装待后续阶段验证。`git diff --check` 通过。尚未新增真实效果或大规模性能结论。
