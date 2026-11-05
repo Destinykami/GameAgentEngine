@@ -1,5 +1,7 @@
 # 包入口与依赖加载
 
+2026-11-05 已实现：[五类记忆](five-category-memory.md) 的 MemoryCategory、PersonaProfile、MemoryContents、CurrentState、NPCMemory 从 game_agent.memory 延迟导出。新进程确认纯数据导入不加载 SQLite 或 NPC；根包原导出保持不变，存储及依赖专项 129 项通过。
+
 状态：与实现一致。核对日期：2026-10-23。
 
 ## 问题与目标

@@ -3,6 +3,11 @@
 from .._lazy import resolve_export as _resolve_export
 
 _EXPORTS = {
+    'MemoryCategory': ('.organization', 'MemoryCategory'),
+    'PersonaProfile': ('.organization', 'PersonaProfile'),
+    'MemoryContents': ('.organization', 'MemoryContents'),
+    'CurrentState': ('.organization', 'CurrentState'),
+    'NPCMemory': ('.organization', 'NPCMemory'),
     'MemoryStore': ('.store', 'MemoryStore'),
     'MemoryRecord': ('.models', 'MemoryRecord'),
     'ArchiveRecord': ('.archive', 'ArchiveRecord'),

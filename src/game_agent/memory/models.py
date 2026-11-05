@@ -28,4 +28,10 @@ class MemoryRecord:
     last_reinforced: float | None = None
     id: int | None = None              # 由数据库分配
 
+    @property
+    def category(self):
+        """按职责分类，不改变原类型、dataclass 字段或数据库格式。"""
+        from .organization import category_for_type
+        return category_for_type(self.type)
+
 

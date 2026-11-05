@@ -45,6 +45,7 @@ from .repository import MemoryRepository
 from .archive import ArchiveRecord, ArchiveRepository
 from .errors import ArchiveWriteError
 from .events import EventContext, EventCursor, EventPage, EventQuery, EventScope
+from .organization import MemoryContents, validate_limit
 
 
 class MemoryStore:
@@ -136,6 +137,19 @@ class MemoryStore:
                      limit: int = 32, cursor: EventCursor | None = None) -> EventPage:
         """组合查询轻量事件引用；原文通过 read_event_source 显式读取。"""
         return self._archive.query_events(scope, query, limit=limit, cursor=cursor)
+
+    def organize(self, scope: EventScope, *, limit: int = 32) -> MemoryContents:
+        """按职责读取有界副本；不嵌入、不刷新访问时间、不改变生成路径。"""
+        validate_limit(limit)
+        groups = []
+        for types in [('plan',), ('reflection', 'identity'), ('observation', 'episode')]:
+            # 旧派生表没有实例字段，不能借用全局记录填充游戏实例记忆。
+            rows = [] if scope.instance_id is not None else self._repository.category_records(
+                types, scope.as_of, player_id=scope.player_id,
+                include_shared=scope.include_shared, limit=limit)
+            groups.append(tuple(rows))
+        raw = self.query_events(scope, EventQuery(descending=True), limit=limit).events
+        return MemoryContents(*groups, raw_archive=raw)
 
     def count_events(self, scope: EventScope, query: EventQuery = EventQuery()) -> int:
         return self._archive.count_events(scope, query)

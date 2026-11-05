@@ -199,6 +199,22 @@ class MemoryRepository:
                 " ORDER BY id DESC LIMIT ?", [*args, max(0, limit)]).fetchall()
         return [self._row_to_rec(row) for row in reversed(rows)]
 
+    def category_records(self, types: Sequence[str], now: float, *,
+                         player_id: str | None, include_shared: bool,
+                         limit: int) -> list[MemoryRecord]:
+        """分类读取直接在 SQL 限量；None 只读取共享流。"""
+        scope = 'player_id IS NULL'
+        args: list = [now, *types]
+        if player_id is not None:
+            scope = '(player_id=? OR player_id IS NULL)' if include_shared else 'player_id=?'
+            args.append(player_id)
+        sql = ('SELECT * FROM memory WHERE valid=1 AND timestamp<=? AND type IN ('
+               + ','.join('?' for _ in types) + ') AND ' + scope
+               + ' ORDER BY timestamp DESC,id DESC LIMIT ?')
+        with self._lock:
+            rows = self._conn.execute(sql, [*args, limit]).fetchall()
+        return [self._row_to_rec(row) for row in rows]
+
     @staticmethod
     def _relation_scope(player_id: str, now: float,
                         types: Sequence[str] | None) -> tuple[str, list]:
