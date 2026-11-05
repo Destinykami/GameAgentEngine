@@ -1,8 +1,10 @@
 """单轮对话的记忆可见范围、检索及模型上下文。"""
 
 from __future__ import annotations
+import math
 
 from ...models.llm import LLMContext
+from ...memory.events import EventScope
 from .contracts import DialogueMemory
 from .policy import CONTEXT_CHAR_BUDGET, fit_budget, needs_history
 
@@ -17,26 +19,21 @@ def build_context(store: DialogueMemory, name: str,
     working = store.working_memories(player_id, now, limit=max(0, top_k))
     history = needs_history(utterance)
     recalled = []
+    diagnostics = None
     if history and top_k > 0:
         # 不拿本轮刚收到的提问证明过去；当前事实仍可出现在 working。
-        cutoff = now - 1e-9
-        important = store.retrieve_important(utterance, cutoff, player_id, top_k=min(top_k, 4))
-        raw = store.search_archive(utterance, player_id=player_id, include_shared=True,
-                                   before=cutoff, limit=min(top_k, 4))
-        for rec in raw:
-            rec = dict(rec, category='raw_archive', type='original', usage='recall')
-            recalled.append(rec)
-            # 同会话邻文仅展开一条命中，控制 I/O 和上下文；仍需校验关系/时间。
-            if len(recalled) == 1:
-                for neighbor in store.archive_neighbors(rec['id'], player_id=player_id,
-                        include_shared=True, before=cutoff, radius=1):
-                    recalled.append({'id': neighbor.id, 'content': neighbor.content,
-                        'timestamp': neighbor.timestamp, 'player_id': neighbor.player_id,
-                        'kind': neighbor.kind, 'speaker': neighbor.speaker,
-                        'category': 'raw_archive', 'type': 'original', 'usage': 'recall'})
-        recalled.extend(important)
+        cutoff = math.nextafter(now, -math.inf)
+        result = store.hybrid_retrieve(utterance,
+            EventScope(as_of=cutoff, player_id=player_id, include_shared=True),
+            top_k=min(top_k, 8), candidate_k=32, neighbor_radius=1)
+        recalled = [*result.hits, *result.neighbors]
+        diagnostics = result.diagnostics
     # 主动追问优先给原文，普通对话只给近期背景；所有内容共同受预算约束。
     memories = fit_budget([*recalled, *working], limit=max(0, top_k) + 4)
+    extra = {'memory_mode': 'recall' if history else 'background',
+             'memory_budget_chars': CONTEXT_CHAR_BUDGET}
+    if diagnostics is not None:
+        extra['retrieval'] = diagnostics
     return LLMContext(
         system=(f"你是 {name}。记忆流里出现的 {name} 就是你本人, "
                 f"开口时一律用'我', 不要在自己的话里用名字称呼自己。"
@@ -46,6 +43,5 @@ def build_context(store: DialogueMemory, name: str,
         player_id=player_id,
         memories=memories,
         question=utterance,
-        extra={'memory_mode': 'recall' if history else 'background',
-               'memory_budget_chars': CONTEXT_CHAR_BUDGET},
+        extra=extra,
     )

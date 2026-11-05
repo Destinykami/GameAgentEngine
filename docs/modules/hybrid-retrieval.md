@@ -1,6 +1,6 @@
 # 原文混合检索、证据融合与对话接入
 
-状态：记忆存储与混合入口已实现并通过专项验证；对话、评测接入待实施。日期：2026-11-06。
+状态：记忆存储与对话接入已实现并通过专项验证；评测接入待实施。日期：2026-11-06。
 关联：[五类记忆](five-category-memory.md)、[原文与读取](tiered-memory.md)、[事件查询](memory-events.md)、[对话](dialogue.md)、[LongMemEval](longmemeval.md)。
 
 ## 1. 问题与目标
@@ -49,4 +49,6 @@ LongMemEval 保留 memory/relevance/session 历史模式；新增 bm25/dense/hyb
 
 `test_hybrid_retrieval`、`test_memory_archive`、`test_memory_events`、`test_archive_checkpoints`、`test_module_dependencies` 共 **151 项通过**；另验证 HybridResult 公开导入不加载 SQLite。覆盖设计中的隔离、早期低重要性、人工同义向量、来源去重、有效/失效及旧库摘要导航、重启复用/版本/维度、失败和覆盖不全、损坏向量修复、后置邻文及重排契约。检查档案锁不在回查主库时持续持有。人工向量只验证管线，不代表真实语义质量。
 
-对话接入、评测对照、全量与独立安装待后续阶段验证。`git diff --check` 通过。尚未新增真实效果或大规模性能结论。
+对话阶段：使用 hybrid_retrieve 窄端口替代原固定拼接。当前时间上界用 nextafter 严格排除同轮输入；明确寒暄保持背景模式，其余信息查询检索。核心命中先于邻文进入预算，降级/覆盖诊断放入 extra.retrieval；来源去重只在完整来源已入选或内容实际重复时省略背景，不因仅命中一个片段就丢弃更完整观察。背景视图新增 source_refs，原主库记录格式保持。
+
+对话、读取策略、模型、隐私、回流和档案专项 **52 项通过**。评测对照、全量与独立安装待后续阶段验证。`git diff --check` 通过。尚未新增真实效果或大规模性能结论。

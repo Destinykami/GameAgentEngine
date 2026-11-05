@@ -221,11 +221,10 @@ class MemoryStore:
                                           source_id=source.id))
         return completed
 
-    @staticmethod
-    def _view(rec: MemoryRecord, usage: str) -> dict:
+    def _view(self, rec: MemoryRecord, usage: str) -> dict:
         result = asdict(rec)
         result.update(category=rec.category.value if rec.category is not None else None,
-                      usage=usage)
+                      usage=usage, source_refs=self.source_refs(rec.id))
         return result
 
     def working_memories(self, player_id: str, now: float, *, limit: int = 8,

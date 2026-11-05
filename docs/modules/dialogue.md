@@ -1,6 +1,6 @@
 # 对话上下文、回复生成与轮流发言
 
-2026-11-06 待实施：[混合检索](hybrid-retrieval.md) 替换固定拼接为统一 hybrid_retrieve；信息查询触发，明确寒暄保持背景路径。原话范围、同轮时间排除、后置邻文与预算保持；按来源引用去重，检索完整性与降级信息进入 extra。新增模型调用只来自检索所需 embedding，不添加 LLM 路由或改写。
+2026-11-06 已实现：[混合检索](hybrid-retrieval.md) 替换固定拼接为统一 hybrid_retrieve；信息查询触发，明确寒暄保持背景路径。原话范围、严格同轮时间排除、后置邻文与预算保持；按完整来源或实际重复内容去重，检索完整性与降级信息进入 extra.retrieval。新增模型调用只来自检索所需 embedding，不添加 LLM 路由或改写。相关 52 项专项通过；尚未验证真实指代理解或生成效果。
 
 2026-11-05 已实现：[五类组织](five-category-memory.md) 为唯一分类。候选和预算策略保持，记忆字典改为 category（current_state/semantic/episodic/raw_archive）与 usage（background/recall），不再输出旧 layer；memory_mode=background/recall 只表示读取方式。原文及邻文均标 raw_archive，去重按原文与主库命名空间隔离；同一主库记录被不同策略召回时仍去重。模型原文渲染同步识别新 category，旧 layer 输入仅保留兼容。专项 61 项、全集 637 项离线测试通过，6 项真实端点测试跳过；未验证真实生成效果。
 

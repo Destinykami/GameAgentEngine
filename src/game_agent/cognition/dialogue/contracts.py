@@ -5,19 +5,15 @@ from __future__ import annotations
 from typing import Protocol
 
 from ...models.llm import LLMContext
+from ...memory.events import EventScope
+from ...memory.hybrid import HybridResult
 
 
 class DialogueMemory(Protocol):
     def working_memories(self, player_id: str, now: float, *, limit: int = 8) -> list[dict]: ...
 
-    def retrieve_important(self, query: str, now: float, player_id: str, *,
-                           top_k: int = 4) -> list[dict]: ...
-
-    def search_archive(self, query: str, *, player_id: str,
-                       include_shared: bool, before: float, limit: int) -> list[dict]: ...
-
-    def archive_neighbors(self, source_id: str, *, player_id: str,
-                          include_shared: bool, before: float, radius: int) -> list: ...
+    def hybrid_retrieve(self, query: str, scope: EventScope, *, top_k: int,
+                        candidate_k: int, neighbor_radius: int) -> HybridResult: ...
 
 
 class DialogueModel(Protocol):

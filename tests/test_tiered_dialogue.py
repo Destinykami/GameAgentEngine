@@ -17,10 +17,9 @@ def test_casual_turn_uses_working_without_history_or_embedding(monkeypatch):
         store.add(MemoryRecord('今天铁匠铺正在开门', 99))
         def forbidden(*args, **kwargs):
             raise AssertionError('普通对话不应查询历史或嵌入')
-        monkeypatch.setattr(store, 'search_archive', forbidden)
-        monkeypatch.setattr(store, 'retrieve_important', forbidden)
+        monkeypatch.setattr(store, 'hybrid_retrieve', forbidden)
         monkeypatch.setattr(store._embedder, 'embed', forbidden)
-        DialogueManager(model, store, {}, 'N').reply('P', '今天天气怎么样', 100)
+        DialogueManager(model, store, {}, 'N').reply('P', '你好', 100)
         assert model.context.extra['memory_mode'] == 'background'
         assert model.context.memories[0]['category'] == 'episodic'
         assert all('layer' not in m for m in model.context.memories)
