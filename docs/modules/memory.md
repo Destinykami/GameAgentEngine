@@ -1,6 +1,6 @@
 # 记忆模块：存储、检索与维护边界
 
-2026-11-05 [五类记忆组织](five-category-memory.md) 存储侧已实现：增加纯数据契约、MemoryRecord.category 与 MemoryStore.organize(scope, limit=32)，SQL 有界分类读取不改变原类型、访问时间或 L1/L2/L3 检索行为。人格及运行态仍由 NPC 所有，接入待后续提交；存储及依赖专项 129 项通过。
+2026-11-05 [五类记忆组织](five-category-memory.md) 存储侧已实现：增加纯数据契约、MemoryRecord.category 与 MemoryStore.organize(scope, limit=32)，SQL 有界分类读取不改变原类型、访问时间或原有检索行为。人格及运行态由 NPC 所有，已接入五类快照及配置保存恢复；存储及依赖专项 129 项通过。
 
 状态：分层存储已实现；历史说明保留。核对日期：2026-10-25。
 

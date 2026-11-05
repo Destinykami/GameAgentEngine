@@ -22,7 +22,7 @@ def fit_budget(records: list[dict], budget: int = CONTEXT_CHAR_BUDGET,
                limit: int = 12) -> list[dict]:
     out, seen = [], set()
     for rec in records:
-        key = ('archive' if rec.get('layer') == 'archive' else 'memory', rec.get('id'))
+        key = ('archive' if rec.get('category') == 'raw_archive' else 'memory', rec.get('id'))
         if key in seen or len(out) >= max(0, limit) or budget <= 0:
             continue
         seen.add(key)

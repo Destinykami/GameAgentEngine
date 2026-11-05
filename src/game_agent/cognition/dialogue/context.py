@@ -24,7 +24,7 @@ def build_context(store: DialogueMemory, name: str,
         raw = store.search_archive(utterance, player_id=player_id, include_shared=True,
                                    before=cutoff, limit=min(top_k, 4))
         for rec in raw:
-            rec = dict(rec, layer='archive', type='original', usage='recall')
+            rec = dict(rec, category='raw_archive', type='original', usage='recall')
             recalled.append(rec)
             # 同会话邻文仅展开一条命中，控制 I/O 和上下文；仍需校验关系/时间。
             if len(recalled) == 1:
@@ -33,7 +33,7 @@ def build_context(store: DialogueMemory, name: str,
                     recalled.append({'id': neighbor.id, 'content': neighbor.content,
                         'timestamp': neighbor.timestamp, 'player_id': neighbor.player_id,
                         'kind': neighbor.kind, 'speaker': neighbor.speaker,
-                        'layer': 'archive', 'type': 'original', 'usage': 'recall'})
+                        'category': 'raw_archive', 'type': 'original', 'usage': 'recall'})
         recalled.extend(important)
     # 主动追问优先给原文，普通对话只给近期背景；所有内容共同受预算约束。
     memories = fit_budget([*recalled, *working], limit=max(0, top_k) + 4)
@@ -46,6 +46,6 @@ def build_context(store: DialogueMemory, name: str,
         player_id=player_id,
         memories=memories,
         question=utterance,
-        extra={'memory_mode': 'recall' if history else 'working',
+        extra={'memory_mode': 'recall' if history else 'background',
                'memory_budget_chars': CONTEXT_CHAR_BUDGET},
     )

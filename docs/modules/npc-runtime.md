@@ -1,6 +1,6 @@
 # NPC 认知编排与公开边界
 
-2026-11-05 已实现：[五类记忆组织](five-category-memory.md) 接入显式 PersonaProfile、五类组合快照及配置保存恢复，五类作为唯一组织方式。旧存档按原名称与人格数值初始化，identity 仍是可修正信念，不覆盖核心配置；本轮不修改默认 prompt。NPC、保存恢复和两库检查点专项 **46 项通过**，全量及对话分类迁移待后续验收。
+2026-11-05 已实现：[五类记忆组织](five-category-memory.md) 接入显式 PersonaProfile、五类组合快照及配置保存恢复，五类作为唯一组织方式。旧存档按原名称与人格数值初始化，identity 仍是可修正信念，不覆盖核心配置；本轮不修改默认 prompt。NPC、保存恢复和两库检查点专项 **46 项通过**，最终全集 **637 项通过、6 项跳过**；独立 wheel 安装与两库世界检查点恢复通过。
 
 新增 persona_profile 只读快照、set_persona_profile 显式版本更新及 memory_categories(scope=None, limit=32)。构造和 create 可选注入 profile，名称及人格数值须匹配旧构造参数；create 已有 NPC 时不静默覆盖其配置。save 在原 npc 元数据内增加 profile，load 和独立检查点均兼容缺失字段的旧存档。新配置变更须提升版本，数值原地同步给旧 persona_traits 引用。分类快照只接受当前游戏时钟，实例范围不带入旧空间计划；历史记录使用 store.organize 查询。当前状态只反映已有运行与计划状态，不虚构情绪或承诺。验收覆盖只读隔离、版本更新与失败无副作用、反思不覆盖核心、旧存档和独立两库检查点往返。
 

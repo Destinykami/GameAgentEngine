@@ -1,5 +1,7 @@
 # 项目首页与架构图展示
 
+2026-11-05 已调整：[五类记忆组织](modules/five-category-memory.md) 作为唯一分类，首页使用 Mermaid 展示五类及游戏/认知边界。现有 PNG/SVG 中含旧三层称谓，保留为明确标注日期的历史图链接，不继续作为当前主图。未生成新的位图或修改前端。当前 51 份 Markdown 的 270 个本地链接目标及 README Python 示例语法检查通过。
+
 状态：README 与架构图已整理，完成离线使用入口核验。
 核对日期：2026-10-28。
 关联：`README.md`、`docs/assets/`、[系统总览](architecture.md)、[多游戏接入](modules/game-integration.md)、[分层记忆](modules/tiered-memory.md)。

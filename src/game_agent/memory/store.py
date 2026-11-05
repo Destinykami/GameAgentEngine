@@ -203,9 +203,10 @@ class MemoryStore:
         return completed
 
     @staticmethod
-    def _view(rec: MemoryRecord, layer: str, usage: str) -> dict:
+    def _view(rec: MemoryRecord, usage: str) -> dict:
         result = asdict(rec)
-        result.update(layer=layer, usage=usage)
+        result.update(category=rec.category.value if rec.category is not None else None,
+                      usage=usage)
         return result
 
     def working_memories(self, player_id: str, now: float, *, limit: int = 8,
@@ -220,7 +221,7 @@ class MemoryStore:
         for rec in [*summaries, *recent]:
             if rec.id not in seen:
                 seen.add(rec.id)
-                out.append(self._view(rec, 'working', 'background'))
+                out.append(self._view(rec, 'background'))
         return out
 
     def retrieve_important(self, query: str, now: float, player_id: str, *,
@@ -234,7 +235,7 @@ class MemoryStore:
                                include_player=player_id, min_relevance=0.1)
         out = []
         for score, rec in ranked:
-            view = self._view(rec, 'important', 'recall')
+            view = self._view(rec, 'recall')
             view['score'] = score
             out.append(view)
         return out

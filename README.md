@@ -10,9 +10,19 @@ GameAgentEngine 参考 [Generative Agents](https://arxiv.org/abs/2304.03442) 的
 
 ## 系统架构
 
-![GameAgentEngine 架构：游戏接入、NPC 认知与独立分层记忆、上下文与行动输出](docs/assets/gameagent-architecture.png)
+```mermaid
+flowchart LR
+    Game[游戏规则与个人视角] --> NPC[NPC 认知与决策]
+    NPC --> Intent[行动意图]
+    Intent --> Game
+    NPC --> Core[人格核心]
+    NPC --> State[当前状态]
+    NPC --> Semantic[长期语义记忆]
+    NPC --> Episodic[情节记忆]
+    NPC --> Raw[原文档案]
+```
 
-[查看高清原图](docs/assets/gameagent-architecture.png) · [可编辑 SVG](docs/assets/gameagent-architecture.svg) · [架构与模块边界](docs/architecture.md)
+[架构与模块边界](docs/architecture.md) · 历史图（2026-10，含已替代的三层称谓）：[PNG](docs/assets/gameagent-architecture.png) / [SVG](docs/assets/gameagent-architecture.svg)。
 
 每个游戏通过适配器提供角色的个人视角、阶段目标与合法动作。NPC 根据人格和获准记忆返回结构化行动，游戏校验并结算，再将结果定向投递给对应 NPC。
 
@@ -25,7 +35,7 @@ GameAgentEngine 参考 [Generative Agents](https://arxiv.org/abs/2304.03442) 的
 | 能力 | 当前实现 |
 |---|---|
 | 个性化 NPC | 稳定人格与动态关系分开建模；面向玩家或其他 NPC 维护独立关系流、关系反思与信任判断 |
-| 分层长期记忆 | 每 NPC 独立主库与原文档案；常用记忆优先、重要记忆按需读取，原文持续保留以备追溯 |
+| 五类长期记忆 | 人格核心、当前状态、长期语义、情节与原文档案；每 NPC 独立两库，有界读取及按需回忆 |
 | 组合历史查询 | 按参与者、发言者、地点、时间、事件类型与事件锚点组合筛选，支持全文检索、计数与稳定分页 |
 | 证据约束认知 | 自我/关系反思、身份信念、证据引用、语义去重、矛盾强度判别、置信度衰减及失效过滤 |
 | 空间规划与行动 | 日计划、一次子任务分解、事件反应与重规划；局部感知、人格/信任调制的效用决策及自主行动 |
@@ -48,22 +58,43 @@ NPC 面向某个对象的关系
 
 长期人格与本局身份分开；“共享流”指当前 NPC 内部的共享记忆，不是所有 NPC 共用的数据库。普通对话读取当前对象的关系流与该 NPC 的共享流；游戏决策按实例与时间上界读取个人档案。
 
-### 分层记忆与检索
+### 五类记忆与读取策略
 
-| 逻辑层 | 内容 | 默认读取方式 |
+| 类别 | 当前内容 | 更新与读取 |
 |---|---|---|
-| L1 常用层 | 近期观察、计划、关系及身份概况；结合 NPC 人格组成背景 | 有界加载，帮助理解眼前情境 |
-| L2 重要层 | 重要观察、反思、情节与身份信念 | 预选有限候选，再按时效、绝对重要性、相关性、置信度和传闻跳数重排 |
-| L3 原文档案 | 对话原话、观察、动作及事件来源 | FTS5 全文索引、结构化事件查询、原文 ID 与有限邻文展开 |
+| 人格核心 `persona_core` | 名称、人格数值、背景、价值观、底线、表达风格、长期动机、版本 | 显式配置及版本更新；自动反思不覆盖 |
+| 当前状态 `current_state` | 时钟、认知档位、运行计划、当前活动及有效计划记忆 | 从 NPC/PlanState 与主库组合副本；情绪和承诺自动维护尚未实现 |
+| 长期语义 `semantic` | 自我/关系反思、可修正身份信念 | 对应 reflection/identity，可取证、衰减或失效 |
+| 情节 `episodic` | 具体观察、交互经历及情节摘要 | 对应 observation/episode，保留来源与证据 |
+| 原文档案 `raw_archive` | 实际输入、对话、动作及派生记录来源 | 追加保留，全文及事件查询；原文按引用显式读取 |
 
-L1/L2 是逻辑层，主要由主库提供；每个 NPC 实际使用两个 SQLite 文件。合并派生记忆、降低重要性或使旧信念失效，都不会删除已归档的原文。
+五类是唯一记忆组织方式；近期优先、重要性过滤、按需检索和上下文预算是读取策略。每个 NPC 仍使用两个 SQLite 文件，原有类型和整数证据 ID 保持；派生记忆合并、降权或失效不会删除原文。
+
+通过引擎内部接口查看五类（`npc` 为已有 NPC）：
+
+```python
+from game_agent.memory import EventScope
+
+scope = EventScope(as_of=npc.game_time, player_id="Aria", include_shared=True)
+memory = npc.memory_categories(scope, limit=16)
+print(memory.persona_core.values)
+print(memory.current_state.current_activity)
+print(memory.semantic, memory.episodic)
+for ref in memory.raw_archive:
+    source = npc.store.read_event_source(ref.source_id, scope)
+    print(source.content if source else "")
+```
+
+该接口组合当前配置、运行态及范围内记录，不自动作为对话内容外发。历史记录使用 `npc.store.organize(EventScope(as_of=过去时间), limit=16)`；指定游戏实例时仅返回该实例原文引用，不借用无实例字段的旧派生记忆。`PersonaProfile` 可通过 NPC 构造或 create 的 `persona_profile` 参数注入；`set_persona_profile` 显式修改时须提高版本，再用 `save()` 保存。旧 `persona_traits` 可变接口继续兼容。
+
+本轮完成组织、配置和恢复接口；新增背景、价值观等字段尚未统一注入所有生成出口，不代表防 OOC 效果已验证。
 
 当前有两条上下文路径：
 
-- **普通对话 `NPC.speak`**：优先使用常用记忆；规则识别到回忆、原话或约定类意图时，才检索重要层与原文。记忆内容共用 3000 字符预算，候选读取不自动强化记忆。
+- **普通对话 `NPC.speak`**：优先有界读取近期背景及语义概况；识别到回忆、原话或约定类意图时，检索重要候选与原文。记忆内容共用 3000 字符预算，候选读取不自动强化记忆；category 表示五类，usage 表示背景或回忆用途。
 - **通用游戏 `NPC.decide_game`**：使用个人视角、人格及本局最近事件；默认历史窗口为 16 条、6000 字符，不自动检索远期历史。日程和关系反思由游戏选择启用。
 
-通用事件查询接口已经提供；将任意自然语言历史问题自动拆解为查询步骤的规划器仍是后续工作。详见 [分层记忆](docs/modules/tiered-memory.md) 与 [事件查询](docs/modules/memory-events.md)。
+通用事件查询接口已经提供；将任意自然语言历史问题自动拆解为查询步骤的规划器仍是后续工作。详见 [五类记忆](docs/modules/five-category-memory.md)、[读取策略](docs/modules/tiered-memory.md)与[事件查询](docs/modules/memory-events.md)。
 
 ## 快速开始
 
@@ -219,7 +250,7 @@ npm run build
 | [系统总览](docs/architecture.md) | 模块职责、调用方向与状态归属 |
 | [源码布局](docs/source-layout.md) | src 布局、正式包入口与安装规则 |
 | [多游戏接入](docs/modules/game-integration.md) | 请求、动作、定向事件与会话协议 |
-| [分层记忆](docs/modules/tiered-memory.md) / [事件查询](docs/modules/memory-events.md) | 原文档案、检索路径与组合查询 |
+| [五类记忆](docs/modules/five-category-memory.md) / [读取策略](docs/modules/tiered-memory.md) / [事件查询](docs/modules/memory-events.md) | 职责分类、原文档案、检索路径与组合查询 |
 | [NPC 编排](docs/modules/npc-runtime.md) / [反思](docs/modules/reflection.md) / [规划](docs/modules/planning.md) | 认知组件与触发逻辑 |
 | [实验与评测](evals/README.md) | 基线、指标、消融设计与历史结果 |
 | [可视化](visualization/README.md) / [狼人杀回放](docs/modules/game-replay.md) | 空间与对局展示、直播跟随 |

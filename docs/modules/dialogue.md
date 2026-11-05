@@ -1,5 +1,7 @@
 # 对话上下文、回复生成与轮流发言
 
+2026-11-05 已实现：[五类组织](five-category-memory.md) 为唯一分类。候选和预算策略保持，记忆字典改为 category（current_state/semantic/episodic/raw_archive）与 usage（background/recall），不再输出旧 layer；memory_mode=background/recall 只表示读取方式。原文及邻文均标 raw_archive，去重按原文与主库命名空间隔离；同一主库记录被不同策略召回时仍去重。模型原文渲染同步识别新 category，旧 layer 输入仅保留兼容。专项 61 项、全集 637 项离线测试通过，6 项真实端点测试跳过；未验证真实生成效果。
+
 状态：已实现并通过离线行为及安装验证。最后核对日期：2026-10-23。
 实现入口：`src/game_agent/cognition/dialogue/`，正式 DialogueManager 导入路径保持可用。
 关联设计：[NPC 编排](npc-runtime.md)、[记忆](memory.md)、[社交](social.md)、[动作](actions.md)。

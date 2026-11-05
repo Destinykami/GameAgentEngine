@@ -30,7 +30,7 @@ def test_reply_uses_narrow_ports_and_preserves_context_and_trait_reference():
     assert ctx.player_id == "Aria"
     assert ctx.question == "  你好  "
     assert ctx.memories == memories and ctx.memories is not memories
-    assert ctx.extra == {'memory_mode': 'working', 'memory_budget_chars': 3000}
+    assert ctx.extra == {'memory_mode': 'background', 'memory_budget_chars': 3000}
 
 
 def test_model_failure_does_not_refresh_candidate_access_or_write_observations():

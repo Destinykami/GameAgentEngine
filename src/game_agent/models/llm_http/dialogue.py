@@ -11,7 +11,8 @@ def complete(request: Callable[..., str], ctx: LLMContext, *, thinking: bool = F
     memories = ctx.memories or []
 
     def _mem_line(m: dict) -> str:
-        if m.get('layer') == 'archive':
+        if (m.get('category') == 'raw_archive'
+                or (m.get('category') is None and m.get('layer') == 'archive')):
             label = '历史原文' if m.get('kind') != 'legacy_snapshot' else '旧库快照（非原话保证）'
             source = f"来源:{m.get('kind', '未知')},说话者:{m.get('speaker') or '未标注'}"
             return (f"- [{label}] 时间:{m.get('timestamp')} {source} "

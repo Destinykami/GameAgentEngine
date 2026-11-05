@@ -10,6 +10,8 @@ Git 仓库位于 GameAgentEngine，正式 Python 包为 game_agent，采用 src 
 
 ## 当前结构
 
+2026-11-05：[五类记忆](modules/five-category-memory.md) 是唯一组织方式：人格核心与当前运行态由 NPC 所有，语义/情节记录由主库保存，原文由独立档案库保存。近期优先、重要性过滤、按需回忆及预算属于读取策略，不再维护编号层级。结构化人设与快照已提供，各生成入口仍按既有策略选择内容。
+
 2026-10-25 已实现：[多游戏接入](modules/game-integration.md) 通过轻量契约连接各游戏自己的 World 与 NPC。integration/ 负责契约和会话协调，adapters/ 接入现有空间 World，scenarios/werewolf/ 拥有独立阶段规则；cognition/game.py 不依赖空间实体。旧稻妻入口保留，569 项离线测试通过，独立安装后的两个游戏完成运行。
 
 | 目录 | 责任 | 设计 |
@@ -19,7 +21,7 @@ Git 仓库位于 GameAgentEngine，正式 Python 包为 game_agent，采用 src 
 | cognition/planning/ | 时间规则、计划记忆、PlanState 与生成编排 | [规划](modules/planning.md) |
 | cognition/reacting/ | 事件评分、关系信任、纯效用与各自缓存 | [事件反应](modules/reaction.md) |
 | cognition/dialogue/、autonomous.py | 对话上下文/生成/轮流，以及独立自治输入 | [对话](modules/dialogue.md)、[自治](modules/decision.md) |
-| src/game_agent/memory/ | 派生记忆、每 NPC 原文档案、持久检索索引、排序、维护及门面 | [记忆](modules/memory.md)、[分层](modules/tiered-memory.md) |
+| src/game_agent/memory/ | 派生记忆、每 NPC 原文档案、持久检索索引、排序、维护及门面 | [五类记忆](modules/five-category-memory.md)、[读取策略](modules/tiered-memory.md) |
 | src/game_agent/world/ | 实体、事件、感知、动作、社交、扩展、快照及循环编排 | [世界循环](modules/world-runtime.md) |
 | src/game_agent/models/ | 能力接口、配置、单次 HTTP、任务提示词、解析、重试与统计 | [模型接入](modules/model-adapters.md) |
 | src/game_agent/scenarios/inazuma/ | 人物地图、具体效果、裁决、结局与脚本剧情 | [场景](modules/scenarios.md) |

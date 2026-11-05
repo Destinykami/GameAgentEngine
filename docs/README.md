@@ -18,7 +18,7 @@
 
 ## 模块实施记录
 
-2026-11-05 [五类记忆组织](modules/five-category-memory.md)：存储侧类型、分类读取和公开入口已实现（129 项专项及依赖测试通过），NPC 人格核心、当前状态、五类快照及保存恢复已接入（46 项专项通过）。仅保留五类组织，原三层称谓取消；对话分类标记迁移待后续提交，沿用两库和原生成策略。
+2026-11-05 [五类记忆组织](modules/five-category-memory.md) 已完成：人格核心、当前状态、长期语义、情节及原文为唯一分类；NPC 快照、配置保存恢复及对话 category 标记已接入。近期优先、重要性过滤和按需检索保留为读取策略。离线全集 **637 项通过、6 项跳过**，独立 wheel 安装和两库检查点恢复通过；不代表防 OOC 效果已验证。
 
 2026-10-25 新工作：[分层记忆与每 NPC 独立原文档案](modules/tiered-memory.md) 及用户追加确认的 [关系反思窗口](modules/reflection.md) 已按模块实现。Python 离线全集 493 项通过、6 项真实端点探针跳过；原料最近 100 条、证据候选最多 128 条，触发水位保持观察总量。离线 wheel 独立安装、两库检查点恢复通过。下表保留各模块历史验收，不代表最新测试数量。
 
@@ -34,6 +34,7 @@
 
 | 模块蓝图 | 状态 | 实现入口 |
 |---|---|---|
+| [五类记忆组织](modules/five-category-memory.md) | 已实现，637 项离线测试通过、6 项跳过 | memory/organization.py、MemoryStore.organize、NPC.memory_categories |
 | [LongMemEval 记忆召回评测](modules/longmemeval.md) | 已实现，606 项离线测试通过 | `evals/longmemeval/` |
 | [多游戏接入协议](modules/game-integration.md) | 已实现，573 项离线测试通过 | integration/、adapters/、cognition/game.py、scenarios/werewolf/ |
 | [通用对局回放与狼人杀界面](modules/game-replay.md) | 已实现，584 项 Python + 14 项前端测试通过 | runners/werewolf_replay.py、visualization/src/werewolf/ |

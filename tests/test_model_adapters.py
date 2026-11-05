@@ -116,7 +116,8 @@ def test_complete_empty_memories_generates_and_thinking_only_applies_to_dialogue
     assert [call["think"] for call in calls] == [True, True, False]
 
 
-def test_dialogue_prompt_distinguishes_background_raw_quotes_and_no_evidence():
+@pytest.mark.parametrize('source_tag', [{'category': 'raw_archive'}, {'layer': 'archive'}])
+def test_dialogue_prompt_distinguishes_background_raw_quotes_and_no_evidence(source_tag):
     from game_agent.models.llm_http.dialogue import complete
     calls = []
     def request(system, user, **options):
@@ -127,9 +128,9 @@ def test_dialogue_prompt_distinguishes_background_raw_quotes_and_no_evidence():
     complete(request, LLMContext(memories=[
         {'type': 'reflection', 'content': '对他有所保留', 'confidence': 0.5,
          'usage': 'background'},
-        {'type': 'original', 'layer': 'archive', 'content': '假如我有矿石呢',
+        {'type': 'original', **source_tag, 'content': '假如我有矿石呢',
          'kind': 'dialogue_in', 'speaker': 'P', 'timestamp': 1, 'id': 'raw-id'},
-        {'type': 'original', 'layer': 'archive', 'content': '旧库文本',
+        {'type': 'original', **source_tag, 'content': '旧库文本',
          'kind': 'legacy_snapshot', 'id': 'legacy-id'},
     ]))
     prompt = calls[-1][1]
