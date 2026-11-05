@@ -1,6 +1,6 @@
 # LongMemEval 记忆召回评测
 
-2026-11-06 待实施：[混合检索](hybrid-retrieval.md) 新增 bm25/dense/hybrid 对照，直接复用核心检索入口和原文 source_id→turn 映射。dense/hybrid 必须补全本题索引且无降级；逐题保留诊断。原三种模式及既有 S500 历史结果保持，本轮只跑离线 fixture，不新增真实质量结论。
+2026-11-06 已实现：[混合检索](hybrid-retrieval.md) 新增 bm25/dense/hybrid 对照，直接复用核心检索入口和原文 source_id→turn 映射。dense/hybrid 必须补全本题索引且无降级；逐题保留片段及诊断，summary 分开统计冷索引、查询与管线耗时。resume 拒绝混合模式或 top-k。评测专项 29 项、全集 685 项离线测试通过，6 项跳过；三组各 2 题 fixture 完成。原三种模式及既有 S500 历史结果保持，未新跑真实 S500/QA，不新增真实质量结论。
 
 状态：已实现并完成离线与 oracle smoke 验证（2026-11-01）。关联：[评测模块](evaluation.md)、[记忆模块](memory.md)、[分层记忆](tiered-memory.md)。
 

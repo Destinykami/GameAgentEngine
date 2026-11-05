@@ -10,6 +10,8 @@ Git 仓库位于 GameAgentEngine，正式 Python 包为 game_agent，采用 src 
 
 ## 当前结构
 
+2026-11-06：[原文混合检索](modules/hybrid-retrieval.md) 在档案库持久化版本化片段向量，BM25/dense 共用原文来源并经 RRF 融合。对话的信息查询使用统一入口，明确寒暄只用背景；LongMemEval 的 bm25/dense/hybrid 复用相同核心。旧 retrieve 和游戏默认近期窗口保持，未增加自然语言查询规划器。
+
 2026-11-05：[五类记忆](modules/five-category-memory.md) 是唯一组织方式：人格核心与当前运行态由 NPC 所有，语义/情节记录由主库保存，原文由独立档案库保存。近期优先、重要性过滤、按需回忆及预算属于读取策略，不再维护编号层级。结构化人设与快照已提供，各生成入口仍按既有策略选择内容。
 
 2026-10-25 已实现：[多游戏接入](modules/game-integration.md) 通过轻量契约连接各游戏自己的 World 与 NPC。integration/ 负责契约和会话协调，adapters/ 接入现有空间 World，scenarios/werewolf/ 拥有独立阶段规则；cognition/game.py 不依赖空间实体。旧稻妻入口保留，569 项离线测试通过，独立安装后的两个游戏完成运行。
@@ -61,6 +63,7 @@ World 不导入稻妻场景或运行器；场景通过公开钩子注册效果�
 |---|---|---|
 | 记忆记录、有效性、证据、置信度及重要性 | MemoryRepository / MemoryStore | 每 NPC 主库；有界向量缓存重建 |
 | 原文、片段索引及补处理队列 | 每 NPC ArchiveRepository | 独立 archive.db，与主库配对；完整检查点同时备份 |
+| 原文片段向量、编码器/维度/版本与内容 hash | ArchiveRetrieval | 与原文同档案库持久化；限批补建，可按模型版本复用；不复用派生 pending 状态 |
 | 时钟、档位、累积、反思水位及共享冲突签名 | NPC RuntimeState | 实时库按原键保存；独立检查点另保存档位、累积及签名 |
 | 计划块和中断兜底 | PlanState | 实时库保存计划块；独立检查点另保存中断兜底 |
 | 完整反应 LRU | NPC ReactionCache | 不持久化；512 上限 |

@@ -33,7 +33,7 @@ def _args(argv=None):
     parser.add_argument('--question-type', default=None,
                         help='只跑指定 question_type')
     parser.add_argument('--retrieval', choices=RETRIEVAL_MODES, default='memory',
-                        help='memory=现有排序；relevance=只按语义；session=先聚合 session')
+                        help='旧排序 memory/relevance/session；原文核心对照 bm25/dense/hybrid')
     parser.add_argument('--sample', choices=('first', 'stratified'), default='first',
                         help='limit 截断方式；stratified 按 question_type 轮转，适合 smoke')
     parser.add_argument('--out', default=None,
@@ -151,6 +151,8 @@ def main(argv=None) -> int:
         raise SystemExit('--limit 不能为负')
     if args.top_k < 5:
         raise SystemExit('--top-k 至少为 5')
+    if args.retrieval in ('bm25', 'dense', 'hybrid') and args.top_k > 128:
+        raise SystemExit('原文检索对照的 --top-k 最多为 128')
     ks = tuple(k for k in DEFAULT_KS if k <= args.top_k) or (args.top_k,)
     questions = list(load_questions(args.data))
     if args.question_type:
@@ -173,6 +175,17 @@ def main(argv=None) -> int:
     if args.resume and os.path.exists(rows_path):
         with open(rows_path, encoding='utf-8') as stream:
             existing = [json.loads(line) for line in stream if line.strip()]
+        summary_path = os.path.join(out, 'summary.json')
+        if os.path.exists(summary_path):
+            with open(summary_path, encoding='utf-8') as stream:
+                previous = json.load(stream)
+            if previous.get('retrieval') != args.retrieval or previous.get('top_k') != args.top_k:
+                raise SystemExit('resume 的检索模式或 top-k 与原结果不一致，请使用新的输出目录')
+        for row in existing:
+            mode = row.get('retrieval_diagnostics', {}).get('mode')
+            if ((mode is not None and mode != args.retrieval)
+                    or (args.retrieval in ('bm25', 'dense', 'hybrid') and mode is None)):
+                raise SystemExit('resume 结果缺少相同检索模式的诊断，请使用新的输出目录')
     done = {row['question_id'] for row in existing}
     questions = [q for q in questions if q.question_id not in done]
     embedder = _embedder(args.embedder)
@@ -198,6 +211,17 @@ def main(argv=None) -> int:
         'ks': list(ks),
         **summarize(combined, ks),
     }
+    diagnostics = [row['retrieval_diagnostics'] for row in combined if 'retrieval_diagnostics' in row]
+    if diagnostics:
+        summary['retrieval_diagnostics'] = {
+            'questions': len(diagnostics),
+            'degraded_questions': sum(bool(d.get('errors')) or d.get('dense_complete') is False
+                                      for d in diagnostics),
+            'indexed_chunks': sum(d.get('indexed_chunks', 0) for d in diagnostics),
+            'mean_indexing_ms': sum(d.get('indexing_ms', 0) for d in diagnostics)/len(diagnostics),
+            'mean_retrieval_ms': sum(d['latency_ms'] for d in diagnostics)/len(diagnostics),
+            'mean_pipeline_ms': sum(d.get('pipeline_ms', 0) for d in diagnostics)/len(diagnostics),
+        }
     with open(os.path.join(out, 'summary.json'), 'w', encoding='utf-8') as stream:
         json.dump(summary, stream, ensure_ascii=False, indent=2, default=str)
     print(f'LongMemEval: {len(combined)} questions, embedder={type(embedder).__name__}, '

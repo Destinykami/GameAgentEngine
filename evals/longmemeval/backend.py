@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 from typing import Protocol
+import time
 
 from game_agent.memory import MemoryRecord, MemoryStore
 from game_agent.models.embeddings import Embedder, HashEmbedder, cosine_similarity
+from game_agent.memory.events import EventScope
 
 from .dataset import Question, RetrievedTurn
 
@@ -87,7 +89,7 @@ class _CachedBatchEmbedder(Embedder):
         return [self._cache[text] for text in clipped]
 
 
-RETRIEVAL_MODES = ('memory', 'relevance', 'session')
+RETRIEVAL_MODES = ('memory', 'relevance', 'session', 'bm25', 'dense', 'hybrid')
 
 
 class MemoryBackend(Protocol):
@@ -108,8 +110,12 @@ class GameAgentMemoryBackend:
         self.embedder = embedder or HashEmbedder()
         self.batch_size = batch_size
         self.retrieval = retrieval
+        self.last_diagnostics = {}
 
     def retrieve(self, question: Question, top_k: int) -> tuple[RetrievedTurn, ...]:
+        self.last_diagnostics = {}
+        if self.retrieval in ('bm25', 'dense', 'hybrid'):
+            return self._hybrid_retrieve(question, top_k)
         contents = [(session, index, turn, f'[{turn.role}] {turn.content}')
                     for session in question.sessions
                     for index, turn in enumerate(session.turns)]
@@ -164,5 +170,56 @@ class GameAgentMemoryBackend:
                                        t.has_answer, t.at, score)
                          for score, t in flat[:top_k])
 
+        finally:
+            store.close()
+
+    def _hybrid_retrieve(self, question: Question, top_k: int) -> tuple[RetrievedTurn, ...]:
+        """三种新模式共享同一原文语料与核心入口，不复写融合算法。"""
+        if isinstance(top_k, bool) or not isinstance(top_k, int) or not 1 <= top_k <= 128:
+            raise ValueError('混合检索评测的 top_k 须在 1 到 128 之间')
+        started = time.monotonic()
+        store = MemoryStore(self.embedder)
+        scope = EventScope(as_of=question.at)
+        by_source = {}
+        indexed = 0
+        try:
+            for session in question.sessions:
+                for index, turn in enumerate(session.turns):
+                    sid = store.archive_input(turn.content, session.at,
+                        kind='dialogue_in' if turn.role == 'user' else 'dialogue_out',
+                        speaker=turn.role, session_id=session.session_id)
+                    store.archive_done(sid)  # 评测只归档，不伪造主库观察或重要性。
+                    by_source[sid] = RetrievedTurn(session.session_id, index, turn.role,
+                        turn.content, turn.has_answer, session.at, 0.0)
+            indexing_started = time.monotonic()
+            if self.retrieval != 'bm25':
+                while True:
+                    progress = store.index_archive(scope, limit=256)
+                    if progress['errors']:
+                        raise RuntimeError('评测原文向量索引失败，不能报告完整检索结果')
+                    indexed += progress['indexed']
+                    if progress['complete']:
+                        break
+                    if progress['indexed'] == 0:
+                        raise RuntimeError('评测索引未取得进展')
+            indexing_ms = (time.monotonic() - indexing_started) * 1000
+            result = store.hybrid_retrieve(question.question, scope, top_k=top_k,
+                candidate_k=max(32, top_k), mode=self.retrieval, index_limit=0)
+            if self.retrieval != 'bm25' and (
+                    not result.diagnostics['dense_complete'] or result.diagnostics['errors']):
+                raise RuntimeError('评测向量覆盖不完整或已降级，不能作为成功结果')
+            self.last_diagnostics = dict(result.diagnostics,
+                indexed_chunks=indexed, indexing_ms=round(indexing_ms, 3),
+                pipeline_ms=round((time.monotonic()-started)*1000, 3),
+                matches=[{'session_id': by_source[hit['id']].session_id,
+                    'turn_index': by_source[hit['id']].turn_index,
+                    'start': hit['start'], 'end': hit['end'],
+                    'content': hit['content'], 'ranks': hit['ranks']} for hit in result.hits])
+            # 指标单位仍为 turn；同来源已在核心归并，旧 QA reader 仍可展开完整 turn。
+            return tuple(RetrievedTurn(
+                by_source[hit['id']].session_id, by_source[hit['id']].turn_index,
+                by_source[hit['id']].role, by_source[hit['id']].content,
+                by_source[hit['id']].has_answer, by_source[hit['id']].at, hit['score'])
+                for hit in result.hits)
         finally:
             store.close()

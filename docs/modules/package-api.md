@@ -1,5 +1,7 @@
 # 包入口与依赖加载
 
+2026-11-06 已增加 game_agent.memory.HybridResult 按需导出，纯数据模块 hybrid.py 不加载 SQLite 或运行器。混合检索的 SQL/编排分别在 archive_retrieval.py/retrieval.py，随 wheel 一致打包。全集 685 项离线测试及独立 wheel 源码一致性/安装检查通过；原包入口保持。
+
 2026-11-05 已实现：[五类记忆](five-category-memory.md) 的 MemoryCategory、PersonaProfile、MemoryContents、CurrentState、NPCMemory 从 game_agent.memory 延迟导出。新进程确认纯数据导入不加载 SQLite 或 NPC；根包原导出保持不变，存储及依赖专项 129 项通过。
 
 状态：与实现一致。核对日期：2026-10-23。

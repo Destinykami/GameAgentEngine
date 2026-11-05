@@ -18,7 +18,7 @@
 
 ## 模块实施记录
 
-2026-11-06 [原文混合检索](modules/hybrid-retrieval.md) 存储侧已实现原文向量持久化、BM25/dense 共用证据、RRF、证据导航与诊断（151 项专项及依赖测试通过）；对话已接入统一入口、信息查询路由和来源去重（53 项专项通过）。评测接入待后续阶段，五类组织不变。
+2026-11-06 [原文混合检索](modules/hybrid-retrieval.md) 已完成原文向量持久化、BM25/dense/RRF、证据导航、诊断、对话和 LongMemEval 对照接入。离线全集 **685 项通过、6 项跳过**；独立 wheel 源码一致性、安装及两库检查点恢复通过。三组各 2 题 HashEmbedder fixture 全部完成且无降级，结果只验证流程，不代表真实质量提升。五类组织不变。
 
 2026-11-05 [五类记忆组织](modules/five-category-memory.md) 已完成：人格核心、当前状态、长期语义、情节及原文为唯一分类；NPC 快照、配置保存恢复及对话 category 标记已接入。近期优先、重要性过滤和按需检索保留为读取策略。离线全集 **637 项通过、6 项跳过**，独立 wheel 安装和两库检查点恢复通过；不代表防 OOC 效果已验证。
 
@@ -36,6 +36,7 @@
 
 | 模块蓝图 | 状态 | 实现入口 |
 |---|---|---|
+| [原文混合检索](modules/hybrid-retrieval.md) | 已实现，685 项离线测试通过、6 项跳过 | memory/retrieval.py、archive_retrieval.py、dialogue/context.py、evals/longmemeval/ |
 | [五类记忆组织](modules/five-category-memory.md) | 已实现，637 项离线测试通过、6 项跳过 | memory/organization.py、MemoryStore.organize、NPC.memory_categories |
 | [LongMemEval 记忆召回评测](modules/longmemeval.md) | 已实现，606 项离线测试通过 | `evals/longmemeval/` |
 | [多游戏接入协议](modules/game-integration.md) | 已实现，573 项离线测试通过 | integration/、adapters/、cognition/game.py、scenarios/werewolf/ |

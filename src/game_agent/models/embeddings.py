@@ -26,7 +26,7 @@ def _tokens(text: str) -> list[str]:
 def _stable_hash(tok: str) -> int:
     """跨进程稳定的 64 位哈希 (内建 hash() 对字符串按进程随机加盐)。
 
-    HashEmbedder 的向量不持久化, 但同一份记忆在不同进程重建时必须得到同样的
+    派生记忆缓存重建和原文片段持久向量都要求同一文本在不同进程得到同样的
     桶/符号, 否则去重与检索在重启后漂移、测试随 PYTHONHASHSEED 随机红。
     """
     digest = hashlib.blake2b(tok.encode("utf-8"), digest_size=8).digest()

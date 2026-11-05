@@ -6,6 +6,7 @@ import sqlite3
 import pytest
 
 from game_agent import World, Location
+from game_agent.memory import EventScope
 from game_agent.world import checkpoints
 from tests.test_persistence import _StubLLM
 
@@ -27,6 +28,8 @@ def test_two_archives_restore_same_generation_and_pending_work(tmp_path):
             metadata={'projection': 'observation', 'content': 'P 对我说: 尚未处理的话',
                       'importance': 3})
         w.npc('B').observe('B 私有的不同经历', 2, 'Q')
+        scope = EventScope(as_of=2, player_id='P')
+        assert w.npc('A').store.index_archive(scope)['complete']
         w.save_checkpoint(root)
         directory, manifest = checkpoints.read(root)
         assert manifest['version'] == 2 and len(manifest['files']) == 5
@@ -44,6 +47,9 @@ def test_two_archives_restore_same_generation_and_pending_work(tmp_path):
             assert a.store.pending_archive()[0].id == source
             assert a.retry_pending_memories()['failed'] == []
             assert a.store.read_archive(source, player_id='P').state == 'done'
+            recalled = a.store.hybrid_retrieve('蓝铜矿', scope)
+            assert recalled.hits and recalled.diagnostics['dense_complete']
+            assert recalled.diagnostics['indexed'] == 0  # 检查点复制了已持久化的片段向量。
             assert str(tmp_path / 'restored') in a.store.archive_path
             assert checkpoints.read(root)[1] == manifest
         finally:

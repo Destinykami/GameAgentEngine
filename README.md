@@ -91,10 +91,29 @@ for ref in memory.raw_archive:
 
 当前有两条上下文路径：
 
-- **普通对话 `NPC.speak`**：优先有界读取近期背景及语义概况；识别到回忆、原话或约定类意图时，检索重要候选与原文。记忆内容共用 3000 字符预算，候选读取不自动强化记忆；category 表示五类，usage 表示背景或回忆用途。
+- **普通对话 `NPC.speak`**：近期背景及语义概况有界读取；明确寒暄只用背景，其他信息查询调用原文混合检索。核心证据、有限邻文和去重背景共用 3000 字符预算，不自动刷新访问时间；category 表示五类，usage 表示背景或回忆用途。
 - **通用游戏 `NPC.decide_game`**：使用个人视角、人格及本局最近事件；默认历史窗口为 16 条、6000 字符，不自动检索远期历史。日程和关系反思由游戏选择启用。
 
 通用事件查询接口已经提供；将任意自然语言历史问题自动拆解为查询步骤的规划器仍是后续工作。详见 [五类记忆](docs/modules/five-category-memory.md)、[读取策略](docs/modules/tiered-memory.md)与[事件查询](docs/modules/memory-events.md)。
+
+### 原文混合检索
+
+`MemoryStore.hybrid_retrieve` 在同一原文来源上融合 FTS5/BM25 和向量候选，再做 RRF、来源归并及可选重排。摘要和反思可导航到其引用的原文，生成内容不作为额外事实刷票；较早、低重要性的经历不受近期重要性窗口排除。关系、实例和时间范围在候选生成前应用。
+
+```python
+from game_agent.memory import EventScope
+
+scope = EventScope(as_of=npc.game_time, player_id="Aria", include_shared=True)
+progress = npc.store.index_archive(scope, limit=256)  # 显式补一批原文向量
+result = npc.store.hybrid_retrieve("修理蓝铜剑的进展", scope, top_k=8)
+print(progress, result.diagnostics)
+for hit in result.hits:
+    print(hit["source_id"], hit["content"], hit["ranks"])
+```
+
+大档案可重复限批补建，检查 errors 并在 complete=True 后使用完整 dense 覆盖；查询默认最多补 64 个片段，未补完会返回 dense_complete=False。混合模式在 embedding 失败时保留词法候选并报告原因；`mode="bm25"` 不调用 embedding，`mode="dense"` 可用于语义单路对照。明确实例范围只查本局；未指定实例时仅查非游戏实例原文。
+
+片段向量保存在同一个 archive.db，随两库检查点备份，重启按编码器、维度和版本复用；更换同名模型权重时需显式提升 MemoryStore 的 embedding_version。当前为流式精确扫描，不含 ANN 或大规模延迟承诺。指代解析、自然语言第 N 次查询和真实召回质量仍需后续验证。接口、降级及验收见[混合检索设计](docs/modules/hybrid-retrieval.md)，评测入口见[LongMemEval 对照](evals/longmemeval/README.md)。
 
 ## 快速开始
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from typing import Any, Sequence
+import copy
 
 from .backend import MemoryBackend
 from .dataset import Question
@@ -16,6 +17,9 @@ def evaluate(questions: Sequence[Question], backend: MemoryBackend, *,
         retrieved = backend.retrieve(question, top_k)
         row = evaluate_question(question, retrieved, ks)
         row['question'] = question.question
+        diagnostics = getattr(backend, 'last_diagnostics', None)
+        if diagnostics:
+            row['retrieval_diagnostics'] = copy.deepcopy(diagnostics)
         row['retrieved'] = [
             {
                 'session_id': turn.session_id,
