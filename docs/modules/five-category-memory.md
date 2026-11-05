@@ -1,7 +1,7 @@
 # 五类记忆组织
 
-状态：记忆存储侧已实现并验证；NPC 接入待实施。日期：2026-11-05。
-关联：[记忆存储](memory.md)、[分层访问](tiered-memory.md)、[NPC 编排](npc-runtime.md)、[包入口](package-api.md)。
+状态：记忆存储与 NPC 五类入口已实现并验证；对话分类标记迁移待实施。日期：2026-11-05。
+关联：[记忆存储](memory.md)、[读取与原文档案](tiered-memory.md)、[NPC 编排](npc-runtime.md)、[包入口](package-api.md)。
 
 ## 1. 目标与范围
 
@@ -9,7 +9,9 @@
 
 ## 2. 当前实现
 
-人格目前由 NPC 名称与可变 persona_traits 表示，运行状态与 PlanState 归 NPC；主库以 observation/reflection/plan/episode/identity 区分记录，档案库保存来源及事件。尚无统一五类入口；L1/L2/L3 描述访问策略，不表示这五类认知职责。
+存储侧的分类契约及有界读取已实现；NPC 已持有显式 PersonaProfile，并组合五类快照。旧可变 persona_traits API 保留，运行状态与 PlanState 仍归 NPC。主库以 observation/reflection/plan/episode/identity 区分记录，档案库保存来源及事件。
+
+2026-11-05 用户追加明确：只保留五类组织，取消 L1/L2/L3 作为另一套分类。近期优先、重要性过滤、按需回忆和预算是读取策略，不再称为记忆层级。早期三层设计只保留历史说明，不是并行运行的第二套分类。
 
 ## 3. 目标设计与所有权
 
@@ -41,20 +43,26 @@ NPC.save 在原 npc 元数据键中增加可选 persona_profile，保留四个�
 - 主库旧记录没有实例字段；指定 instance_id 时三个派生类别返回空，只返回该实例授权档案。不能将全局主库记录冒充本局记录。
 - `NPC.memory_categories(scope=None, limit=32)` 返回 `NPCMemory`，五个字段为 persona_core/current_state/semantic/episodic/raw_archive。省略 scope 时使用 NPC 当前时钟的共享范围。指定 scope 时仅允许 as_of 等于当前 NPC 时钟；过去时点的记录通过 store.organize 读取，不把当前人格/运行态伪装成历史快照。实例 scope 不带入旧空间计划活动。
 - 当前状态提供分类的 plan 记录以及 NPC 的运行计划。运行计划来自 NPC 本身，不推断第三方状态。返回集合与记录均不暴露可写数据库对象。
-- 新名称仅从 game_agent.memory 按需导出；根包现有导出不变。原 L1/L2/L3 及三条生成出口保持原行为，本入口是组织与读取能力，不是新生成策略。
+- NPC 五类快照是引擎内部读取/诊断接口；scope 过滤的是持久化记录。实时计划、中断及人格配置属于该 NPC 自身内部状态，不作为自动对玩家公开的上下文；对话继续使用原有授权投影，不直接把快照外发。
+- 新名称仅从 game_agent.memory 按需导出；根包现有导出不变。三条生成出口的候选选择和预算保持原行为，本入口是组织与读取能力，不是新生成策略。
+- 对话记忆视图统一使用 `category` 五类标识，不再输出 working/important/archive 三种 layer；`usage=background|recall` 仅描述用途。memory_mode 改为 background/recall，表示读取模式。原方法 working_memories/retrieve_important 保留为读取策略接口名，不表示类别。
+- 模型适配按 category=raw_archive 识别原文，保留对旧输入 layer=archive 的读取兼容；新流程不再产生该旧字段。候选去重使用类别区分原文 ID 与主库 ID，不混淆同编号来源。
 
 ## 6. 实施顺序
 
 1. 先更新本设计及关联模块契约。
 2. 记忆模块：纯数据类型、类型分类、SQL 有界读取、MemoryStore 门面、公开导出及测试，验证后独立提交。
 3. NPC 模块：人格配置、五类组合、原元数据和完整检查点往返、旧存档兼容及测试，验证后独立提交。
-4. 更新使用入口与实现状态；不纳入未跟踪的 interview_deck/。
+4. 分类呈现与对话模块：同步修改存储输出、对话组装、原文渲染和契约测试，作为跨模块原子提交，避免新旧字段导致原文被当成普通背景。
+5. 更新使用入口与实现状态；不纳入未跟踪的 interview_deck/。
 
 ## 7. 验收与证据
 
 存储侧：`test_memory_organization`、`test_memory_repository`、`test_memory_ranking`、`test_memory_archive`、`test_module_dependencies` 共 **129 项通过**。覆盖五类类型映射及未知类型、原序列化不变、不可变人设与 JSON 往返、无模型只读查询、SQL 限量与稳定顺序、关系/共享/未来/失效/实例隔离、返回副本及旧两库重开。新进程验证五类公开类型不加载 SQLite 或 NPC。`git diff --check` 通过。
 
-待验证 NPC 接入：人设版本及显式更新、反思不覆盖核心、旧库、新配置和两库检查点往返，以及完整 Python 离线测试。不改前端，不运行真实模型或在线质量评测。
+NPC 接入：`test_npc_memory_categories`、`test_npc_components`、`test_runtime_state`、`test_persistence`、`test_checkpoints`、`test_archive_checkpoints` 共 **46 项通过**，覆盖五类组合、返回副本、人设显式版本更新和失败无副作用、旧人格字典引用、反思/遗忘不覆盖核心、新旧元数据、独立两库检查点和实例无空间计划。
+
+对话分类标记迁移与完整 Python 离线测试待运行。不改前端，不运行真实模型或在线质量评测。
 
 ## 8. 未决问题与后续
 

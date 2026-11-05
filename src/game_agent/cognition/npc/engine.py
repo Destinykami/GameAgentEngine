@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 from ...integration.contracts import ActionIntent, DecisionRequest, GameEvent
 from ..game import build_game_context
@@ -24,7 +25,8 @@ from ..dialogue import DialogueManager
 from ...models.embeddings import Embedder, HashEmbedder
 from ...models.llm import LLMClient
 from ...memory.store import MemoryStore
-from ...memory.events import EventContext
+from ...memory.events import EventContext, EventScope
+from ...memory.organization import CurrentState, NPCMemory, PersonaProfile
 from ...world.social_contracts import Hearsay
 from ..planning import PlanningEngine, PlanState
 from ..planning.memory import previous_day_context, shared_world_context
@@ -77,9 +79,14 @@ class NPC:
                  conflict_policy: str = "full",
                  evidence_types: tuple[str, ...] = ("observation",),
                  evidence_min_relevance: float = 0.0,
-                 use_relationship: bool = True) -> None:
+                 use_relationship: bool = True, *,
+                 persona_profile: PersonaProfile | None = None) -> None:
+        profile = persona_profile if persona_profile is not None else PersonaProfile(name, persona_traits)
+        if profile.name != name or dict(profile.traits) != persona_traits:
+            raise ValueError('人格核心与 NPC 名称或人格数值不一致')
         self.name = name
         self.persona_traits = persona_traits
+        self._persona_profile = profile
         self.embedder = embedder or HashEmbedder()
         self.llm = llm
         self.store = store or MemoryStore(self.embedder)
@@ -408,12 +415,49 @@ class NPC:
     def identity_belief(self) -> str:
         return identity_belief(self.store)
 
+    @property
+    def persona_profile(self) -> PersonaProfile:
+        """不可变配置快照；保留旧 persona_traits 显式修改的可见性。"""
+        return replace(self._persona_profile, traits=self.persona_traits)
+
+    def set_persona_profile(self, profile: PersonaProfile) -> None:
+        """显式更新核心配置；修改后调用 save 持久化，不从反思自动推导。"""
+        if not isinstance(profile, PersonaProfile) or profile.name != self.name:
+            raise ValueError('人格核心必须属于当前 NPC')
+        current = self.persona_profile
+        if profile == current:
+            return
+        if profile.version <= current.version:
+            raise ValueError('修改人格配置必须提高版本')
+        # 保持 DialogueManager 等旧组件持有的字典引用。
+        self.persona_traits.clear()
+        self.persona_traits.update(profile.traits)
+        self._persona_profile = profile
+
+    def memory_categories(self, scope: EventScope | None = None, *,
+                          limit: int = 32) -> NPCMemory:
+        """读取五类记忆副本；当前配置与运行态不能伪装成历史快照。"""
+        scope = scope if scope is not None else EventScope(as_of=self.game_time)
+        if scope.as_of != self.game_time:
+            raise ValueError('NPC 五类快照只支持当前时钟；历史记录请使用 store.organize')
+        contents = self.store.organize(scope, limit=limit)
+        spatial = scope.instance_id is None
+        state = CurrentState(
+            game_time=self.game_time, tier=self.tier,
+            plan_blocks=tuple(tuple(block) for block in self.plan_state.blocks) if spatial else (),
+            current_activity=self.plan_state.current_activity(self.game_time) if spatial else '',
+            interruption=self.plan_state.interruption if spatial else '',
+            plan_memories=contents.current_state)
+        return NPCMemory(self.persona_profile, state, contents.semantic,
+                         contents.episodic, contents.raw_archive)
+
     # ---------------------------------------------------------------- 持久化
     @classmethod
     def create(cls, name: str, persona_traits: dict[str, float],
                llm: LLMClient, embedder: Embedder | None = None,
                data_dir: str = "data",
-               reflection_threshold: float = REFLECTION_THRESHOLD) -> "NPC":
+               reflection_threshold: float = REFLECTION_THRESHOLD, *,
+               persona_profile: PersonaProfile | None = None) -> "NPC":
         """创建或加载一个持久化 NPC。
 
         记忆流与元数据存于 data_dir/<name>.db (一个 NPC 一个库)。
@@ -423,15 +467,23 @@ class NPC:
         """
         path, exists = prepare_path(name, data_dir)
         if exists:
-            return cls.load(path, llm, embedder=embedder,
-                            reflection_threshold=reflection_threshold)
+            npc = cls.load(path, llm, embedder=embedder,
+                           reflection_threshold=reflection_threshold)
+            if persona_profile is not None and persona_profile != npc.persona_profile:
+                npc.store.close()
+                raise ValueError('已有 NPC 的人格配置不同；请 load 后显式更新版本')
+            return npc
         embedder = embedder or HashEmbedder()
-        npc = cls(name, persona_traits, llm=llm, embedder=embedder,
-                  store=MemoryStore(embedder, path=path),
-                  reflection_threshold=reflection_threshold)
-        npc._runtime.data_path = path
-        npc.save()
-        return npc
+        store = MemoryStore(embedder, path=path)
+        try:
+            npc = cls(name, persona_traits, llm=llm, embedder=embedder, store=store,
+                      reflection_threshold=reflection_threshold, persona_profile=persona_profile)
+            npc._runtime.data_path = path
+            npc.save()
+            return npc
+        except Exception:
+            store.close()
+            raise
 
     @classmethod
     def load(cls, path: str, llm: LLMClient,
@@ -443,18 +495,25 @@ class NPC:
         """
         embedder = embedder or HashEmbedder()
         store = MemoryStore(embedder, path=path)
-        meta, threshold = load_configuration(store, path, reflection_threshold)
-        npc = cls(meta["name"], meta["persona_traits"], llm=llm,
-                  embedder=embedder, store=store,
-                  reflection_threshold=threshold)
-        npc._runtime.data_path = path
-        npc.plan_state = restore_runtime(store, npc._runtime)
-        return npc
+        try:
+            meta, threshold = load_configuration(store, path, reflection_threshold)
+            profile = (PersonaProfile.from_dict(meta['persona_profile'])
+                       if 'persona_profile' in meta else None)
+            npc = cls(meta["name"], meta["persona_traits"], llm=llm,
+                      embedder=embedder, store=store,
+                      reflection_threshold=threshold, persona_profile=profile)
+            npc._runtime.data_path = path
+            npc.plan_state = restore_runtime(store, npc._runtime)
+            return npc
+        except Exception:
+            store.close()
+            raise
 
     def save(self) -> None:
         """记忆即时落库；另按既有键保存 NPC 元数据及部分运行状态。"""
         save_checkpoint(self.store, self.name, self.persona_traits,
-                        self._runtime, self.plan_state)
+                        self._runtime, self.plan_state,
+                        persona_profile=self.persona_profile.to_dict())
 
     def checkpoint_state(self) -> dict:
         """一致检查点专用；旧 save/load 的恢复范围保持独立。"""
@@ -463,6 +522,7 @@ class NPC:
         runtime.pop("data_path")
         return {
             "name": self.name, "persona_traits": dict(self.persona_traits),
+            "persona_profile": self.persona_profile.to_dict(),
             "configuration": {
                 "reflection_threshold": self._runtime.reflection_threshold,
                 "conflict_policy": self.reflection.conflict_policy,
@@ -481,8 +541,11 @@ class NPC:
         embedder = embedder or HashEmbedder()
         store = MemoryStore(embedder, path=path)
         try:
+            profile = (PersonaProfile.from_dict(state['persona_profile'])
+                       if 'persona_profile' in state else None)
             npc = cls(state["name"], dict(state["persona_traits"]), llm,
-                      embedder=embedder, store=store, **state["configuration"])
+                      embedder=embedder, store=store, persona_profile=profile,
+                      **state["configuration"])
             runtime = dict(state["runtime"])
             if runtime.get("shared_conflict_sig") is not None:
                 runtime["shared_conflict_sig"] = tuple(runtime["shared_conflict_sig"])

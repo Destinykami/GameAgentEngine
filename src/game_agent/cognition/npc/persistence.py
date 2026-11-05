@@ -37,13 +37,17 @@ def restore_runtime(store: MetadataMemory, state: RuntimeState) -> PlanState:
 
 
 def save_checkpoint(store: MetadataMemory, name: str, persona_traits: dict[str, float],
-                     state: RuntimeState, plan_state: PlanState) -> None:
+                     state: RuntimeState, plan_state: PlanState, *,
+                     persona_profile: dict | None = None) -> None:
     if not store.is_persistent():
         raise RuntimeError("该 NPC 使用 :memory: 库, 无法持久化 "
                            "(请用 NPC.create / NPC.load 创建)")
-    # 保留逐键提交顺序，不在结构拆分中新增事务或持久化字段。
-    store.set_meta("npc", {"name": name, "persona_traits": persona_traits,
-                           "reflection_threshold": state.reflection_threshold})
+    # 在原 npc 元数据内扩展配置，保留逐键提交顺序与失败边界。
+    metadata = {"name": name, "persona_traits": persona_traits,
+                "reflection_threshold": state.reflection_threshold}
+    if persona_profile is not None:
+        metadata['persona_profile'] = persona_profile
+    store.set_meta("npc", metadata)
     store.set_meta("game_time", state.game_time)
     store.set_meta("reflected_obs", dict(state.reflected_obs))
     store.set_meta("plan_blocks", plan_state.saved_blocks())
