@@ -160,6 +160,11 @@ class MemoryRepository:
             return [row[0] for row in self._conn.execute(
                 "SELECT source_id FROM memory_source WHERE memory_id=? ORDER BY rowid", (memory_id,))]
 
+    def get_record(self, memory_id: int) -> MemoryRecord | None:
+        with self._lock:
+            row = self._conn.execute('SELECT * FROM memory WHERE id=?', (memory_id,)).fetchone()
+        return self._row_to_rec(row) if row else None
+
     def link_source(self, source_id: str, memory_id: int) -> None:
         with self._lock, self._conn:
             self._conn.execute("INSERT INTO memory_source VALUES (?,?)", (source_id, memory_id))

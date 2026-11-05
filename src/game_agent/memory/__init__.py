@@ -3,6 +3,7 @@
 from .._lazy import resolve_export as _resolve_export
 
 _EXPORTS = {
+    'HybridResult': ('.hybrid', 'HybridResult'),
     'MemoryCategory': ('.organization', 'MemoryCategory'),
     'PersonaProfile': ('.organization', 'PersonaProfile'),
     'MemoryContents': ('.organization', 'MemoryContents'),

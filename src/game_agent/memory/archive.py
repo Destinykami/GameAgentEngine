@@ -11,6 +11,7 @@ from typing import Any
 import uuid
 
 from .event_repository import EventIndex
+from .archive_retrieval import ArchiveRetrieval
 from .events import EventContext, EventCursor, EventPage, EventQuery, EventScope, _finite
 
 
@@ -82,6 +83,7 @@ class ArchiveRepository:
                     self._conn.execute("INSERT INTO archive_meta VALUES ('identity', ?)",
                                        (self.identity,))
             self.events = EventIndex(self._conn, self._lock, self.identity, search_terms)
+            self.retrieval = ArchiveRetrieval(self._conn, self._lock, self.events, search_terms)
         except Exception:
             self._conn.close()
             raise
@@ -279,6 +281,7 @@ class ArchiveRepository:
 
     def rebuild_index(self) -> None:
         with self._lock, self._conn:
+            self._conn.execute('DELETE FROM chunk_vector')
             self._conn.execute("DELETE FROM source_fts")
             self._conn.execute("DELETE FROM chunk")
             cursor = self._conn.execute("SELECT id,content FROM source ORDER BY sequence")

@@ -46,13 +46,17 @@ from .archive import ArchiveRecord, ArchiveRepository
 from .errors import ArchiveWriteError
 from .events import EventContext, EventCursor, EventPage, EventQuery, EventScope
 from .organization import MemoryContents, validate_limit
+from .retrieval import HybridRetriever
+from .hybrid import HybridResult
 
 
 class MemoryStore:
     """单个 NPC 的记忆存储 (自我 + 世界 + 各玩家关系流, 同库不同 player_id)。"""
 
     def __init__(self, embedder: Embedder, path: str = ":memory:", *,
-                 vector_cache_limit: int = 1024) -> None:
+                 vector_cache_limit: int = 1024, embedding_version: str = '1') -> None:
+        if not isinstance(embedding_version, str) or not embedding_version:
+            raise ValueError('embedding_version 必须是非空字符串')
         self._embedder = embedder
         self.archive_path = (str(Path(path).with_suffix('.archive.db'))
                              if path != ':memory:' else ':memory:')
@@ -72,6 +76,7 @@ class MemoryStore:
                 raise ValueError('NPC 主库与原文档案身份不匹配')
             self.set_meta('archive_identity', self._archive.identity)
             self._import_legacy()
+            self._retriever = HybridRetriever(self._archive, self._repository, embedder, embedding_version)
         except Exception:
             self._repository.close()
             if hasattr(self, '_archive'):
@@ -188,6 +193,20 @@ class MemoryStore:
 
     def rebuild_archive_index(self) -> None:
         self._archive.rebuild_index()
+
+    def index_archive(self, scope: EventScope, *, limit: int = 256) -> dict:
+        """限批补建原文向量，与派生 pending 队列分离。"""
+        return self._retriever.index_archive(scope, limit=limit)
+
+    def hybrid_retrieve(self, query: str, scope: EventScope, *,
+                        filters: EventQuery = EventQuery(), top_k: int = 8,
+                        candidate_k: int = 32, mode: str = 'hybrid',
+                        index_limit: int = 64, neighbor_radius: int = 0,
+                        reranker=None) -> HybridResult:
+        """同一证据来源上的 BM25/dense/RRF；返回覆盖率与降级诊断。"""
+        return self._retriever.retrieve(query, scope, filters=filters, top_k=top_k,
+            candidate_k=candidate_k, mode=mode, index_limit=index_limit,
+            neighbor_radius=neighbor_radius, reranker=reranker)
 
     def retry_pending_records(self, limit: int = 20) -> list[int]:
         """补处理已具备完整派生字段的原文；需要模型感知/评分的输入由 NPC 处理。"""

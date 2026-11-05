@@ -143,6 +143,11 @@ class EventIndex:
                 args.append(match)
         return where, args
 
+    def conditions(self, scope: EventScope, query: EventQuery):
+        """档案内检索共用校验范围；调用方只可追加更严格的条件。"""
+        with self._lock:
+            return self._filters(scope, query)
+
     def count(self, scope: EventScope, query: EventQuery) -> int:
         with self._lock:
             where, args = self._filters(scope, query)
