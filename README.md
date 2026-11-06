@@ -98,6 +98,8 @@ for ref in memory.raw_archive:
 
 ### 原文混合检索
 
+完整的[记忆组织层次图与检索流程图](docs/memory-diagrams.md)提供 SVG、PNG 和可编辑 DOT，标明当前实现与未实现边界。
+
 `MemoryStore.hybrid_retrieve` 在同一原文来源上融合 FTS5/BM25 和向量候选，再做 RRF、来源归并及可选重排。摘要和反思可导航到其引用的原文，生成内容不作为额外事实刷票；较早、低重要性的经历不受近期重要性窗口排除。关系、实例和时间范围在候选生成前应用。
 
 ```python

@@ -1,5 +1,7 @@
 # 原文混合检索、证据融合与对话接入
 
+图示入口：[记忆检索流程图](../memory-diagrams.md#记忆检索流程图)。
+
 状态：存储、对话与评测均已实现并通过离线验收。日期：2026-11-06。
 关联：[五类记忆](five-category-memory.md)、[原文与读取](tiered-memory.md)、[事件查询](memory-events.md)、[对话](dialogue.md)、[LongMemEval](longmemeval.md)。
 
